@@ -95,6 +95,7 @@ export class Game {
             const {name, color, player_no, reserve, passed, score} = this.gamedatas.players[player_id];
             this.players[player_id] = new PlayerHandler(this, parseInt(player_id), name, color, player_no, reserve, passed, Number(score));
         }
+        this.updatePassedStamps();
 
         this.boardHandler = new BoardHandler(this, gamedatas.towers);
         this.heightMenu = new HeightMenu(this);
@@ -299,6 +300,14 @@ export class Game {
     }
     //BGA's final state, or the largest groups already shown (they arrive in EndScore, just before gameEnd)
     public isGameOver(): boolean { return this.getGameStateName() === 'gameEnd' || !!this.endGameScoringHandler?.isDisplayed(); }
+    //[BGA] the PASSED stamp shows only while exactly one player is passed: both passed means the game is over, and the
+    //end-game display says so. Hidden on both boards once the game is over (live or after a reload)
+    public updatePassedStamps(): void {
+        const players = Object.values(this.players);
+        const passedCount = players.filter(player => player.isPassed()).length;
+        const showStamp = passedCount === 1 && !this.isGameOver();
+        players.forEach(player => player.showPassedStamp(showStamp && player.isPassed()));
+    }
     public getMyPlayerID(): number{ return this.myPlayerID; }
     public getPlayerOrder(): number[]{ return this.gamedatas.playerorder; } //turn order, starting with myself
 

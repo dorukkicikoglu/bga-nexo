@@ -618,6 +618,7 @@ class GameEnd {
     onEnteringState(args, isCurrentPlayerActive) {
         this.game.boardHandler.setSpotClickHandler(null);
         this.game.boardHandler.setDraft(null);
+        this.game.updatePassedStamps(); //the game is over: no PASSED stamp
     }
     /**
      * This method is called each time we are leaving the game state. You can use this method to perform some user interface changes at this moment.
@@ -638,7 +639,7 @@ class PlayerHandler {
         this.score = score;
         this.createPlayerBoardContainer();
         this.setReserve(this.reserve);
-        this.setPassed(this.passed);
+        this.showPassedStamp(false); //Game.updatePassedStamps() decides once every player board exists
     }
     //every player board, spectators included, shows the reserve (a disc in the player's color and its count) and, after an
     //automatic pass, a PASSED stamp (shown by data-passed). The score is BGA's own counter: the player's largest group
@@ -675,10 +676,14 @@ class PlayerHandler {
         this.reserveCount.textContent = reserve.toString();
         this.playerBoardContainer.setAttribute('data-empty-reserve', reserve <= 0 ? 'true' : 'false');
     }
-    //[BGA] the player's last turn was an automatic pass (no valid move); cleared when they place towers again
+    //[BGA] the player's last turn was an automatic pass (no valid move); cleared when they place towers again.
+    //Whether the stamp shows is Game.updatePassedStamps()'s call: never when both passed (the game is over)
     setPassed(passed) {
         this.passed = passed;
-        this.playerBoardContainer.setAttribute('data-passed', passed ? 'true' : 'false');
+        this.game.updatePassedStamps();
+    }
+    showPassedStamp(show) {
+        this.playerBoardContainer.setAttribute('data-passed', show ? 'true' : 'false');
     }
     //every live score change goes through here: BGA's score counter is the player's largest group
     setScore(score) {
@@ -878,6 +883,7 @@ class EndGameScoringHandler {
         this.game.boardHandler.highlightLargestGroups(endGameScoring.groups);
         for (const player_id in endGameScoring.scores)
             this.game.players[player_id]?.setScore(endGameScoring.scores[player_id]);
+        this.game.updatePassedStamps(); //the game is over: no PASSED stamp
     }
     isDisplayed() { return this.displayed; }
 }
@@ -1113,6 +1119,7 @@ class Game {
             const { name, color, player_no, reserve, passed, score } = this.gamedatas.players[player_id];
             this.players[player_id] = new PlayerHandler(this, parseInt(player_id), name, color, player_no, reserve, passed, Number(score));
         }
+        this.updatePassedStamps();
         this.boardHandler = new BoardHandler(this, gamedatas.towers);
         this.heightMenu = new HeightMenu(this);
         this.logMutationObserver = new LogMutationObserver(this);
@@ -1289,6 +1296,14 @@ class Game {
     }
     //BGA's final state, or the largest groups already shown (they arrive in EndScore, just before gameEnd)
     isGameOver() { return this.getGameStateName() === 'gameEnd' || !!this.endGameScoringHandler?.isDisplayed(); }
+    //[BGA] the PASSED stamp shows only while exactly one player is passed: both passed means the game is over, and the
+    //end-game display says so. Hidden on both boards once the game is over (live or after a reload)
+    updatePassedStamps() {
+        const players = Object.values(this.players);
+        const passedCount = players.filter(player => player.isPassed()).length;
+        const showStamp = passedCount === 1 && !this.isGameOver();
+        players.forEach(player => player.showPassedStamp(showStamp && player.isPassed()));
+    }
     getMyPlayerID() { return this.myPlayerID; }
     getPlayerOrder() { return this.gamedatas.playerorder; } //turn order, starting with myself
     //end utility

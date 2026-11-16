@@ -24,6 +24,7 @@ export class GameEnd {
     onEnteringState(args: any, isCurrentPlayerActive: boolean) {
         this.game.boardHandler.setSpotClickHandler(null);
         this.game.boardHandler.setDraft(null);
+        this.game.updatePassedStamps(); //the game is over: no PASSED stamp
     }
 
     /**

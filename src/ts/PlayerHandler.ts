@@ -24,7 +24,7 @@ export class PlayerHandler{
         this.createPlayerBoardContainer();
 
         this.setReserve(this.reserve);
-        this.setPassed(this.passed);
+        this.showPassedStamp(false); //Game.updatePassedStamps() decides once every player board exists
 	}
 
     //every player board, spectators included, shows the reserve (a disc in the player's color and its count) and, after an
@@ -68,10 +68,15 @@ export class PlayerHandler{
         this.playerBoardContainer.setAttribute('data-empty-reserve', reserve <= 0 ? 'true' : 'false');
     }
 
-    //[BGA] the player's last turn was an automatic pass (no valid move); cleared when they place towers again
+    //[BGA] the player's last turn was an automatic pass (no valid move); cleared when they place towers again.
+    //Whether the stamp shows is Game.updatePassedStamps()'s call: never when both passed (the game is over)
     public setPassed(passed: boolean): void {
         this.passed = passed;
-        this.playerBoardContainer.setAttribute('data-passed', passed ? 'true' : 'false');
+        this.game.updatePassedStamps();
+    }
+
+    public showPassedStamp(show: boolean): void {
+        this.playerBoardContainer.setAttribute('data-passed', show ? 'true' : 'false');
     }
 
     //every live score change goes through here: BGA's score counter is the player's largest group

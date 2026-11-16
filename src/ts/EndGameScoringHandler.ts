@@ -24,6 +24,8 @@ export class EndGameScoringHandler{
 
         for(const player_id in endGameScoring.scores)
             this.game.players[player_id]?.setScore(endGameScoring.scores[player_id]);
+
+        this.game.updatePassedStamps(); //the game is over: no PASSED stamp
     }
 
     public isDisplayed(): boolean { return this.displayed; }
