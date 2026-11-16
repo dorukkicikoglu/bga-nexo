@@ -105,3 +105,14 @@ Placement on screen:
 - [ ] Scroll the page with the menu open: it follows its spot. Resize the window or rotate the phone: same.
 - [ ] Mobile: the menu is never under BGA's top bar, never cut by the screen's edges, and its buttons keep their size whatever BGA's zoom.
 - [ ] No errors in the browser console.
+
+## After M1: page background
+
+Deploy `nexo.css`; no schema change, an ongoing table is fine (F5). Check on desktop and on a phone (or the browser's device toolbar at about 375px wide).
+
+- [ ] Desktop: a warm white surface with faint grey veins; a black area on the left with a clean curved edge, covering a little over half the width at the bottom and a little less than half at the top, with a faint shadow along the edge on the white side.
+- [ ] Scroll the page: the background stays put (no tiling, no seam at the bottom of a long page).
+- [ ] Phone (portrait): the black disc stays in the bottom-left corner and leaves most of the screen white; landscape looks like desktop.
+- [ ] Nothing of BGA's default background shows anywhere (top, bottom, behind the side column).
+- [ ] Readable over the black: the status bar, the draft panel, the board, the log (on a phone it sits under the board), player boards, the end-of-game result box. Note anything that isn't.
+- [ ] No other page of BGA changes (the lobby, another game).

@@ -1,6 +1,7 @@
 @use "sass:math";
 @use "sass:list";
 @use "sass:map";
+@use "sass:color";
 
 /**
  *------
@@ -43,6 +44,28 @@ $pending-tower-opacity: 0.6; //a tower of the turn being drafted
 $replaced-tower-opacity: 0.18; //an enemy tower under a drafted replacement
 $largest-group-glow: ("red": #ff8a80, "black": #ffd54f); //end of the game: each player's largest group glows, in a color that stands out from the discs
 
+//page background (see "page background" below): a warm white marble surface under a giant black disc seen up close, its centre
+//off-screen to the bottom-left so only a curved section shows. Gradients only, no image
+$bg-surface-color: #f6f3ed; //the white surface
+$bg-surface-light: #fdfbf8; //a soft light on the surface, top right
+$bg-surface-cloud-color: rgba(120, 112, 100, 0.035); //large soft clouds in the marble
+$bg-surface-vein-color: rgba(110, 104, 94, 0.06); //the surface's grey veins
+$bg-disc-color: #121212; //the black disc
+$bg-disc-sheen-color: rgba(255, 255, 255, 0.055); //a soft polished sheen on the disc
+$bg-disc-rim-color: rgba(255, 255, 255, 0.045); //a faint light just inside the disc's edge, following the curve
+$bg-disc-vein-color: rgba(255, 255, 255, 0.03); //the disc's charcoal veins
+$bg-disc-shadow-color: rgba(40, 30, 18, 0.16); //the disc's soft shadow on the surface, along its edge
+$bg-disc-shadow-width: 1.6vw;
+//the disc's size and position, in vw so it scales with the window. Its edge meets the bottom of the window at
+//center-x + sqrt(radius² - center-y²) (60vw with these values) and rises to the left: about 47vw at the top of a 16:9 window
+$bg-arc-radius: 150vw;
+$bg-arc-center-x: -90vw; //from the window's left edge (negative: off-screen)
+$bg-arc-center-y: 5vw; //below the window's bottom edge
+//portrait windows (phones): the disc further down and left, so it stays in the bottom-left corner (about 45vw at the bottom)
+$bg-arc-portrait-radius: 150vw;
+$bg-arc-portrait-center-x: -105vw;
+$bg-arc-portrait-center-y: 10vw;
+
 :root{
     --cell-size: #{$cell-size};
 
@@ -57,6 +80,45 @@ $largest-group-glow: ("red": #ff8a80, "black": #ffd54f); //end of the game: each
 //mobile, like Riviera: BGA lays the game out at least 740px wide and scales it down to the phone, so the board needs a large
 //logical size to stay readable once scaled
 .mobile_version{ --cell-size: #{$mobile-cell-size}; }
+
+//page background, like Riviera's: two position: fixed layers under the whole page, so it never scrolls or tiles with the page's
+//height. This stylesheet only loads on Nexo's pages, so styling body here affects no other page. isolation: body is its own
+//stacking context, so the z-index -1 layers paint over body's own background (and over BGA's on html) and under all of the
+//page. It sets no containing block, so position: fixed elements are unaffected. body keeps only the fallback color.
+//::before is the surface (marble, plus the disc's shadow as a ring just outside the disc's edge), ::after the disc: a layer as
+//big as the window, cut to the circle by a radial-gradient mask with a 1px soft edge (a crisp curve without jagged pixels)
+body{ background: $bg-surface-color; isolation: isolate;
+    --bg-arc-radius: #{$bg-arc-radius}; --bg-arc-center-x: #{$bg-arc-center-x}; --bg-arc-center-y: #{$bg-arc-center-y};
+    --bg-arc-center: var(--bg-arc-center-x) calc(100% + var(--bg-arc-center-y));
+    &::before, &::after{ content: ""; position: fixed; left: 0px; top: 0px; right: 0px; bottom: 0px; z-index: -1; pointer-events: none; }
+    &::before{
+        background:
+            radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), transparent calc(var(--bg-arc-radius) - 2px), $bg-disc-shadow-color var(--bg-arc-radius),
+                rgba($bg-disc-shadow-color, 0.05) calc(var(--bg-arc-radius) + #{$bg-disc-shadow-width} * 0.55), transparent calc(var(--bg-arc-radius) + #{$bg-disc-shadow-width})),
+            linear-gradient(113deg, transparent 62%, $bg-surface-vein-color 62.35%, transparent 62.8%),
+            linear-gradient(109deg, transparent 63.2%, rgba($bg-surface-vein-color, 0.03) 63.9%, transparent 64.8%),
+            linear-gradient(104deg, transparent 75.2%, rgba($bg-surface-vein-color, 0.035) 75.5%, transparent 75.9%),
+            linear-gradient(121deg, transparent 85%, $bg-surface-vein-color 85.25%, transparent 85.6%),
+            radial-gradient(ellipse 45vw 30vh at 78% 70%, $bg-surface-cloud-color, transparent 70%),
+            radial-gradient(ellipse 35vw 25vh at 92% 18%, $bg-surface-cloud-color, transparent 70%),
+            radial-gradient(ellipse 70vw 60vh at 85% 0%, $bg-surface-light, transparent 75%),
+            $bg-surface-color;
+    }
+    &::after{
+        background:
+            radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), transparent calc(var(--bg-arc-radius) - 9vw), $bg-disc-rim-color calc(var(--bg-arc-radius) - 1.8vw), transparent var(--bg-arc-radius)),
+            radial-gradient(ellipse 55vw 40vh at 22% 72%, $bg-disc-sheen-color, transparent 70%),
+            linear-gradient(64deg, transparent 18%, $bg-disc-vein-color 19.5%, transparent 21%),
+            linear-gradient(58deg, transparent 34%, rgba($bg-disc-vein-color, 0.02) 35%, transparent 36.5%),
+            linear-gradient(72deg, transparent 46%, $bg-disc-vein-color 46.8%, transparent 47.8%),
+            linear-gradient(155deg, color.adjust($bg-disc-color, $lightness: 5%) 0%, $bg-disc-color 55%, color.adjust($bg-disc-color, $lightness: 2%) 100%);
+        -webkit-mask-image: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), #000000 calc(var(--bg-arc-radius) - 0.75px), transparent calc(var(--bg-arc-radius) + 0.75px));
+        mask-image: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), #000000 calc(var(--bg-arc-radius) - 0.75px), transparent calc(var(--bg-arc-radius) + 0.75px));
+    }
+}
+@media (orientation: portrait){
+    body{ --bg-arc-radius: #{$bg-arc-portrait-radius}; --bg-arc-center-x: #{$bg-arc-portrait-center-x}; --bg-arc-center-y: #{$bg-arc-portrait-center-y}; }
+}
 
 @mixin text-shade($color, $size) { text-shadow: #{$size} 0 $color, -#{$size} 0 $color, 0 #{$size} $color, 0 -#{$size} $color, #{math.div($size, 2)} #{math.div($size, 2)} $color, -#{math.div($size, 2)} -#{math.div($size, 2)} $color, #{math.div($size, 2)} -#{math.div($size, 2)} $color, -#{math.div($size, 2)} #{math.div($size, 2)} $color; }
 @mixin non-selectable() { -webkit-touch-callout: none; -webkit-user-select: none; -khtml-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }

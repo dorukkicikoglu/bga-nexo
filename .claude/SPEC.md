@@ -24,7 +24,7 @@ Source: official rulebook, English, `misc/Nexo_Rules (EN).pdf` (Marc Rebillet, S
 
 ### Sprite
 
-No image yet: discs, spots and the board are drawn in CSS (placeholder art, see CLAUDE.md > Assets). Every size and color is a variable at the top of `src/scss/Game.scss`, so real art can replace them.
+No image yet: discs, spots, the board and the page background (a white marble surface under a giant black disc's curved edge) are drawn in CSS (placeholder art, see CLAUDE.md > Assets). Every size and color is a variable at the top of `src/scss/Game.scss`, so real art can replace them.
 
 ## Setup
 
@@ -109,3 +109,4 @@ Per player: turns played (10), passes (11), discs placed (12), new towers placed
      - Unverified until Studio: `#[JsonParam]` reading the `placements` JSON the client sends (fallback: a flat `#[IntArrayParam]` "x,y,h,x,y,h", if negative numbers pass); `changeActivePlayer()` inside `setupNewGame` (fallback: `activeNextPlayer()` until red is active); `reattributeColorsBasedOnPreferences` with only 2 colors.
      - Not code, yours: the Game Metadata Manager (designer Marc Rebillet, publisher Steffen Spiele, graphic design Ewelina Proczko-Bazaczek, zombie level 1, images); `estimated_duration` (20, a guess) in `gameinfos.jsonc` (`publisher_bgg_id` 4666 and the website are set).
    - After M1, height menu (2026-11-16): the status bar height buttons are replaced by a popup next to the selected spot (`HeightMenu.ts`, see Turn sequence, step 1); the draft's status bar title no longer changes with the selection. Checklist: `.claude/TESTING.md` > After M1: height menu.
+   - After M1, page background (2026-11-16): a white marble surface with a giant black disc's curved edge in the bottom-left, CSS gradients only (see CLAUDE.md > Assets). Checklist: `.claude/TESTING.md` > After M1: page background.

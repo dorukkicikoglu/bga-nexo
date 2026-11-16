@@ -20,6 +20,40 @@
   --cell-size: 76px;
 }
 
+body {
+  background: #f6f3ed;
+  isolation: isolate;
+  --bg-arc-radius: 150vw;
+  --bg-arc-center-x: -90vw;
+  --bg-arc-center-y: 5vw;
+  --bg-arc-center: var(--bg-arc-center-x) calc(100% + var(--bg-arc-center-y));
+}
+body::before, body::after {
+  content: "";
+  position: fixed;
+  left: 0px;
+  top: 0px;
+  right: 0px;
+  bottom: 0px;
+  z-index: -1;
+  pointer-events: none;
+}
+body::before {
+  background: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), transparent calc(var(--bg-arc-radius) - 2px), rgba(40, 30, 18, 0.16) var(--bg-arc-radius), rgba(40, 30, 18, 0.05) calc(var(--bg-arc-radius) + 1.6vw * 0.55), transparent calc(var(--bg-arc-radius) + 1.6vw)), linear-gradient(113deg, transparent 62%, rgba(110, 104, 94, 0.06) 62.35%, transparent 62.8%), linear-gradient(109deg, transparent 63.2%, rgba(110, 104, 94, 0.03) 63.9%, transparent 64.8%), linear-gradient(104deg, transparent 75.2%, rgba(110, 104, 94, 0.035) 75.5%, transparent 75.9%), linear-gradient(121deg, transparent 85%, rgba(110, 104, 94, 0.06) 85.25%, transparent 85.6%), radial-gradient(ellipse 45vw 30vh at 78% 70%, rgba(120, 112, 100, 0.035), transparent 70%), radial-gradient(ellipse 35vw 25vh at 92% 18%, rgba(120, 112, 100, 0.035), transparent 70%), radial-gradient(ellipse 70vw 60vh at 85% 0%, #fdfbf8, transparent 75%), #f6f3ed;
+}
+body::after {
+  background: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), transparent calc(var(--bg-arc-radius) - 9vw), rgba(255, 255, 255, 0.045) calc(var(--bg-arc-radius) - 1.8vw), transparent var(--bg-arc-radius)), radial-gradient(ellipse 55vw 40vh at 22% 72%, rgba(255, 255, 255, 0.055), transparent 70%), linear-gradient(64deg, transparent 18%, rgba(255, 255, 255, 0.03) 19.5%, transparent 21%), linear-gradient(58deg, transparent 34%, rgba(255, 255, 255, 0.02) 35%, transparent 36.5%), linear-gradient(72deg, transparent 46%, rgba(255, 255, 255, 0.03) 46.8%, transparent 47.8%), linear-gradient(155deg, rgb(30.75, 30.75, 30.75) 0%, #121212 55%, rgb(23.1, 23.1, 23.1) 100%);
+  -webkit-mask-image: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), #000000 calc(var(--bg-arc-radius) - 0.75px), transparent calc(var(--bg-arc-radius) + 0.75px));
+  mask-image: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), #000000 calc(var(--bg-arc-radius) - 0.75px), transparent calc(var(--bg-arc-radius) + 0.75px));
+}
+
+@media (orientation: portrait) {
+  body {
+    --bg-arc-radius: 150vw;
+    --bg-arc-center-x: -105vw;
+    --bg-arc-center-y: 10vw;
+  }
+}
 body .sliding-clone {
   position: fixed;
   left: 0px;
