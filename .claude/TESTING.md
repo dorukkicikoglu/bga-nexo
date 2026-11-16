@@ -31,12 +31,12 @@ Setup:
 - [ ] A 2-player game starts without errors. One player is red, the other black (try a table where your favorite color is black, too).
 - [ ] The red player is active first, whatever the seat order.
 - [ ] Each player board shows a red or black disc "× 25" and a score of 0. No PASSED stamp.
-- [ ] The board is a 9x9 area of faint dots with a dashed outline; only the centre spot has a teal ring for red. Black sees "<name> must place towers" and no rings.
+- [ ] The board is a 9x9 area of faint dots with a dashed outline; only the centre spot has a legal-spot ring for red. Black sees "<name> must place towers" and no rings.
 - [ ] `SELECT * FROM towers` is empty; `SELECT player_id, player_color, reserve, passed FROM player`: 25 and `no` each.
 
 Drafting (as the active player):
 - [ ] Click the centre spot: it gets a gold ring and the height menu opens next to it with towers 1 to 5 (details: After M1: height menu).
-- [ ] Pick 2: a semi-transparent 2-disc tower appears; the panel above the board reads 3 discs left and reserve 23; the title is unchanged; Confirm and Reset turn show. New teal rings appear around it.
+- [ ] Pick 2: a semi-transparent 2-disc tower appears; the panel above the board reads 3 discs left and reserve 23; the title is unchanged; Confirm and Reset turn show. New legal-spot rings appear around it.
 - [ ] Place a 1 next to it, then a 1 next to that one (adjacent only to this turn's tower): allowed. With 1 disc left, a click places a 1 at once (no buttons).
 - [ ] With 0 discs left, no ring shows; the title stays "You must place 1 to 5 discs" and Confirm is there.
 - [ ] Hover a drafted tower: an × shows. Click the middle one of a line of three: it goes, and so does the far one (no longer connected). Reset turn clears everything.
@@ -45,7 +45,7 @@ Drafting (as the active player):
 
 The other player's view of a turn (and a spectator's):
 - [ ] New towers fly one after another from the mover's reserve disc on their player board to their spots.
-- [ ] After each turn the board slides to keep the towers centred; no jump while drafting.
+- [ ] The board never moves, during a draft or after a turn (see After M1: material styling and anchored grid).
 - [ ] The log row reads "name [tower][tower]...", each tower drawn with its height.
 
 Replacements:
@@ -85,7 +85,7 @@ Spectator and display:
 Deploy `modules/` and `nexo.css`; no schema change, an ongoing table is fine (F5). Test everything below twice: on desktop, and on a narrow mobile viewport (a phone, or the browser's device toolbar at about 375px wide, which gives BGA's mobile layout).
 
 Opening and choosing:
-- [ ] Click or tap a teal spot: a gold ring on the spot and a small menu right next to it, with an arrow pointing at the spot. One button per possible height, each a tower of that height in your color with its number on top; caption "Tower height". Buttons are a comfortable tap size (about 48px on desktop, a little bigger on mobile).
+- [ ] Click or tap a legal (ringed) spot: a gold ring on the spot and a small menu right next to it, with an arrow pointing at the spot. One button per possible height, each a tower of that height in your color with its number on top; caption "Tower height". Buttons are a comfortable tap size (about 48px on desktop, a little bigger on mobile).
 - [ ] The status bar title doesn't change when the menu opens or closes ("You must place 1 to N discs"); no height buttons in the status bar.
 - [ ] Click a height: the drafted tower appears and the menu closes. The next menu only offers the heights the discs left allow (after a 3, only 1 and 2).
 - [ ] Click an orange-ringed enemy tower: the caption shows that enemy tower and "Replace: at least N discs" (N = its height + 1), and the lowest button is N.
@@ -95,7 +95,7 @@ Opening and choosing:
 Closing and moving:
 - [ ] Click outside the menu (empty board area, the log, the page): it closes, nothing drafted, the gold ring goes.
 - [ ] Click the same spot again: it closes. Escape: it closes.
-- [ ] Click another teal spot or orange tower with the menu open: the menu moves there in one click.
+- [ ] Click another legal spot or orange tower with the menu open: the menu moves there in one click.
 - [ ] Click a drafted tower with the menu open: the tower is taken back and the menu closes.
 - [ ] Confirm, Reset turn and the end of the turn close it too.
 
@@ -116,3 +116,24 @@ Deploy `nexo.css`; no schema change, an ongoing table is fine (F5). Check on des
 - [ ] Nothing of BGA's default background shows anywhere (top, bottom, behind the side column).
 - [ ] Readable over the black: the status bar, the draft panel, the board, the log (on a phone it sits under the board), player boards, the end-of-game result box. Note anything that isn't.
 - [ ] No other page of BGA changes (the lobby, another game).
+
+## After M1: material styling and anchored grid
+
+Deploy `modules/` and `nexo.css`; no schema change, an ongoing table is fine (F5).
+
+Board:
+- [ ] The board is a pale white marble slab (no beige) with small rounded corners and a soft shadow; it reads well where it crosses the black arc's edge.
+- [ ] Empty spots are small charcoal dots; the reachable area has a thin, quiet charcoal outline and a barely darker fill.
+- [ ] Legal spots: a red dashed ring with a faint red fill, solid and brighter on hover. Replaceable enemy towers: the pulsing orange ring. The selected spot: gold. All three are easy to tell apart, for both players.
+- [ ] Discs look exactly as before.
+
+Anchored grid:
+- [ ] Play several turns that add columns or rows on one side only (for example, always to the right): the grid and every tower stay exactly where they are after each turn, for the mover, the opponent and a spectator. Only the dots outside the reachable area disappear.
+- [ ] F5 at any point: the board shows the same window as before the reload.
+- [ ] Once 5 columns are taken, the outline sits wherever those columns are (it may be off-centre in the board); every legal spot is still on the board.
+
+Player boards and log:
+- [ ] Player boards: the same white marble and a soft shadow, no beige.
+- [ ] Log rows: white marble, near-black text, a soft line under each, a red bar on the left of the red player's rows and a black bar on the black player's (pass rows too; the game end row in the winner's color, neutral on a shared victory). "You" stays red; other names in their color. No gold tones.
+- [ ] Timestamps, hovering a row and the replay links ("replay from this move") work as before, in the desktop log, the mobile log and a replay.
+

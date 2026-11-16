@@ -33,7 +33,7 @@ export class Game {
     public static readonly TOWER_SLIDE_DURATION = 520; //ms of a tower flying between a player board's reserve and its spot
     public static readonly TOWER_SLIDE_STAGGER = 110; //ms between two new towers of the same turn leaving the reserve
     public static readonly TOWER_SLIDE_EASING = 'ease-in-out';
-    public static readonly BOARD_RECENTER_DURATION = 450; //ms of the board window sliding to follow the towers after a turn
+    public static readonly BOARD_RECENTER_DURATION = 450; //ms of the board window sliding, only if the reachable area ever left it (BoardHandler.computeWindow: never under the rules)
     public static readonly BOARD_RECENTER_EASING = 'ease-in-out';
 
     public bga: Bga<NexoPlayer, NexoGamedatas>;

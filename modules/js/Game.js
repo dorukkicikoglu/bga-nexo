@@ -142,11 +142,10 @@ class BoardRules {
  * BoardHandler.ts
  */
 /**
- * The board: a window of (2 * gridSize - 1) x (2 * gridSize - 1) spots (9 x 9), always big enough for every spot the grid
- * can still reach this turn. The window is laid on the towers already on the board (computeWindow) and only moves after a
- * turn (recenter), never while drafting, so nothing jumps under the cursor. Spots outside the reachable area (getPossibleArea)
- * are not shown: once 5 columns or 5 rows are taken, only those remain. Towers and spots sit in .board-layer at their own
- * board coordinates, and the layer's translate (animated) brings the window into view.
+ * The board: a window of (2 * gridSize - 1) x (2 * gridSize - 1) spots (9 x 9), anchored on the first tower (0 0, the
+ * window's centre) for the whole game, so the grid never shifts (computeWindow). Spots outside the reachable area
+ * (getPossibleArea) are not shown: once 5 columns or 5 rows are taken, only those remain. Towers and spots sit in .board-layer
+ * at their own board coordinates, and the layer's translate brings the window into view.
  */
 class BoardHandler {
     constructor(game, towers) {
@@ -159,6 +158,7 @@ class BoardHandler {
         this.draft = null;
         this.spotClickHandler = null;
         this.windowSize = 2 * this.game.getRules().gridSize - 1;
+        this.windowLeft = this.windowTop = -(this.game.getRules().gridSize - 1); //the anchor: the first tower (0 0) in the centre
         this.boardElement = document.getElementById('nexo-board');
         this.boardElement.style.setProperty('--board-window-size', this.windowSize.toString());
         this.boardElement.innerHTML = `
@@ -212,14 +212,19 @@ class BoardHandler {
         element.setAttribute('data-x', spot.x.toString());
         element.setAttribute('data-y', spot.y.toString());
     }
-    //the window's top-left spot, centred on the spots the grid can reach from the towers on the board: columns maxX - 4 to
-    //minX + 4 (2 * gridSize - w of them, w the columns taken), so (w - 1) columns are left over, split on both sides. An
-    //empty board centres the window on 0 0, where the first tower goes
+    //the window's top-left spot. It stays on its anchor (the first tower, 0 0, in the centre: columns and rows -4 to 4) for the
+    //whole game: the reachable area (columns maxX - 4 to minX + 4) starts as exactly that window once the first tower is down,
+    //and every turn's towers land inside it, so it only ever shrinks and never leaves the window. Re-centring on the towers
+    //instead shifted the grid by a column or row after most turns. Only an area that left the window anyway (never under the
+    //rules) moves it, by the smallest shift that holds it again
     computeWindow() {
-        const reach = this.game.getRules().gridSize - 1;
-        const bounds = BoardRules.getBounds(this.towers);
-        const left = bounds ? bounds.maxX - reach - Math.floor((bounds.maxX - bounds.minX) / 2) : -reach;
-        const top = bounds ? bounds.maxY - reach - Math.floor((bounds.maxY - bounds.minY) / 2) : -reach;
+        let left = this.windowLeft;
+        let top = this.windowTop;
+        const area = this.game.boardRules.getPossibleArea(this.towers);
+        if (area) {
+            left = Math.min(Math.max(left, area.maxX - this.windowSize + 1), area.minX);
+            top = Math.min(Math.max(top, area.maxY - this.windowSize + 1), area.minY);
+        }
         const changed = left !== this.windowLeft || top !== this.windowTop;
         this.windowLeft = left;
         this.windowTop = top;
@@ -228,7 +233,8 @@ class BoardHandler {
     applyWindow() {
         this.layerElement.style.translate = `calc(${-this.windowLeft} * var(--cell-size)) calc(${-this.windowTop} * var(--cell-size))`;
     }
-    //after a turn: the window follows the towers, sliding the whole layer (towers and spots together). Instant with animations off
+    //after a turn: redraws the spots for the new reachable area. The window itself stays on its anchor (computeWindow); the slide
+    //(the whole layer, towers and spots together, instant with animations off) is only a safety net that the rules never trigger
     async recenter() {
         const changed = this.computeWindow();
         this.renderSpots();
@@ -788,6 +794,11 @@ class LogMutationObserver {
         const gapTagHTML = gapBefore ? '<div log-class-tag="log-gap-before"></div>' : '';
         return { log_html: logHTML + `<div log-class-tag="${logClass}"></div>` + gapTagHTML, log_class: logClass };
     }
+    //the row's player's disc color as a class on the row (red-disc-log, black-disc-log): its accent bar. From the notification's
+    //args, like every per-row style
+    getDiscColorTag(player_id) {
+        return `<div log-class-tag="${this.game.getDiscColor(player_id)}-disc-log"></div>`;
+    }
     //create specific log types
     //"name [tower] [tower] [enemy tower → tower]": every tower of the turn as a mini tower in the player's color, in the order
     //they were drafted; a replacement shows the enemy tower it replaced, faded and crossed, then the new one
@@ -804,7 +815,7 @@ class LogMutationObserver {
             <div class="towers-placed-row">
                 ${this.getCutPlayerNameHTML(player_id)}
                 <span class="log-towers">${towersHTML}</span>
-            </div>` + ' &nbsp;';
+            </div>` + this.getDiscColorTag(player_id) + ' &nbsp;';
         return this.addLogClassTag(logHTML, 'towers-placed-log');
     }
     //[BGA] the automatic pass: "[forward] name has no valid move and passes" (the server's PASS_LOG_STR is the plain-text fallback)
@@ -817,7 +828,7 @@ class LogMutationObserver {
             <div class="player-passed-row">
                 <i class="fa6 fa-forward player-passed-icon" aria-hidden="true"></i>
                 <span>${passHTML}</span>
-            </div>` + ' &nbsp;';
+            </div>` + this.getDiscColorTag(player_id) + ' &nbsp;';
         return this.addLogClassTag(logHTML, 'player-passed-log');
     }
     //the game ends: everyone at the top score wins (a tie shares the victory)
@@ -838,7 +849,7 @@ class LogMutationObserver {
         let logHTML = `
             <div class="game-end-row">
                 <i class="fa6 fa-trophy"></i>&nbsp;${gameEndHTML}
-            </div>` + ' &nbsp;';
+            </div>` + (winner_ids.length === 1 ? this.getDiscColorTag(winner_ids[0]) : '') + ' &nbsp;';
         return this.addLogClassTag(logHTML, 'game-end-log');
     }
     //a tower drawn at log size (.log-tower sets its own --cell-size)
@@ -1356,7 +1367,7 @@ class Game {
 Game.TOWER_SLIDE_DURATION = 520; //ms of a tower flying between a player board's reserve and its spot
 Game.TOWER_SLIDE_STAGGER = 110; //ms between two new towers of the same turn leaving the reserve
 Game.TOWER_SLIDE_EASING = 'ease-in-out';
-Game.BOARD_RECENTER_DURATION = 450; //ms of the board window sliding to follow the towers after a turn
+Game.BOARD_RECENTER_DURATION = 450; //ms of the board window sliding, only if the reachable area ever left it (BoardHandler.computeWindow: never under the rules)
 Game.BOARD_RECENTER_EASING = 'ease-in-out';
 
 export { Game };

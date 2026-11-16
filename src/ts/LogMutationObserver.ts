@@ -111,6 +111,12 @@ export class LogMutationObserver{
         return { log_html: logHTML + `<div log-class-tag="${logClass}"></div>` + gapTagHTML, log_class: logClass };
     }
 
+    //the row's player's disc color as a class on the row (red-disc-log, black-disc-log): its accent bar. From the notification's
+    //args, like every per-row style
+    private getDiscColorTag(player_id: number): string {
+        return `<div log-class-tag="${this.game.getDiscColor(player_id)}-disc-log"></div>`;
+    }
+
     //create specific log types
     //"name [tower] [tower] [enemy tower → tower]": every tower of the turn as a mini tower in the player's color, in the order
     //they were drafted; a replacement shows the enemy tower it replaced, faded and crossed, then the new one
@@ -129,7 +135,7 @@ export class LogMutationObserver{
             <div class="towers-placed-row">
                 ${this.getCutPlayerNameHTML(player_id)}
                 <span class="log-towers">${towersHTML}</span>
-            </div>` + ' &nbsp;';
+            </div>` + this.getDiscColorTag(player_id) + ' &nbsp;';
 
         return this.addLogClassTag(logHTML, 'towers-placed-log');
     }
@@ -145,7 +151,7 @@ export class LogMutationObserver{
             <div class="player-passed-row">
                 <i class="fa6 fa-forward player-passed-icon" aria-hidden="true"></i>
                 <span>${passHTML}</span>
-            </div>` + ' &nbsp;';
+            </div>` + this.getDiscColorTag(player_id) + ' &nbsp;';
 
         return this.addLogClassTag(logHTML, 'player-passed-log');
     }
@@ -170,7 +176,7 @@ export class LogMutationObserver{
         let logHTML = `
             <div class="game-end-row">
                 <i class="fa6 fa-trophy"></i>&nbsp;${gameEndHTML}
-            </div>` + ' &nbsp;';
+            </div>` + (winner_ids.length === 1 ? this.getDiscColorTag(winner_ids[0]) : '') + ' &nbsp;';
 
         return this.addLogClassTag(logHTML, 'game-end-log');
     }

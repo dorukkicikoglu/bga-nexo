@@ -33,13 +33,6 @@ $disc-colors: (
     "black": (face: #2b2c31, face-light: #63656e, side: #17181b, side-dark: #050506, number: #ffffff),
 );
 
-$board-background: radial-gradient(ellipse at 50% 40%, #fbf7ee 0%, #efe6d3 70%, #e3d7bd 100%);
-$board-border-color: #cdbf9f;
-$spot-dot-color: rgba(60, 45, 20, 0.22); //an empty spot the grid can still reach
-$possible-area-border: rgba(60, 45, 20, 0.28); //the outline of every spot the grid can still reach
-$legal-spot-color: #14a39a; //an empty spot where the active player may place a new tower
-$replaceable-spot-color: #ff9100; //an enemy tower the active player may replace
-$selected-spot-color: #ffc400; //the spot waiting for its height
 $pending-tower-opacity: 0.6; //a tower of the turn being drafted
 $replaced-tower-opacity: 0.18; //an enemy tower under a drafted replacement
 $largest-group-glow: ("red": #ff8a80, "black": #ffd54f); //end of the game: each player's largest group glows, in a color that stands out from the discs
@@ -66,15 +59,53 @@ $bg-arc-portrait-radius: 150vw;
 $bg-arc-portrait-center-x: -105vw;
 $bg-arc-portrait-center-y: 10vw;
 
+//the material set: the board, the player boards and the log rows in the page background's palette, a white marble a little
+//lighter than the surface, charcoal for lines and dots (the black discs' tone) and the game's red for the legal spots
+$material-charcoal: #1b1b1d; //near-black: dots, lines, text, the black player's accent
+$material-red: #d42a20; //the game's red (the red discs' face): legal spots, the red player's accent
+$marble-white: #fcfbf9; //the board's and panels' marble, a little lighter than the page's surface
+$marble-white-shade: #f0eee9; //the same marble, toward its far corner
+$marble-vein-color: rgba(100, 96, 90, 0.05); //very faint veins on the board
+$slab-shadow-color: rgb(40, 30, 18); //the shadows' tint, the same as the disc's shadow on the page ($bg-disc-shadow-color)
+//a stone slab lying on the surface: a tight contact shadow, then a wide soft one
+$slab-shadow: 0 1px 2px rgba($slab-shadow-color, 0.16), 0 6px 16px -4px rgba($slab-shadow-color, 0.22), 0 18px 36px -14px rgba($slab-shadow-color, 0.28);
+$panel-shadow: 0 1px 2px rgba($slab-shadow-color, 0.14), 0 4px 12px -4px rgba($slab-shadow-color, 0.2); //the same, lighter, for the player boards
+
+//board (see "board" below)
+$board-radius: 8px;
+$board-background: radial-gradient(ellipse 70% 55% at 30% 20%, #ffffff 0%, transparent 100%),
+    linear-gradient(117deg, transparent 38%, $marble-vein-color 39%, transparent 40.4%),
+    linear-gradient(111deg, transparent 67%, rgba($marble-vein-color, 0.035) 67.6%, transparent 68.5%),
+    linear-gradient(160deg, $marble-white 0%, $marble-white-shade 100%);
+$board-border-color: rgba($material-charcoal, 0.1);
+$spot-dot-color: rgba($material-charcoal, 0.22); //an empty spot the grid can still reach
+$possible-area-border: rgba($material-charcoal, 0.22); //the thin outline of every spot the grid can still reach
+$possible-area-fill: rgba($material-charcoal, 0.025); //and its very faint fill, setting it apart from the rest of the board
+$legal-spot-color: $material-red; //an empty spot where the active player may place a new tower
+$replaceable-spot-color: #f08a00; //an enemy tower the active player may replace
+$selected-spot-color: #ffc400; //the spot waiting for its height
+
+//player boards (BGA's .player-board) and log rows
+$panel-background: linear-gradient(160deg, $marble-white 0%, $marble-white-shade 100%);
+$panel-border-color: rgba($material-charcoal, 0.08);
+$log-text-color: #1f1f21; //near-black
+$log-background-default: linear-gradient(135deg, $marble-white, $marble-white-shade);
+$log-background-towers-placed: linear-gradient(90deg, rgba($marble-white, 0.97), rgba($marble-white-shade, 0.95));
+$log-background-player-passed: linear-gradient(90deg, rgba(246, 246, 245, 0.97), rgba(232, 232, 230, 0.95));
+$log-background-game-end: linear-gradient(90deg, #ffffff, $marble-white-shade);
+$log-divider-color: rgba($material-charcoal, 0.08); //the soft line under each row
+$log-accent-width: 3px; //the bar on each row's left edge, in its player's color
+$log-accent-colors: ("red": $material-red, "black": $material-charcoal);
+$log-accent-neutral: rgba($material-charcoal, 0.18); //a row of no single player (a shared victory)
+
 :root{
     --cell-size: #{$cell-size};
 
-    //one background per log type, translucent so the page background shows through: left to right (90deg), light to dark in
-    //its own color, stops at 0% / 45% / 100%, so the default dark log text sits on the light left part
-    --bg-log-default: linear-gradient(135deg, #f4f4f2, #e8e8e4);
-    --bg-log-towers-placed: linear-gradient(90deg, rgba(250, 246, 236, 0.94) 0%, rgba(232, 220, 192, 0.9) 45%, rgba(170, 146, 96, 0.88) 100%);
-    --bg-log-player-passed: linear-gradient(90deg, rgba(240, 240, 244, 0.94) 0%, rgba(206, 208, 218, 0.9) 45%, rgba(120, 124, 140, 0.88) 100%);
-    --bg-log-game-end: linear-gradient(90deg, rgba(255, 248, 222, 0.95) 0%, rgba(240, 214, 140, 0.9) 45%, rgba(178, 138, 40, 0.88) 100%);
+    //one background per log type ($log-background-*), all the board's white marble: the row's player shows in its accent bar
+    --bg-log-default: #{$log-background-default};
+    --bg-log-towers-placed: #{$log-background-towers-placed};
+    --bg-log-player-passed: #{$log-background-player-passed};
+    --bg-log-game-end: #{$log-background-game-end};
 }
 
 //mobile, like Riviera: BGA lays the game out at least 740px wide and scales it down to the phone, so the board needs a large
@@ -169,7 +200,7 @@ body .sliding-clone{ position: fixed; left: 0px; top: 0px; z-index: 1000; margin
 //brings the window into view. Overflow is hidden: while the window slides, spots of the old window pass its edge
 #nexo-board-container{ display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 8px 0px 16px 0px; }
 #nexo-board{ position: relative; box-sizing: content-box; width: calc(var(--board-window-size, 9) * var(--cell-size)); height: calc(var(--board-window-size, 9) * var(--cell-size)); overflow: hidden;
-    border: 1px solid $board-border-color; border-radius: 16px; background: $board-background; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25); @include non-selectable();
+    border: 1px solid $board-border-color; border-radius: $board-radius; background: $board-background; box-shadow: $slab-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.9); @include non-selectable();
     --draft-spot-color: #{$legal-spot-color};
 }
 .board-layer{ position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
@@ -181,7 +212,7 @@ body .sliding-clone{ position: fixed; left: 0px; top: 0px; z-index: 1000; margin
 //every spot the grid can still reach (BoardRules.getPossibleArea), outlined: once 5 columns or 5 rows are taken, the outline is
 //the grid itself
 .possible-area{ position: absolute; left: calc(var(--x) * var(--cell-size)); top: calc(var(--y) * var(--cell-size)); width: calc(var(--columns) * var(--cell-size)); height: calc(var(--rows) * var(--cell-size));
-    box-sizing: border-box; border: 2px dashed $possible-area-border; border-radius: 12px; pointer-events: none; }
+    box-sizing: border-box; border: 1px solid $possible-area-border; border-radius: 6px; background: $possible-area-fill; pointer-events: none; }
 
 //a spot: a faint dot where empty; an ellipse ring where the bottom disc of a tower would sit when it can take one
 .board-spot{ @include board-place();
@@ -192,8 +223,8 @@ body .sliding-clone{ position: fixed; left: 0px; top: 0px; z-index: 1000; margin
     &.clickable-spot{ cursor: pointer;
         &::before{ content: ""; position: absolute; box-sizing: border-box; left: calc((var(--cell-size) - var(--spot-ring-width)) / 2); bottom: var(--spot-ring-bottom); width: var(--spot-ring-width); height: var(--spot-ring-height); border-radius: 50%; transition: background-color 0.15s ease, box-shadow 0.15s ease; }
     }
-    &.legal-spot::before{ border: 2px dashed $legal-spot-color; background-color: rgba($legal-spot-color, 0.18); }
-    &.legal-spot:hover::before{ border-style: solid; background-color: rgba($legal-spot-color, 0.38); box-shadow: 0 0 8px rgba($legal-spot-color, 0.8); }
+    &.legal-spot::before{ border: 2px dashed rgba($legal-spot-color, 0.7); background-color: rgba($legal-spot-color, 0.1); }
+    &.legal-spot:hover::before{ border: 2px solid $legal-spot-color; background-color: rgba($legal-spot-color, 0.24); box-shadow: 0 0 8px rgba($legal-spot-color, 0.5); }
     &.legal-spot::after{ display: none; }
     //an enemy tower that can be replaced: a wider orange ring around its base, pulsing, over which the tower stands
     &.replaceable-spot::before{ left: calc((var(--cell-size) - var(--spot-ring-width) * 1.2) / 2); bottom: calc(var(--spot-ring-bottom) - var(--spot-ring-height) * 0.1); width: calc(var(--spot-ring-width) * 1.2); height: calc(var(--spot-ring-height) * 1.2);
@@ -297,6 +328,8 @@ $height-menu-z-index: 948;
 }
 
 //player board
+//BGA's own player boards, in the board's marble with a lighter slab shadow (#player_boards: beats BGA's .player-board)
+#player_boards .player-board{ background: $panel-background; border-color: $panel-border-color; box-shadow: $panel-shadow; }
 .nexo-player-board{ margin-top: 6px;
     .player-board-reserve-row{ position: relative; display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 30px; }
     .reserve-indicator{ display: flex; align-items: center; gap: 3px; font-size: 16px; font-weight: bold; color: #27271c;
@@ -328,7 +361,7 @@ $height-menu-z-index: 948;
 //The text color is set too: every background is pale, so BGA's dark mode must not lighten the text.
 //In the mobile table log the row itself is the .roundedbox (no inner one), hence the compound .log.a-game-log.roundedbox:
 //(0,3,0) beats BGA's .chatwindowlogs_zone .roundedbox, and the shorthand replaces its rounded_b.png image
-.log .roundedbox, .log.a-game-log.roundedbox, .gamelogreview{ background: var(--bg-log-default); color: #27271c; }
+.log .roundedbox, .log.a-game-log.roundedbox, .gamelogreview{ background: var(--bg-log-default); color: $log-text-color; }
 
 //only our own rows (every one gets .a-game-log from LogMutationObserver) show in the game log: BGA's other rows are hidden in
 //the desktop log (#logs), the mobile table log and the replay log. The chat zones are never touched. BGA sets an inline
@@ -339,28 +372,35 @@ $log-name-max-width: 110px; //longer names are cut with an ellipsis (full name o
 $log-types: "towers-placed", "player-passed", "game-end";
 .log, .gamelogreview{
     //the &.…roundedbox selectors: the mobile table log's row is itself the .roundedbox (see the default background above)
-    &.a-game-log{ position: relative;
-        .roundedbox, &.roundedbox{ padding-bottom: 5px; }
+    //our rows: a bar on the left edge in the row's player's color (--log-accent, from its *-disc-log class, see below) and a
+    //soft line under it, both box-shadows so BGA's row layout (timestamps, hover, replay links) is untouched
+    &.a-game-log{ position: relative; --log-accent: #{$log-accent-neutral};
+        .roundedbox, &.roundedbox{ padding-bottom: 5px; padding-left: calc(#{$log-accent-width} + 6px); border-radius: 4px; box-shadow: inset $log-accent-width 0 0 var(--log-accent), 0 1px 0 $log-divider-color; }
+        &.gamelogreview{ padding-left: calc(#{$log-accent-width} + 6px); border-radius: 4px; box-shadow: inset $log-accent-width 0 0 var(--log-accent), 0 1px 0 $log-divider-color; }
+    }
+    //LogMutationObserver.getDiscColorTag: the disc color of the row's player
+    @each $name, $accent in $log-accent-colors {
+        &.a-game-log.#{$name}-disc-log{ --log-accent: #{$accent}; }
     }
     @each $log-type in $log-types {
         &.#{$log-type}-log .roundedbox, &.#{$log-type}-log.roundedbox, &.gamelogreview.#{$log-type}-log{ background: var(--bg-log-#{$log-type}); }
     }
 
     //"name [tower] [tower] [enemy tower → tower]"
-    .towers-placed-row{ display: flex; align-items: center; flex-wrap: wrap; gap: 2px 6px; color: #27271c;
+    .towers-placed-row{ display: flex; align-items: center; flex-wrap: wrap; gap: 2px 6px; color: $log-text-color;
         .playername{ display: block; min-width: 0; max-width: $log-name-max-width; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .log-towers{ display: flex; align-items: center; flex-wrap: wrap; gap: 0px 2px; }
         .log-replacement{ display: inline-flex; align-items: center; gap: 1px; padding: 0px 3px; border-radius: 8px; background: rgba(255, 145, 0, 0.18); }
-        .log-replacement-arrow{ font-size: 12px; color: #6a4a10; }
+        .log-replacement-arrow{ font-size: 12px; color: rgba($material-charcoal, 0.6); }
     }
     .log-tower{ --cell-size: #{$log-cell-size}; }
     .log-tower.replaced-log-tower{ opacity: 0.55;
         &::after{ content: ""; position: absolute; left: 10%; right: 10%; top: 50%; height: 2px; background: #c62828; rotate: -30deg; }
     }
-    .player-passed-row{ display: flex; align-items: center; gap: 6px; color: #27271c;
+    .player-passed-row{ display: flex; align-items: center; gap: 6px; color: $log-text-color;
         .player-passed-icon{ color: #5a5f6e; }
     }
-    .game-end-row{ color: #27271c; }
+    .game-end-row{ color: $log-text-color; }
 }
 //the log backgrounds are pale, so light player colors get a dark outline to stay readable (none in Nexo's two colors for now)
 //end logs
