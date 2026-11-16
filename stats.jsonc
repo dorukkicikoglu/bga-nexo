@@ -1,28 +1,60 @@
-{    
+{
     // Statistics for the table
-    "table": {},
-    
+    "table": {
+      "turns": {
+        "id": 10,
+        "name": "Turns played",
+        "type": "int"
+      },
+      "passes": {
+        "id": 11,
+        "name": "Passes",
+        "type": "int"
+      }
+    },
+
     // Statistics for each player
     "player": {
-      /* 
-      EXAMPLE:
-
-      "turns_number": {
+      "turnsPlayed": {
         "id": 10,
-        "name": "Number of turns",
+        "name": "Turns played",
         "type": "int"
       },
-      "player_teststat1": {
+      "passes": {
         "id": 11,
-        "name": "player test stat 1",
+        "name": "Passes",
         "type": "int"
       },
-      "player_teststat2": {
+      "discsPlaced": {
         "id": 12,
-        "name": "player test stat 2",
-        "type": "float"
+        "name": "Discs placed",
+        "type": "int"
+      },
+      "towersPlaced": {
+        "id": 13,
+        "name": "New towers placed",
+        "type": "int"
+      },
+      "towersReplaced": {
+        "id": 14,
+        "name": "Enemy towers replaced",
+        "type": "int"
+      },
+      "discsReturned": {
+        "id": 15,
+        "name": "Discs returned to reserve by the opponent",
+        "type": "int"
+      },
+      // set by EndScore
+      "largestGroup": {
+        "id": 16,
+        "name": "Largest connected area",
+        "type": "int"
+      },
+      "towersAtEnd": {
+        "id": 17,
+        "name": "Towers on the board at the end",
+        "type": "int"
       }
-      */
-
     }
 }

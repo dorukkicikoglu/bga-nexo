@@ -1,0 +1,308 @@
+@use "sass:math";
+@use "sass:list";
+@use "sass:map";
+
+/**
+ *------
+ * BGA framework: Gregory Isabelli & Emmanuel Colin & BoardGameArena
+ * Nexo implementation : © Doruk Kicikoglu <doruk.kicikoglu@gmail.com>
+ *
+ * This code has been produced on the BGA studio platform for use on http://boardgamearena.com.
+ * See http://en.boardgamearena.com/#!doc/Studio for more information.
+ * -----
+ */
+
+//placeholder art: discs and spots are drawn in CSS. Every size and color is a variable below, so real art can replace them
+//(a disc sprite would go in .tower-disc's background, see "towers")
+$cell-size: min(5.6vw, 72px); //one spot of the grid on desktop; the board is (2 * GRID_SIZE - 1) spots wide and tall
+$mobile-cell-size: 76px; //BGA lays the game out at 740px or more and scales it down on a phone (gameinfos game_interface_width)
+$log-cell-size: 30px; //towers in log rows
+$mini-cell-size: 26px; //the reserve disc on player boards and the draft panel's discs
+
+//a tower's discs, as shares of --cell-size: each disc's width, its top face's height (a share of the disc's width: the
+//perspective), each disc's thickness, and the gap under the bottom disc. A 5-disc tower stays inside its own spot
+$disc-width-ratio: 0.78;
+$disc-face-ratio: 0.45;
+$disc-thickness-ratio: 0.09;
+$tower-base-ratio: 0.08;
+
+//disc colors: face (its top), face-light (the highlight on the top), side and side-dark (the edge, lit in the middle)
+$disc-colors: (
+    "red": (face: #d42a20, face-light: #ff6a5c, side: #a8150e, side-dark: #6a0905, number: #ffffff),
+    "black": (face: #2b2c31, face-light: #63656e, side: #17181b, side-dark: #050506, number: #ffffff),
+);
+
+$board-background: radial-gradient(ellipse at 50% 40%, #fbf7ee 0%, #efe6d3 70%, #e3d7bd 100%);
+$board-border-color: #cdbf9f;
+$spot-dot-color: rgba(60, 45, 20, 0.22); //an empty spot the grid can still reach
+$possible-area-border: rgba(60, 45, 20, 0.28); //the outline of every spot the grid can still reach
+$legal-spot-color: #14a39a; //an empty spot where the active player may place a new tower
+$replaceable-spot-color: #ff9100; //an enemy tower the active player may replace
+$selected-spot-color: #ffc400; //the spot waiting for its height
+$pending-tower-opacity: 0.6; //a tower of the turn being drafted
+$replaced-tower-opacity: 0.18; //an enemy tower under a drafted replacement
+$largest-group-glow: ("red": #ff8a80, "black": #ffd54f); //end of the game: each player's largest group glows, in a color that stands out from the discs
+
+:root{
+    --cell-size: #{$cell-size};
+
+    //one background per log type, translucent so the page background shows through: left to right (90deg), light to dark in
+    //its own color, stops at 0% / 45% / 100%, so the default dark log text sits on the light left part
+    --bg-log-default: linear-gradient(135deg, #f4f4f2, #e8e8e4);
+    --bg-log-towers-placed: linear-gradient(90deg, rgba(250, 246, 236, 0.94) 0%, rgba(232, 220, 192, 0.9) 45%, rgba(170, 146, 96, 0.88) 100%);
+    --bg-log-player-passed: linear-gradient(90deg, rgba(240, 240, 244, 0.94) 0%, rgba(206, 208, 218, 0.9) 45%, rgba(120, 124, 140, 0.88) 100%);
+    --bg-log-game-end: linear-gradient(90deg, rgba(255, 248, 222, 0.95) 0%, rgba(240, 214, 140, 0.9) 45%, rgba(178, 138, 40, 0.88) 100%);
+}
+
+//mobile, like Riviera: BGA lays the game out at least 740px wide and scales it down to the phone, so the board needs a large
+//logical size to stay readable once scaled
+.mobile_version{ --cell-size: #{$mobile-cell-size}; }
+
+@mixin text-shade($color, $size) { text-shadow: #{$size} 0 $color, -#{$size} 0 $color, 0 #{$size} $color, 0 -#{$size} $color, #{math.div($size, 2)} #{math.div($size, 2)} $color, -#{math.div($size, 2)} -#{math.div($size, 2)} $color, #{math.div($size, 2)} -#{math.div($size, 2)} $color, -#{math.div($size, 2)} #{math.div($size, 2)} $color; }
+@mixin non-selectable() { -webkit-touch-callout: none; -webkit-user-select: none; -khtml-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
+
+//the copy that flies between containers in Game.animateSlide: pinned to the viewport's top-left corner and moved and
+//scaled by its transform only, so it can start at the source's size and land at the destination's
+body .sliding-clone{ position: fixed; left: 0px; top: 0px; z-index: 1000; margin: 0; pointer-events: none; transform-origin: 0 0; will-change: transform; }
+
+//mobile: a line break right before the action buttons, like a <br>, so they and BGA's arrow button start a second line
+//under the status bar title (the hourglass stays inline with it). Desktop keeps them next to the title
+.mobile_version #generalactions::before{ content: ""; display: block; }
+
+//towers (BoardHandler.createTowerDiv): one .tower-disc per disc, bottom one first, each drawn as a cylinder: its top face is the
+//element's background (an ellipse in the top --disc-face-height of the box), its side a rectangle (::before) and its bottom
+//curve an ellipse (::after), both behind the face (z-index -1 inside the disc's own stacking context). Each disc sits one
+//thickness above the one under it, so only the top face and a band of every disc's edge show. The box is one spot, whatever
+//the height, so a tower always measures the same (Game.animateSlide scales by height). Never a transform on a tower: it is
+//cloned to fly (Game.createSlidingClone)
+.nexo-tower{ position: relative; flex-shrink: 0; box-sizing: border-box; width: var(--cell-size); height: var(--cell-size); pointer-events: none; @include non-selectable();
+    --disc-width: calc(var(--cell-size) * #{$disc-width-ratio});
+    --disc-face-height: calc(var(--disc-width) * #{$disc-face-ratio});
+    --disc-thickness: calc(var(--cell-size) * #{$disc-thickness-ratio});
+    --tower-base: calc(var(--cell-size) * #{$tower-base-ratio});
+
+    .tower-disc{ position: absolute; isolation: isolate; left: calc((var(--cell-size) - var(--disc-width)) / 2); bottom: calc(var(--tower-base) + var(--disc-thickness) * var(--disc-index));
+        width: var(--disc-width); height: calc(var(--disc-face-height) + var(--disc-thickness));
+        background: radial-gradient(ellipse closest-side at 50% 50%, var(--disc-face-light) 0%, var(--disc-face) 62%, var(--disc-face) 93%, var(--disc-side) 98%, transparent 100%) top center / 100% var(--disc-face-height) no-repeat;
+        &::before{ content: ""; position: absolute; z-index: -1; left: 0px; right: 0px; top: calc(var(--disc-face-height) / 2); bottom: calc(var(--disc-face-height) / 2); background: linear-gradient(90deg, var(--disc-side-dark), var(--disc-side) 35%, var(--disc-side) 65%, var(--disc-side-dark)); }
+        &::after{ content: ""; position: absolute; z-index: -1; left: 0px; right: 0px; bottom: 0px; height: var(--disc-face-height); border-radius: 50%; background: linear-gradient(90deg, var(--disc-side-dark), var(--disc-side) 35%, var(--disc-side) 65%, var(--disc-side-dark)); box-shadow: 0 1px 1px rgba(0, 0, 0, 0.45); }
+    }
+    //the height, on the top face
+    .tower-height-number{ position: absolute; left: 0px; right: 0px; bottom: calc(var(--tower-base) + var(--disc-thickness) * var(--tower-height)); height: var(--disc-face-height);
+        display: flex; align-items: center; justify-content: center; font-size: calc(var(--cell-size) * 0.27); font-weight: bold; line-height: 1; color: var(--disc-number); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+}
+@each $name, $colors in $disc-colors {
+    .nexo-tower[data-disc-color="#{$name}"]{
+        --disc-face: #{map.get($colors, face)}; --disc-face-light: #{map.get($colors, face-light)}; --disc-side: #{map.get($colors, side)}; --disc-side-dark: #{map.get($colors, side-dark)}; --disc-number: #{map.get($colors, number)};
+    }
+}
+//a single disc with no number: the reserve on player boards and the draft panel's discs
+.nexo-tower.mini-tower{ --cell-size: #{$mini-cell-size};
+    .tower-height-number{ display: none; }
+}
+//end towers
+
+//board (BoardHandler): a window of --board-window-size spots across and down. .board-layer holds the spots and towers at their
+//own board coordinates (--x, --y, spots of --cell-size) and its translate (set inline, transitioned only while recentering)
+//brings the window into view. Overflow is hidden: while the window slides, spots of the old window pass its edge
+#nexo-board-container{ display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 8px 0px 16px 0px; }
+#nexo-board{ position: relative; box-sizing: content-box; width: calc(var(--board-window-size, 9) * var(--cell-size)); height: calc(var(--board-window-size, 9) * var(--cell-size)); overflow: hidden;
+    border: 1px solid $board-border-color; border-radius: 16px; background: $board-background; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25); @include non-selectable();
+    --draft-spot-color: #{$legal-spot-color};
+}
+.board-layer{ position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
+.spots-layer, .towers-layer{ position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
+
+//one spot's box, from its board coordinates
+@mixin board-place(){ position: absolute; left: calc(var(--x) * var(--cell-size)); top: calc(var(--y) * var(--cell-size)); width: var(--cell-size); height: var(--cell-size); }
+
+//every spot the grid can still reach (BoardRules.getPossibleArea), outlined: once 5 columns or 5 rows are taken, the outline is
+//the grid itself
+.possible-area{ position: absolute; left: calc(var(--x) * var(--cell-size)); top: calc(var(--y) * var(--cell-size)); width: calc(var(--columns) * var(--cell-size)); height: calc(var(--rows) * var(--cell-size));
+    box-sizing: border-box; border: 2px dashed $possible-area-border; border-radius: 12px; pointer-events: none; }
+
+//a spot: a faint dot where empty; an ellipse ring where the bottom disc of a tower would sit when it can take one
+.board-spot{ @include board-place();
+    --spot-ring-width: calc(var(--cell-size) * #{$disc-width-ratio});
+    --spot-ring-height: calc(var(--spot-ring-width) * #{$disc-face-ratio});
+    --spot-ring-bottom: calc(var(--cell-size) * #{$tower-base-ratio});
+    &.empty-spot::after{ content: ""; position: absolute; left: 50%; bottom: calc(var(--spot-ring-bottom) + var(--spot-ring-height) / 2); width: 6px; height: 6px; margin: 0px 0px -3px -3px; border-radius: 50%; background: $spot-dot-color; }
+    &.clickable-spot{ cursor: pointer;
+        &::before{ content: ""; position: absolute; box-sizing: border-box; left: calc((var(--cell-size) - var(--spot-ring-width)) / 2); bottom: var(--spot-ring-bottom); width: var(--spot-ring-width); height: var(--spot-ring-height); border-radius: 50%; transition: background-color 0.15s ease, box-shadow 0.15s ease; }
+    }
+    &.legal-spot::before{ border: 2px dashed $legal-spot-color; background-color: rgba($legal-spot-color, 0.18); }
+    &.legal-spot:hover::before{ border-style: solid; background-color: rgba($legal-spot-color, 0.38); box-shadow: 0 0 8px rgba($legal-spot-color, 0.8); }
+    &.legal-spot::after{ display: none; }
+    //an enemy tower that can be replaced: a wider orange ring around its base, pulsing, over which the tower stands
+    &.replaceable-spot::before{ left: calc((var(--cell-size) - var(--spot-ring-width) * 1.2) / 2); bottom: calc(var(--spot-ring-bottom) - var(--spot-ring-height) * 0.1); width: calc(var(--spot-ring-width) * 1.2); height: calc(var(--spot-ring-height) * 1.2);
+        border: 3px dashed $replaceable-spot-color; background-color: rgba($replaceable-spot-color, 0.15); animation: replaceable-spot-pulse 1.6s ease-in-out infinite; }
+    &.replaceable-spot:hover::before{ border-style: solid; background-color: rgba($replaceable-spot-color, 0.35); }
+    &.selected-spot::before{ border: 3px solid $selected-spot-color !important; background-color: rgba($selected-spot-color, 0.35) !important; box-shadow: 0 0 10px $selected-spot-color; animation: none; }
+}
+@keyframes replaceable-spot-pulse{ 0%, 100%{ box-shadow: 0 0 0px rgba($replaceable-spot-color, 0); } 50%{ box-shadow: 0 0 10px rgba($replaceable-spot-color, 0.9); } }
+@media (prefers-reduced-motion: reduce){
+    .board-spot.replaceable-spot::before{ animation: none; }
+}
+
+//towers on the board: later rows over earlier ones (a tall tower never leaves its spot, but its glow can). Clicks go to the spot
+//underneath, except on a drafted tower, which a click takes back
+.towers-layer .board-tower{ @include board-place(); z-index: calc(var(--y) + 1000); }
+.towers-layer .pending-tower{ opacity: $pending-tower-opacity; pointer-events: auto; cursor: pointer; transition: opacity 0.15s ease;
+    &::after{ content: "×"; position: absolute; top: 2px; right: 4px; width: 18px; height: 18px; border-radius: 50%; background: #ffffff; color: #333333; font-size: 15px; line-height: 17px; text-align: center; font-weight: bold; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); opacity: 0; transition: opacity 0.15s ease; }
+    &:hover{ opacity: 0.85; }
+    &:hover::after{ opacity: 1; }
+}
+.towers-layer .board-tower.being-replaced{ opacity: $replaced-tower-opacity; }
+
+//end of the game (BoardHandler.highlightLargestGroups): each player's largest group glows under its base, every other tower dims
+#nexo-board.showing-largest-groups .board-tower:not(.largest-group-tower){ opacity: 0.4; }
+@each $name, $glow in $largest-group-glow {
+    .board-tower.largest-group-tower[data-disc-color="#{$name}"]{ --group-glow: #{$glow}; }
+}
+.board-tower.largest-group-tower::before{ content: ""; position: absolute; left: calc((var(--cell-size) - var(--disc-width) * 1.15) / 2); bottom: calc(var(--tower-base) - var(--disc-face-height) * 0.1); width: calc(var(--disc-width) * 1.15); height: calc(var(--disc-face-height) * 1.2);
+    border-radius: 50%; background: var(--group-glow); box-shadow: 0 0 10px 3px var(--group-glow); opacity: 0.9; }
+//end board
+
+//draft panel (PlaceTowers.renderDraftPanel), above the board, for the active player only. Hidden with visibility, never display,
+//so the board never moves when a turn starts or ends
+#draft-panel{ display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 22px; min-height: 34px; padding: 4px 14px; box-sizing: border-box; max-width: 100%;
+    border-radius: 10px; background: rgba(255, 255, 255, 0.85); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2); color: #27271c; visibility: hidden;
+    &.drafting{ visibility: visible; }
+    .draft-discs, .draft-reserve{ display: flex; align-items: center; gap: 6px; }
+    .draft-label{ font-size: 14px; }
+    .draft-count{ font-size: 17px; }
+    .draft-pips{ display: flex; align-items: center; }
+    .draft-pip{ margin: -4px -2px; transition: opacity 0.2s ease; }
+    .draft-pip.used-pip{ opacity: 0.25; }
+    .draft-pip.unavailable-pip{ opacity: 0.08; }
+    .draft-hint{ font-size: 13px; font-style: italic; opacity: 0.8;
+        &:empty{ display: none; }
+    }
+}
+
+//height menu (HeightMenu): the popup next to the selected spot, one button per legal height, each a tower of that height in the
+//player's color with its number on top. It is fixed in <body>, outside BGA's mobile scaling, so these are real screen px: the
+//buttons stay a comfortable tap target at any zoom. HeightMenu reads the anchor gap and the edge margin from the custom
+//properties below, so every size lives here. z-index 948 and later in <body>: over BGA's status bar, under its popins (949)
+$height-menu-option-size: 48px; //each height button, square (a phone tap target is about 40px or more)
+$mobile-height-menu-option-size: 52px;
+$height-menu-tower-size: 44px; //the tower inside a button (its --cell-size: a 5-disc tower fits)
+$height-menu-replaced-tower-size: 30px; //the enemy tower in a replacement's caption
+$height-menu-gap: 6px; //between two buttons
+$height-menu-padding: 8px;
+$height-menu-radius: 12px;
+$height-menu-option-radius: 10px;
+$height-menu-anchor-gap: 12px; //from the spot to the menu, room for the arrow
+$height-menu-edge-margin: 8px; //the menu never comes closer than this to the viewport's edges
+$height-menu-arrow-size: 12px; //the arrow pointing at the spot: a square turned 45 degrees, half of it out of the menu
+$height-menu-caption-font-size: 13px;
+$height-menu-background: #fffdf7;
+$height-menu-border-color: #cdbf9f;
+$height-menu-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+$height-menu-caption-color: #27271c;
+$height-menu-option-background: #f3ecdc;
+$height-menu-option-border-color: #d9cba8;
+$height-menu-option-hover-background: #ffe7a0;
+$height-menu-option-hover-border-color: $selected-spot-color;
+$height-menu-z-index: 948;
+
+.height-menu{ position: fixed; left: 0px; top: 0px; z-index: $height-menu-z-index; box-sizing: border-box; max-width: calc(100vw - #{2 * $height-menu-edge-margin}); padding: $height-menu-padding;
+    border: 1px solid $height-menu-border-color; border-radius: $height-menu-radius; background: $height-menu-background; box-shadow: $height-menu-shadow; color: $height-menu-caption-color;
+    --height-menu-anchor-gap: #{$height-menu-anchor-gap}; --height-menu-edge-margin: #{$height-menu-edge-margin}; --height-menu-option-size: #{$height-menu-option-size};
+    animation: height-menu-in 0.12s ease-out; @include non-selectable();
+
+    .height-menu-caption{ display: flex; align-items: center; justify-content: center; gap: 4px; margin-bottom: 6px; font-size: $height-menu-caption-font-size; line-height: 1.2; text-align: center; }
+    .height-menu-replaced-tower{ --cell-size: #{$height-menu-replaced-tower-size}; margin: -4px 0px; }
+    .height-menu-options{ display: flex; flex-wrap: wrap; justify-content: center; gap: $height-menu-gap; }
+    .height-menu-option{ display: flex; align-items: center; justify-content: center; box-sizing: border-box; width: var(--height-menu-option-size); height: var(--height-menu-option-size); padding: 0px; margin: 0px;
+        border: 2px solid $height-menu-option-border-color; border-radius: $height-menu-option-radius; background: $height-menu-option-background; cursor: pointer; -webkit-tap-highlight-color: transparent;
+        transition: background-color 0.12s ease, border-color 0.12s ease;
+        &:hover, &:focus-visible{ background: $height-menu-option-hover-background; border-color: $height-menu-option-hover-border-color; outline: none; }
+    }
+    .height-menu-tower{ --cell-size: #{$height-menu-tower-size}; }
+
+    //the arrow on the side facing the spot, at --height-menu-arrow-offset along it (HeightMenu.reposition)
+    .height-menu-arrow{ position: absolute; width: $height-menu-arrow-size; height: $height-menu-arrow-size; box-sizing: border-box; background: $height-menu-background; rotate: 45deg; translate: -50% -50%; pointer-events: none; }
+    &[data-placement="above"] .height-menu-arrow{ left: var(--height-menu-arrow-offset, 50%); top: 100%; border-right: 1px solid $height-menu-border-color; border-bottom: 1px solid $height-menu-border-color; }
+    &[data-placement="below"] .height-menu-arrow{ left: var(--height-menu-arrow-offset, 50%); top: 0%; border-left: 1px solid $height-menu-border-color; border-top: 1px solid $height-menu-border-color; }
+    &[data-placement="right"] .height-menu-arrow{ left: 0%; top: var(--height-menu-arrow-offset, 50%); border-left: 1px solid $height-menu-border-color; border-bottom: 1px solid $height-menu-border-color; }
+    &[data-placement="left"] .height-menu-arrow{ left: 100%; top: var(--height-menu-arrow-offset, 50%); border-right: 1px solid $height-menu-border-color; border-top: 1px solid $height-menu-border-color; }
+}
+.mobile_version .height-menu{ --height-menu-option-size: #{$mobile-height-menu-option-size}; }
+@keyframes height-menu-in{ from{ opacity: 0; scale: 0.92; } }
+@media (prefers-reduced-motion: reduce){
+    .height-menu{ animation: none; }
+}
+
+//player board
+.nexo-player-board{ margin-top: 6px;
+    .player-board-reserve-row{ position: relative; display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 30px; }
+    .reserve-indicator{ display: flex; align-items: center; gap: 3px; font-size: 16px; font-weight: bold; color: #27271c;
+        .reserve-icon-slot{ display: flex; align-items: center; margin: -4px 0px; }
+        .reserve-times{ font-weight: normal; opacity: 0.7; }
+    }
+    &[data-empty-reserve="true"] .reserve-indicator{ opacity: 0.45; }
+    //PASSED, like Riviera's round status stamp: only while data-passed is true
+    .passed-stamp{ display: flex; align-items: center; gap: 5px; padding: 1px 7px; border: 2px solid var(--stamp-color); border-radius: 4px; background-color: rgba(255, 255, 255, 0.7); color: var(--stamp-color);
+        --stamp-color: #5a5f6e; rotate: -6deg; font-size: 13px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; white-space: nowrap;
+        opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s; }
+    &[data-passed="true"] .passed-stamp{ opacity: 1; visibility: visible; }
+}
+
+//PlayerHandler's boardElement, BGA's whole .player-board: positioned for the bounce (which animates top)
+.positioned-player-board{ position: relative; }
+//the one shared player board bounce (discs given back by a replacement, PlayerHandler.bounceBoard, which removes the class on
+//animationend). Every bounce uses this class and this exact timing. position: relative comes from .positioned-player-board
+.bouncing-player-board{ animation: bouncing-player-board 0.175s ease-in-out 2; }
+@keyframes bouncing-player-board {
+  0% { top: 0px; }
+  50% { top: -5px; }
+  100% { top: 0px; }
+}
+//end player board
+
+//logs
+//plain logs keep a neutral background; each log type (LogMutationObserver.createLog*) overrides it with its own.
+//The text color is set too: every background is pale, so BGA's dark mode must not lighten the text.
+//In the mobile table log the row itself is the .roundedbox (no inner one), hence the compound .log.a-game-log.roundedbox:
+//(0,3,0) beats BGA's .chatwindowlogs_zone .roundedbox, and the shorthand replaces its rounded_b.png image
+.log .roundedbox, .log.a-game-log.roundedbox, .gamelogreview{ background: var(--bg-log-default); color: #27271c; }
+
+//only our own rows (every one gets .a-game-log from LogMutationObserver) show in the game log: BGA's other rows are hidden in
+//the desktop log (#logs), the mobile table log and the replay log. The chat zones are never touched. BGA sets an inline
+//display: block on each row, hence !important
+#logs .log:not(.a-game-log), [id^="chatwindowlogs_zone_tablelog_"] .log:not(.a-game-log), [id^="replaylogs"] .gamelogreview:not(.a-game-log){ display: none !important; }
+
+$log-name-max-width: 110px; //longer names are cut with an ellipsis (full name on hover)
+$log-types: "towers-placed", "player-passed", "game-end";
+.log, .gamelogreview{
+    //the &.…roundedbox selectors: the mobile table log's row is itself the .roundedbox (see the default background above)
+    &.a-game-log{ position: relative;
+        .roundedbox, &.roundedbox{ padding-bottom: 5px; }
+    }
+    @each $log-type in $log-types {
+        &.#{$log-type}-log .roundedbox, &.#{$log-type}-log.roundedbox, &.gamelogreview.#{$log-type}-log{ background: var(--bg-log-#{$log-type}); }
+    }
+
+    //"name [tower] [tower] [enemy tower → tower]"
+    .towers-placed-row{ display: flex; align-items: center; flex-wrap: wrap; gap: 2px 6px; color: #27271c;
+        .playername{ display: block; min-width: 0; max-width: $log-name-max-width; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .log-towers{ display: flex; align-items: center; flex-wrap: wrap; gap: 0px 2px; }
+        .log-replacement{ display: inline-flex; align-items: center; gap: 1px; padding: 0px 3px; border-radius: 8px; background: rgba(255, 145, 0, 0.18); }
+        .log-replacement-arrow{ font-size: 12px; color: #6a4a10; }
+    }
+    .log-tower{ --cell-size: #{$log-cell-size}; }
+    .log-tower.replaced-log-tower{ opacity: 0.55;
+        &::after{ content: ""; position: absolute; left: 10%; right: 10%; top: 50%; height: 2px; background: #c62828; rotate: -30deg; }
+    }
+    .player-passed-row{ display: flex; align-items: center; gap: 6px; color: #27271c;
+        .player-passed-icon{ color: #5a5f6e; }
+    }
+    .game-end-row{ color: #27271c; }
+}
+//the log backgrounds are pale, so light player colors get a dark outline to stay readable (none in Nexo's two colors for now)
+//end logs
+
+//tooltips: no tooltip, BGA's plain ones included, is ever wider than the screen
+.dijitTooltip{ max-width: calc(100vw - 16px); overflow-wrap: break-word; }
+.dijitTooltipLeft, .dijitTooltipRight{ max-width: calc(100vw - 30px); }

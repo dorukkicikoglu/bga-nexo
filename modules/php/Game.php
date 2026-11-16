@@ -2,7 +2,7 @@
 /**
  *------
  * BGA framework: Gregory Isabelli & Emmanuel Colin & BoardGameArena
- * Nexo implementation : © <Your name here> <Your email address here>
+ * Nexo implementation : © Doruk Kicikoglu <doruk.kicikoglu@gmail.com>
  *
  * This code has been produced on the BGA studio platform for use on http://boardgamearena.com.
  * See http://en.boardgamearena.com/#!doc/Studio for more information.
@@ -18,70 +18,50 @@ declare(strict_types=1);
 
 namespace Bga\Games\Nexo;
 
-use Bga\Games\Nexo\States\PlayerTurn;
-use Bga\GameFramework\Components\Counters\PlayerCounter;
+use Bga\Games\Nexo\States\PlaceTowers;
+use Bga\Games\Nexo\NEXOTableManager;
+use Bga\GameFramework\Actions\Debug;
 
 class Game extends \Bga\GameFramework\Table
 {
-    public static array $CARD_TYPES;
-
-    public PlayerCounter $playerEnergy;
+    public NEXOTableManager $tableManager;
 
     /**
      * Your global variables labels:
      *
-     * Here, you can assign labels to global variables you are using for this game. You can use any number of global
-     * variables with IDs between 10 and 99. If you want to store any type instead of int, use $this->globals instead.
-     *
-     * NOTE: afterward, you can get/set the global variables with `getGameStateValue`, `setGameStateInitialValue` or
-     * `setGameStateValue` functions.
+     * Nexo stores its globals with $this->bga->globals:
+     * - consecutivePasses: automatic passes in a row since the last turn with a placement; PASSES_TO_END_GAME ends the game
      */
     public function __construct()
     {
         parent::__construct();
 
-        $this->playerEnergy = $this->bga->counterFactory->createPlayerCounter('energy');
+        require_once 'material.inc.php';
 
-        self::$CARD_TYPES = [
-            1 => [
-                "card_name" => clienttranslate('Troll'), // ...
-            ],
-            2 => [
-                "card_name" => clienttranslate('Goblin'), // ...
-            ],
-            // ...
-        ];
-
-        /* example of notification decorator.
         // automatically complete notification args when needed
         $this->bga->notify->addDecorator(function(string $message, array $args) {
             if (isset($args['player_id']) && !isset($args['player_name']) && str_contains($message, '${player_name}')) {
                 $args['player_name'] = $this->getPlayerNameById($args['player_id']);
             }
-        
-            if (isset($args['card_id']) && !isset($args['card_name']) && str_contains($message, '${card_name}')) {
-                $args['card_name'] = self::$CARD_TYPES[$args['card_id']]['card_name'];
-                $args['i18n'][] = ['card_name'];
-            }
-            
+
             return $args;
-        });*/
+        });
+
+        $this->tableManager = new NEXOTableManager($this);
     }
 
     /**
-     * Compute and return the current game progression.
-     *
-     * The number returned must be an integer between 0 and 100.
-     *
-     * This method is called each time we are in a game state with the "updateGameProgression" property set to true.
-     *
-     * @return int
+     * How full the board is: half the share of the GRID_SIZE x GRID_SIZE spots taken, half the share of all discs on the
+     * board. Discs on the board only ever go up (a replacement always puts more discs than it gives back), so it never goes
+     * back. Capped at 99: the game only reaches 100 when it really ends. Recomputed in NextPlayer.
      */
     public function getGameProgression()
     {
-        // TODO: compute and return the game progression
+        $spotShare = $this->tableManager->getTowerCount() / (GRID_SIZE * GRID_SIZE);
+        $discShare = $this->tableManager->getDiscsOnBoard() / (DISCS_PER_PLAYER * 2);
+        $progress = (int) floor(100 * ($spotShare + $discShare) / 2);
 
-        return 0;
+        return min(99, max(0, $progress));
     }
 
     /**
@@ -126,15 +106,31 @@ class Game extends \Bga\GameFramework\Table
     {
         $result = [];
         // WARNING: We must only return information visible by the current player (using $currentPlayerId).
+        // Nexo has no hidden information: everyone, spectators included, gets the same data.
 
         // Get information about players.
         // NOTE: you can retrieve some extra field you added for "player" table in `dbmodel.sql` if you need it.
-        $result["players"] = $this->getCollectionFromDb(
-            "SELECT `player_id` AS `id`, `player_score` AS `score` FROM `player`"
-        );
-        $this->playerEnergy->fillResult($result);
+        $result["players"] = $this->getCollectionFromDb("SELECT `player_id`, `player_no`, `reserve`, `passed` FROM `player`");
+        $scores = $this->bga->playerScore->getAll();
+        foreach($result["players"] as $player_id => $row){
+            $result["players"][$player_id]['score'] = $scores[(int) $player_id] ?? 0;
+            $result["players"][$player_id]['reserve'] = (int) $row['reserve'];
+            $result["players"][$player_id]['passed'] = ($row['passed'] == 'yes') ? true : false;
+        }
 
-        // TODO: Gather all information about current game situation (visible by player $currentPlayerId).
+        $result['towers'] = $this->tableManager->getTowers();
+        $result['rules'] = [
+            'gridSize' => GRID_SIZE,
+            'minTowerHeight' => MIN_TOWER_HEIGHT,
+            'maxTowerHeight' => MAX_TOWER_HEIGHT,
+            'maxDiscsPerTurn' => MAX_DISCS_PER_TURN,
+            'discsPerPlayer' => DISCS_PER_PLAYER,
+        ];
+        $result['discColorByPlayerColor'] = DISC_COLOR_BY_PLAYER_COLOR;
+
+        $state = $this->gamestate->getCurrentMainState();
+        if($state->name == 'gameEnd')
+            $result['endGameScoring'] = $this->getEndGameScoring();
 
         return $result;
     }
@@ -145,8 +141,6 @@ class Game extends \Bga\GameFramework\Table
      */
     protected function setupNewGame($players, $options = [])
     {
-        $this->playerEnergy->initDb(array_keys($players), initialValue: 2);
-
         // Set the colors of the players with HTML color code. The default below is red/green/blue/orange/brown. The
         // number of colors defined here must correspond to the maximum number of players allowed for the gams.
         $gameinfos = $this->getGameinfos();
@@ -175,40 +169,121 @@ class Game extends \Bga\GameFramework\Table
         $this->reattributeColorsBasedOnPreferences($players, $gameinfos["player_colors"]);
         $this->reloadPlayersBasicInfos();
 
+        //Setup the initial game situation: an empty board, DISCS_PER_PLAYER discs in each reserve (dbmodel.sql default)
+        self::DbQuery("UPDATE `player` SET `reserve` = ".DISCS_PER_PLAYER.", `passed` = 'no'");
+
+        // Init game statistics. largestGroup and towersAtEnd are set by EndScore
+        $this->bga->tableStats->init(['turns', 'passes'], 0);
+        $this->bga->playerStats->init(['turnsPlayed', 'passes', 'discsPlaced', 'towersPlaced', 'towersReplaced', 'discsReturned', 'largestGroup', 'towersAtEnd'], 0);
+
         // Init global values with their initial values.
+        $this->bga->globals->set('consecutivePasses', 0);
 
-        // Init game statistics.
-        //
-        // NOTE: statistics used in this file must be defined in your `stats.inc.php` file.
+        //the player with the red discs begins (reattributeColorsBasedOnPreferences may have given red to either player)
+        $this->gamestate->changeActivePlayer($this->getFirstPlayerID());
 
-        // Dummy content.
-        // $this->tableStats->init('table_teststat1', 0);
-        // $this->playerStats->init('player_teststat1', 0);
-
-        // TODO: Setup the initial game situation here.
-
-        // Activate first player once everything has been initialized and ready.
-        $this->activeNextPlayer();
-
-        return PlayerTurn::class;
+        return PlaceTowers::class;
     }
+
+    //utility functions
+
+    //the player with FIRST_DISC_COLOR (red)
+    public function getFirstPlayerID(): int{
+        $firstPlayerColor = array_search(FIRST_DISC_COLOR, DISC_COLOR_BY_PLAYER_COLOR, true);
+        $playerID = $this->getUniqueValueFromDB("SELECT `player_id` FROM `player` WHERE `player_color` = '$firstPlayerColor'");
+        if($playerID === null) //never expected: player_colors only holds red and black
+            $playerID = $this->getUniqueValueFromDB("SELECT `player_id` FROM `player` ORDER BY `player_no` LIMIT 1");
+        return (int) $playerID;
+    }
+
+    /**
+     * Everything the end of the game shows: each player's score (largest group) and every largest group of theirs, to
+     * highlight on the board. Everyone at the top score wins (ties share the victory, no tiebreaker).
+     */
+    public function getEndGameScoring(): array {
+        $board = $this->tableManager->getBoard();
+
+        $scores = [];
+        $groups = [];
+        foreach($this->tableManager->getPlayerIDs() as $playerID){
+            $scores[$playerID] = NEXOTableManager::getLargestGroupSize($board, $playerID);
+            $groups[$playerID] = NEXOTableManager::getLargestGroups($board, $playerID);
+        }
+
+        $winningScore = max($scores);
+        $winnerIDs = array_keys(array_filter($scores, fn(int $score) => $score === $winningScore));
+
+        return [
+            'winner_ids' => $winnerIDs,
+            'winning_score' => $winningScore,
+            'scores' => $scores,
+            'groups' => $groups,
+        ];
+    }
+
+    //end utility functions
 
     /**
      * Example of debug function.
      * Here, jump to a state you want to test (by default, jump to next player state)
      * You can trigger it on Studio using the Debug button on the right of the top bar.
      */
-    public function debug_goToState(int $state = 3) {
+    #[Debug(reload: true)]
+    public function debug_goToState(int $state = 10) {
         $this->gamestate->jumpToState($state);
     }
 
-    /*
-    Another example of debug function, to easily create situations you want to test.
-    Here, put a card you want to test in your hand (assuming you use the Deck component).
-
-    public function debug_setCardInHand(int $cardType, int $playerId) {
-        $card = array_values($this->cards->getCardsOfType($cardType))[0];
-        $this->cards->moveCard($card['id'], 'hand', $playerId);
+    // sets both reserves (the current player's, then the opponent's), then re-enters PlaceTowers. A reserve of 0 makes that player pass on their next turn
+    #[Debug(reload: true)]
+    public function debug_setReserves(int $myReserve = 1, int $opponentReserve = 1) {
+        $currentPlayerID = (int) $this->getCurrentPlayerId();
+        $opponentID = $this->tableManager->getOpponentID($currentPlayerID);
+        self::DbQuery("UPDATE `player` SET `reserve` = ".max(0, min(DISCS_PER_PLAYER, $myReserve))." WHERE `player_id` = $currentPlayerID");
+        self::DbQuery("UPDATE `player` SET `reserve` = ".max(0, min(DISCS_PER_PLAYER, $opponentReserve))." WHERE `player_id` = $opponentID");
+        $this->gamestate->jumpToState(10); //PlaceTowers
     }
-    */
+
+    // fills a GRID_SIZE x GRID_SIZE board from 0 0 with towers of random owners and heights 1 to $maxHeight, leaving $emptySpots
+    // random spots empty. Reserves become DISCS_PER_PLAYER minus each player's discs on the board. Then re-enters PlaceTowers
+    // for the active player (pass and game end tests)
+    #[Debug(reload: true)]
+    public function debug_fillBoard(int $emptySpots = 2, int $maxHeight = 2) {
+        $playerIDs = $this->tableManager->getPlayerIDs();
+        $spots = [];
+        for($y = 0; $y < GRID_SIZE; $y++){
+            for($x = 0; $x < GRID_SIZE; $x++)
+                $spots[] = [$x, $y];
+        }
+        shuffle($spots);
+        $emptyKeys = [];
+        foreach(array_slice($spots, 0, max(0, $emptySpots)) as [$x, $y])
+            $emptyKeys[NEXOTableManager::cellKey($x, $y)] = true;
+
+        self::DbQuery("DELETE FROM `towers`");
+        $discsByPlayer = array_fill_keys($playerIDs, 0);
+        foreach($spots as [$x, $y]){
+            if(isset($emptyKeys[NEXOTableManager::cellKey($x, $y)]))
+                continue;
+
+            $playerID = $playerIDs[bga_rand(0, count($playerIDs) - 1)];
+            $height = bga_rand(MIN_TOWER_HEIGHT, max(MIN_TOWER_HEIGHT, min(MAX_TOWER_HEIGHT, $maxHeight)));
+            if($discsByPlayer[$playerID] + $height > DISCS_PER_PLAYER)
+                $height = MIN_TOWER_HEIGHT;
+            $discsByPlayer[$playerID] += $height;
+            self::DbQuery("INSERT INTO `towers` (`tower_x`, `tower_y`, `player_id`, `height`) VALUES ($x, $y, $playerID, $height)");
+        }
+
+        foreach($discsByPlayer as $playerID => $discs)
+            self::DbQuery("UPDATE `player` SET `reserve` = ".max(0, DISCS_PER_PLAYER - $discs).", `passed` = 'no' WHERE `player_id` = $playerID");
+
+        $this->bga->globals->set('consecutivePasses', 0);
+        $this->tableManager->updateScores();
+        $this->gamestate->jumpToState(10); //PlaceTowers
+    }
+
+    // ends the game now, with the end-of-game scoring and highlight
+    #[Debug(reload: true)]
+    public function debug_endGame() {
+        $this->gamestate->jumpToState(98); //EndScore
+    }
 }

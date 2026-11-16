@@ -1,65 +1,670 @@
+@charset "UTF-8";
 /**
  *------
  * BGA framework: Gregory Isabelli & Emmanuel Colin & BoardGameArena
- * Nexo implementation : © <Your name here> <Your email address here>
+ * Nexo implementation : © Doruk Kicikoglu <doruk.kicikoglu@gmail.com>
  *
  * This code has been produced on the BGA studio platform for use on http://boardgamearena.com.
  * See http://en.boardgamearena.com/#!doc/Studio for more information.
  * -----
  */
+:root {
+  --cell-size: min(5.6vw, 72px);
+  --bg-log-default: linear-gradient(135deg, #f4f4f2, #e8e8e4);
+  --bg-log-towers-placed: linear-gradient(90deg, rgba(250, 246, 236, 0.94) 0%, rgba(232, 220, 192, 0.9) 45%, rgba(170, 146, 96, 0.88) 100%);
+  --bg-log-player-passed: linear-gradient(90deg, rgba(240, 240, 244, 0.94) 0%, rgba(206, 208, 218, 0.9) 45%, rgba(120, 124, 140, 0.88) 100%);
+  --bg-log-game-end: linear-gradient(90deg, rgba(255, 248, 222, 0.95) 0%, rgba(240, 214, 140, 0.9) 45%, rgba(178, 138, 40, 0.88) 100%);
+}
 
-/*
-    This is the CSS stylesheet of your game User Interface.
-    
-    Styles defined on this file will be applied to HTML elements you create (in Game.js).
-    
-    Usually, you are using CSS to:
-    
-    1°) define the overall layout of your game
-        (ex: place the board on the top left, place player's hand beside, place the deck on the right, ...).
+.mobile_version {
+  --cell-size: 76px;
+}
 
-    2°) create your CSS-sprites:
-        All images of your games should be gathered into a small number of image files. Then, using
-        background-image and background-position CSS properties, you create HTML blocks that can 
-        display these images correctly (see example below).
-    
-    3°) ... anything else:
-        It is really easy to add and remove CSS classes dynamically from your Javascript with
-        dojo.addClass and dojo.removeClass. It is also easy to check if an element has a class
-        (dojo.hasClass) or to get all elements with a specific class (dojo.query). This is why,
-        very often, using CSS classes for the logic of your user interface allow you to do complex
-        thing easily.
-        
-        
-     Note: on the production platform, this file will be compressed and comments will be removed.
-           Consequently, don't hesitate to put as many comments as necessary.
-*/
+body .sliding-clone {
+  position: fixed;
+  left: 0px;
+  top: 0px;
+  z-index: 1000;
+  margin: 0;
+  pointer-events: none;
+  transform-origin: 0 0;
+  will-change: transform;
+}
 
+.mobile_version #generalactions::before {
+  content: "";
+  display: block;
+}
 
-/* Note: you must not use any @import directive */
+.nexo-tower {
+  position: relative;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: var(--cell-size);
+  height: var(--cell-size);
+  pointer-events: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  --disc-width: calc(var(--cell-size) * 0.78);
+  --disc-face-height: calc(var(--disc-width) * 0.45);
+  --disc-thickness: calc(var(--cell-size) * 0.09);
+  --tower-base: calc(var(--cell-size) * 0.08);
+}
+.nexo-tower .tower-disc {
+  position: absolute;
+  isolation: isolate;
+  left: calc((var(--cell-size) - var(--disc-width)) / 2);
+  bottom: calc(var(--tower-base) + var(--disc-thickness) * var(--disc-index));
+  width: var(--disc-width);
+  height: calc(var(--disc-face-height) + var(--disc-thickness));
+  background: radial-gradient(ellipse closest-side at 50% 50%, var(--disc-face-light) 0%, var(--disc-face) 62%, var(--disc-face) 93%, var(--disc-side) 98%, transparent 100%) top center/100% var(--disc-face-height) no-repeat;
+}
+.nexo-tower .tower-disc::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: 0px;
+  right: 0px;
+  top: calc(var(--disc-face-height) / 2);
+  bottom: calc(var(--disc-face-height) / 2);
+  background: linear-gradient(90deg, var(--disc-side-dark), var(--disc-side) 35%, var(--disc-side) 65%, var(--disc-side-dark));
+}
+.nexo-tower .tower-disc::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: 0px;
+  right: 0px;
+  bottom: 0px;
+  height: var(--disc-face-height);
+  border-radius: 50%;
+  background: linear-gradient(90deg, var(--disc-side-dark), var(--disc-side) 35%, var(--disc-side) 65%, var(--disc-side-dark));
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
+}
+.nexo-tower .tower-height-number {
+  position: absolute;
+  left: 0px;
+  right: 0px;
+  bottom: calc(var(--tower-base) + var(--disc-thickness) * var(--tower-height));
+  height: var(--disc-face-height);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(var(--cell-size) * 0.27);
+  font-weight: bold;
+  line-height: 1;
+  color: var(--disc-number);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
 
+.nexo-tower[data-disc-color=red] {
+  --disc-face: #d42a20;
+  --disc-face-light: #ff6a5c;
+  --disc-side: #a8150e;
+  --disc-side-dark: #6a0905;
+  --disc-number: #ffffff;
+}
 
-/********* You can start writing your CSS below this line: **********/
+.nexo-tower[data-disc-color=black] {
+  --disc-face: #2b2c31;
+  --disc-face-light: #63656e;
+  --disc-side: #17181b;
+  --disc-side-dark: #050506;
+  --disc-number: #ffffff;
+}
 
+.nexo-tower.mini-tower {
+  --cell-size: 26px;
+}
+.nexo-tower.mini-tower .tower-height-number {
+  display: none;
+}
 
-/*
-    Example of CSS sprites (a black token and a white token, 20x20px each, embedded in the same "tokens.png" 40x20px image):
+#nexo-board-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0px 16px 0px;
+}
 
-    .white_token {
-        background-image: url('img/tokens.png');
-        background-position: 0px 0px;
-    }
-    .black_token {
-        background-image: url('img/tokens.png');
-        background-position: -20px 0px;
-    }
-    .token {
-        width: 20px;
-        height: 20px;
-        background-repeat: none;
-    }
-*/
+#nexo-board {
+  position: relative;
+  box-sizing: content-box;
+  width: calc(var(--board-window-size, 9) * var(--cell-size));
+  height: calc(var(--board-window-size, 9) * var(--cell-size));
+  overflow: hidden;
+  border: 1px solid #cdbf9f;
+  border-radius: 16px;
+  background: radial-gradient(ellipse at 50% 40%, #fbf7ee 0%, #efe6d3 70%, #e3d7bd 100%);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  --draft-spot-color: #14a39a;
+}
 
+.board-layer {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 0px;
+  height: 0px;
+}
 
+.spots-layer, .towers-layer {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 0px;
+  height: 0px;
+}
 
+.possible-area {
+  position: absolute;
+  left: calc(var(--x) * var(--cell-size));
+  top: calc(var(--y) * var(--cell-size));
+  width: calc(var(--columns) * var(--cell-size));
+  height: calc(var(--rows) * var(--cell-size));
+  box-sizing: border-box;
+  border: 2px dashed rgba(60, 45, 20, 0.28);
+  border-radius: 12px;
+  pointer-events: none;
+}
 
+.board-spot {
+  position: absolute;
+  left: calc(var(--x) * var(--cell-size));
+  top: calc(var(--y) * var(--cell-size));
+  width: var(--cell-size);
+  height: var(--cell-size);
+  --spot-ring-width: calc(var(--cell-size) * 0.78);
+  --spot-ring-height: calc(var(--spot-ring-width) * 0.45);
+  --spot-ring-bottom: calc(var(--cell-size) * 0.08);
+}
+.board-spot.empty-spot::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--spot-ring-bottom) + var(--spot-ring-height) / 2);
+  width: 6px;
+  height: 6px;
+  margin: 0px 0px -3px -3px;
+  border-radius: 50%;
+  background: rgba(60, 45, 20, 0.22);
+}
+.board-spot.clickable-spot {
+  cursor: pointer;
+}
+.board-spot.clickable-spot::before {
+  content: "";
+  position: absolute;
+  box-sizing: border-box;
+  left: calc((var(--cell-size) - var(--spot-ring-width)) / 2);
+  bottom: var(--spot-ring-bottom);
+  width: var(--spot-ring-width);
+  height: var(--spot-ring-height);
+  border-radius: 50%;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+.board-spot.legal-spot::before {
+  border: 2px dashed #14a39a;
+  background-color: rgba(20, 163, 154, 0.18);
+}
+.board-spot.legal-spot:hover::before {
+  border-style: solid;
+  background-color: rgba(20, 163, 154, 0.38);
+  box-shadow: 0 0 8px rgba(20, 163, 154, 0.8);
+}
+.board-spot.legal-spot::after {
+  display: none;
+}
+.board-spot.replaceable-spot::before {
+  left: calc((var(--cell-size) - var(--spot-ring-width) * 1.2) / 2);
+  bottom: calc(var(--spot-ring-bottom) - var(--spot-ring-height) * 0.1);
+  width: calc(var(--spot-ring-width) * 1.2);
+  height: calc(var(--spot-ring-height) * 1.2);
+  border: 3px dashed #ff9100;
+  background-color: rgba(255, 145, 0, 0.15);
+  animation: replaceable-spot-pulse 1.6s ease-in-out infinite;
+}
+.board-spot.replaceable-spot:hover::before {
+  border-style: solid;
+  background-color: rgba(255, 145, 0, 0.35);
+}
+.board-spot.selected-spot::before {
+  border: 3px solid #ffc400 !important;
+  background-color: rgba(255, 196, 0, 0.35) !important;
+  box-shadow: 0 0 10px #ffc400;
+  animation: none;
+}
+
+@keyframes replaceable-spot-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0px rgba(255, 145, 0, 0);
+  }
+  50% {
+    box-shadow: 0 0 10px rgba(255, 145, 0, 0.9);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .board-spot.replaceable-spot::before {
+    animation: none;
+  }
+}
+.towers-layer .board-tower {
+  position: absolute;
+  left: calc(var(--x) * var(--cell-size));
+  top: calc(var(--y) * var(--cell-size));
+  width: var(--cell-size);
+  height: var(--cell-size);
+  z-index: calc(var(--y) + 1000);
+}
+
+.towers-layer .pending-tower {
+  opacity: 0.6;
+  pointer-events: auto;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+.towers-layer .pending-tower::after {
+  content: "×";
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #333333;
+  font-size: 15px;
+  line-height: 17px;
+  text-align: center;
+  font-weight: bold;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.towers-layer .pending-tower:hover {
+  opacity: 0.85;
+}
+.towers-layer .pending-tower:hover::after {
+  opacity: 1;
+}
+
+.towers-layer .board-tower.being-replaced {
+  opacity: 0.18;
+}
+
+#nexo-board.showing-largest-groups .board-tower:not(.largest-group-tower) {
+  opacity: 0.4;
+}
+
+.board-tower.largest-group-tower[data-disc-color=red] {
+  --group-glow: #ff8a80;
+}
+
+.board-tower.largest-group-tower[data-disc-color=black] {
+  --group-glow: #ffd54f;
+}
+
+.board-tower.largest-group-tower::before {
+  content: "";
+  position: absolute;
+  left: calc((var(--cell-size) - var(--disc-width) * 1.15) / 2);
+  bottom: calc(var(--tower-base) - var(--disc-face-height) * 0.1);
+  width: calc(var(--disc-width) * 1.15);
+  height: calc(var(--disc-face-height) * 1.2);
+  border-radius: 50%;
+  background: var(--group-glow);
+  box-shadow: 0 0 10px 3px var(--group-glow);
+  opacity: 0.9;
+}
+
+#draft-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 22px;
+  min-height: 34px;
+  padding: 4px 14px;
+  box-sizing: border-box;
+  max-width: 100%;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  color: #27271c;
+  visibility: hidden;
+}
+#draft-panel.drafting {
+  visibility: visible;
+}
+#draft-panel .draft-discs, #draft-panel .draft-reserve {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+#draft-panel .draft-label {
+  font-size: 14px;
+}
+#draft-panel .draft-count {
+  font-size: 17px;
+}
+#draft-panel .draft-pips {
+  display: flex;
+  align-items: center;
+}
+#draft-panel .draft-pip {
+  margin: -4px -2px;
+  transition: opacity 0.2s ease;
+}
+#draft-panel .draft-pip.used-pip {
+  opacity: 0.25;
+}
+#draft-panel .draft-pip.unavailable-pip {
+  opacity: 0.08;
+}
+#draft-panel .draft-hint {
+  font-size: 13px;
+  font-style: italic;
+  opacity: 0.8;
+}
+#draft-panel .draft-hint:empty {
+  display: none;
+}
+
+.height-menu {
+  position: fixed;
+  left: 0px;
+  top: 0px;
+  z-index: 948;
+  box-sizing: border-box;
+  max-width: calc(100vw - 16px);
+  padding: 8px;
+  border: 1px solid #cdbf9f;
+  border-radius: 12px;
+  background: #fffdf7;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  color: #27271c;
+  --height-menu-anchor-gap: 12px;
+  --height-menu-edge-margin: 8px;
+  --height-menu-option-size: 48px;
+  animation: height-menu-in 0.12s ease-out;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+.height-menu .height-menu-caption {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  line-height: 1.2;
+  text-align: center;
+}
+.height-menu .height-menu-replaced-tower {
+  --cell-size: 30px;
+  margin: -4px 0px;
+}
+.height-menu .height-menu-options {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+.height-menu .height-menu-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: var(--height-menu-option-size);
+  height: var(--height-menu-option-size);
+  padding: 0px;
+  margin: 0px;
+  border: 2px solid #d9cba8;
+  border-radius: 10px;
+  background: #f3ecdc;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+.height-menu .height-menu-option:hover, .height-menu .height-menu-option:focus-visible {
+  background: #ffe7a0;
+  border-color: #ffc400;
+  outline: none;
+}
+.height-menu .height-menu-tower {
+  --cell-size: 44px;
+}
+.height-menu .height-menu-arrow {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  background: #fffdf7;
+  rotate: 45deg;
+  translate: -50% -50%;
+  pointer-events: none;
+}
+.height-menu[data-placement=above] .height-menu-arrow {
+  left: var(--height-menu-arrow-offset, 50%);
+  top: 100%;
+  border-right: 1px solid #cdbf9f;
+  border-bottom: 1px solid #cdbf9f;
+}
+.height-menu[data-placement=below] .height-menu-arrow {
+  left: var(--height-menu-arrow-offset, 50%);
+  top: 0%;
+  border-left: 1px solid #cdbf9f;
+  border-top: 1px solid #cdbf9f;
+}
+.height-menu[data-placement=right] .height-menu-arrow {
+  left: 0%;
+  top: var(--height-menu-arrow-offset, 50%);
+  border-left: 1px solid #cdbf9f;
+  border-bottom: 1px solid #cdbf9f;
+}
+.height-menu[data-placement=left] .height-menu-arrow {
+  left: 100%;
+  top: var(--height-menu-arrow-offset, 50%);
+  border-right: 1px solid #cdbf9f;
+  border-top: 1px solid #cdbf9f;
+}
+
+.mobile_version .height-menu {
+  --height-menu-option-size: 52px;
+}
+
+@keyframes height-menu-in {
+  from {
+    opacity: 0;
+    scale: 0.92;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .height-menu {
+    animation: none;
+  }
+}
+.nexo-player-board {
+  margin-top: 6px;
+}
+.nexo-player-board .player-board-reserve-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 30px;
+}
+.nexo-player-board .reserve-indicator {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 16px;
+  font-weight: bold;
+  color: #27271c;
+}
+.nexo-player-board .reserve-indicator .reserve-icon-slot {
+  display: flex;
+  align-items: center;
+  margin: -4px 0px;
+}
+.nexo-player-board .reserve-indicator .reserve-times {
+  font-weight: normal;
+  opacity: 0.7;
+}
+.nexo-player-board[data-empty-reserve=true] .reserve-indicator {
+  opacity: 0.45;
+}
+.nexo-player-board .passed-stamp {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 7px;
+  border: 2px solid var(--stamp-color);
+  border-radius: 4px;
+  background-color: rgba(255, 255, 255, 0.7);
+  color: var(--stamp-color);
+  --stamp-color: #5a5f6e;
+  rotate: -6deg;
+  font-size: 13px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s;
+}
+.nexo-player-board[data-passed=true] .passed-stamp {
+  opacity: 1;
+  visibility: visible;
+}
+
+.positioned-player-board {
+  position: relative;
+}
+
+.bouncing-player-board {
+  animation: bouncing-player-board 0.175s ease-in-out 2;
+}
+
+@keyframes bouncing-player-board {
+  0% {
+    top: 0px;
+  }
+  50% {
+    top: -5px;
+  }
+  100% {
+    top: 0px;
+  }
+}
+.log .roundedbox, .log.a-game-log.roundedbox, .gamelogreview {
+  background: var(--bg-log-default);
+  color: #27271c;
+}
+
+#logs .log:not(.a-game-log), [id^=chatwindowlogs_zone_tablelog_] .log:not(.a-game-log), [id^=replaylogs] .gamelogreview:not(.a-game-log) {
+  display: none !important;
+}
+
+.log.a-game-log, .gamelogreview.a-game-log {
+  position: relative;
+}
+.log.a-game-log .roundedbox, .log.a-game-log.roundedbox, .gamelogreview.a-game-log .roundedbox, .gamelogreview.a-game-log.roundedbox {
+  padding-bottom: 5px;
+}
+.log.towers-placed-log .roundedbox, .log.towers-placed-log.roundedbox, .log.gamelogreview.towers-placed-log, .gamelogreview.towers-placed-log .roundedbox, .gamelogreview.towers-placed-log.roundedbox, .gamelogreview.gamelogreview.towers-placed-log {
+  background: var(--bg-log-towers-placed);
+}
+.log.player-passed-log .roundedbox, .log.player-passed-log.roundedbox, .log.gamelogreview.player-passed-log, .gamelogreview.player-passed-log .roundedbox, .gamelogreview.player-passed-log.roundedbox, .gamelogreview.gamelogreview.player-passed-log {
+  background: var(--bg-log-player-passed);
+}
+.log.game-end-log .roundedbox, .log.game-end-log.roundedbox, .log.gamelogreview.game-end-log, .gamelogreview.game-end-log .roundedbox, .gamelogreview.game-end-log.roundedbox, .gamelogreview.gamelogreview.game-end-log {
+  background: var(--bg-log-game-end);
+}
+.log .towers-placed-row, .gamelogreview .towers-placed-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  color: #27271c;
+}
+.log .towers-placed-row .playername, .gamelogreview .towers-placed-row .playername {
+  display: block;
+  min-width: 0;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.log .towers-placed-row .log-towers, .gamelogreview .towers-placed-row .log-towers {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0px 2px;
+}
+.log .towers-placed-row .log-replacement, .gamelogreview .towers-placed-row .log-replacement {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 0px 3px;
+  border-radius: 8px;
+  background: rgba(255, 145, 0, 0.18);
+}
+.log .towers-placed-row .log-replacement-arrow, .gamelogreview .towers-placed-row .log-replacement-arrow {
+  font-size: 12px;
+  color: #6a4a10;
+}
+.log .log-tower, .gamelogreview .log-tower {
+  --cell-size: 30px;
+}
+.log .log-tower.replaced-log-tower, .gamelogreview .log-tower.replaced-log-tower {
+  opacity: 0.55;
+}
+.log .log-tower.replaced-log-tower::after, .gamelogreview .log-tower.replaced-log-tower::after {
+  content: "";
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  top: 50%;
+  height: 2px;
+  background: #c62828;
+  rotate: -30deg;
+}
+.log .player-passed-row, .gamelogreview .player-passed-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #27271c;
+}
+.log .player-passed-row .player-passed-icon, .gamelogreview .player-passed-row .player-passed-icon {
+  color: #5a5f6e;
+}
+.log .game-end-row, .gamelogreview .game-end-row {
+  color: #27271c;
+}
+
+.dijitTooltip {
+  max-width: calc(100vw - 16px);
+  overflow-wrap: break-word;
+}
+
+.dijitTooltipLeft, .dijitTooltipRight {
+  max-width: calc(100vw - 30px);
+}
