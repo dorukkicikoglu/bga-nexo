@@ -17,17 +17,19 @@ import { BoardRules } from "../BoardRules";
  * a tower, or an enemy tower they can out-height) drafts a tower there at the lowest legal height (1, or the enemy tower's
  * height + 1); each click on that drafted tower adds one disc, and a click when it is already at the most it may take (5, or
  * every disc left this turn) takes it back, so the next click starts again at the lowest. A turn may hold several towers, so
- * another highlighted spot starts a tower of its own and the others stay. The tower clicked last keeps the gold ring. Each
- * drafted tower shows semi-transparent with a count badge and an undo button under it that takes it back (with any new tower
- * that no longer reaches the board through the others). "Reset turn" takes them all back, "Confirm" sends the whole turn
- * (actPlaceTowers), which the server checks again. Legal spots are recomputed after every change. The status bar keeps one
- * title for the whole draft. Everyone else only sees the status text. The draft lives on this page only: a reload starts it again.
+ * another highlighted spot starts a tower of its own and the others stay. The current tower (the one clicked last, else the
+ * last one drafted) has the gold ring. Each drafted tower shows semi-transparent with a count badge and an undo button under
+ * it that takes it back (with any new tower that no longer reaches the board through the others); the current tower also has
+ * a confirm button there, which sends the whole turn (actPlaceTowers, checked again by the server) and is disabled until the
+ * server answers. No action buttons in the status bar: they changed its height and moved the board. The status bar keeps
+ * one title for the whole draft. Everyone else only sees the status text. The draft lives on this page only: a reload starts it again.
  */
 export class PlaceTowers {
     private stateArgs: PlaceTowersArgs | null = null;
     private pending: PendingTower[] = [];
-    private selectedSpot: NexoSpot | null = null; //the drafted tower clicked last (gold ring), null once it is taken back
+    private selectedSpot: NexoSpot | null = null; //the current drafted tower (gold ring, confirm button), null with no draft
     private drafting: boolean = false;
+    private confirming: boolean = false; //the turn is on its way to the server
 
     constructor(private game: Game, private bga: Bga<NexoPlayer, NexoGamedatas>) {
     }
@@ -40,15 +42,21 @@ export class PlaceTowers {
         this.pending = [];
         this.selectedSpot = null;
         this.drafting = isCurrentPlayerActive;
+        this.confirming = false;
 
         if(!isCurrentPlayerActive){
             this.bga.statusBar.setTitle(_('${actplayer} must place towers'));
             return;
         }
 
+        const discsThisTurn = args.discsThisTurn ?? 1;
+        const title = discsThisTurn > 1 ? _('${you} must place 1 to ${count} discs') : _('${you} must place 1 disc');
+        this.bga.statusBar.setTitle(title, { count: discsThisTurn });
+
         this.game.boardHandler.setDraftClickHandlers({
             spotClicked: spot => this.spotClicked(spot),
             undoClicked: spot => this.undoClicked(spot),
+            confirmClicked: () => this.confirmTurn(),
         });
         this.update();
     }
@@ -58,13 +66,14 @@ export class PlaceTowers {
      */
     onLeavingState(args: PlaceTowersArgs, isCurrentPlayerActive: boolean) {
         this.drafting = false;
+        this.confirming = false;
         this.pending = [];
         this.selectedSpot = null;
         this.game.boardHandler.setDraftClickHandlers(null);
         this.game.boardHandler.setDraft(null);
     }
 
-    private canDraft(): boolean { return this.drafting && !this.game.isInterfaceLocked(); }
+    private canDraft(): boolean { return this.drafting && !this.confirming && !this.game.isInterfaceLocked(); }
     private getDiscsUsed(): number { return this.pending.reduce((sum, tower) => sum + tower.height, 0); }
     private getDiscsLeft(): number { return Math.max(0, (this.stateArgs?.discsThisTurn ?? 0) - this.getDiscsUsed()); }
 
@@ -162,28 +171,35 @@ export class PlaceTowers {
         this.update();
     }
 
-    private resetTurn(): void {
-        this.pending = [];
-        this.selectedSpot = null;
-        this.update();
-    }
-
+    //the board's confirm button: sent once (the buttons are disabled until the server answers). A refused turn (BGA shows the
+    //server's message) is editable again; an accepted one ends with towersPlaced and the state change, which clear the draft
     private confirmTurn(): void {
-        if(this.pending.length === 0)
+        if(!this.canDraft() || this.pending.length === 0)
             return;
 
+        this.confirming = true;
+        this.update();
         const placements = this.pending.map(tower => ({ x: tower.x, y: tower.y, height: tower.height }));
-        this.bga.actions.performAction('actPlaceTowers', { placements: JSON.stringify(placements) });
+        this.bga.actions.performAction('actPlaceTowers', { placements: JSON.stringify(placements) }).catch(() => {
+            if(!this.drafting || !this.confirming)
+                return;
+            this.confirming = false;
+            this.update();
+        });
     }
 
-    //redraws everything the draft shows: the board (drafted towers with their badges and undo buttons, legal spots, replaceable
-    //towers, the gold ring) and the status bar
+    //redraws everything the draft shows on the board: drafted towers with their badges and buttons, legal spots, replaceable
+    //towers, the gold ring
     private update(): void {
         if(!this.drafting)
             return;
 
+        //the current tower is the one clicked last; once it is taken back, the last one drafted, so a draft always has its confirm
         if(this.selectedSpot && !this.getPendingAt(this.selectedSpot))
             this.selectedSpot = null;
+        const lastPending = this.pending[this.pending.length - 1];
+        if(!this.selectedSpot && lastPending)
+            this.selectedSpot = { x: lastPending.x, y: lastPending.y };
 
         this.game.boardHandler.setDraft({
             pending: this.pending,
@@ -191,28 +207,7 @@ export class PlaceTowers {
             replaceableTowers: this.getReplaceableTowers(),
             selectedSpot: this.selectedSpot,
             discColor: this.game.getDiscColor(this.game.getMyPlayerID()),
+            confirming: this.confirming,
         });
-        this.updateStatusBar();
-    }
-
-    //the same title for the whole draft, with Confirm and Reset turn once a tower is drafted
-    private updateStatusBar(): void {
-        this.bga.statusBar.removeActionButtons();
-
-        const discsThisTurn = this.stateArgs?.discsThisTurn ?? 1;
-        const title = discsThisTurn > 1 ? _('${you} must place 1 to ${count} discs') : _('${you} must place 1 disc');
-        this.bga.statusBar.setTitle(title, { count: discsThisTurn });
-
-        //a real BGA button, invisible and zero wide (.action-row-strut), for the whole draft: the action buttons' line is always
-        //one button tall, so the status bar keeps its height when Confirm and Reset turn come and go. Without it, on mobile
-        //(where #generalactions::before gives the buttons a line of their own) that line grew a few px with them and pushed
-        //the board down. The label is a zero-width space, so the button has a line of text like a real one
-        this.bga.statusBar.addActionButton('​', () => {}, { id: 'action-row-strut', classes: 'action-row-strut', color: 'secondary' });
-
-        if(this.pending.length === 0)
-            return;
-
-        this.bga.statusBar.addActionButton(_('Confirm'), () => this.confirmTurn(), { id: 'confirm-turn-button' });
-        this.bga.statusBar.addActionButton(_('Reset turn'), () => this.resetTurn(), { id: 'reset-turn-button', color: 'secondary' });
     }
 }

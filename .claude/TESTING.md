@@ -301,3 +301,18 @@ Deploy `modules/` and `nexo.css`; an ongoing table is fine (F5).
 - [ ] The same on desktop, with the window narrow enough that the title and buttons share one line, and wide.
 - [ ] Nothing visible or clickable where the invisible button sits (no gap before Confirm, no focus ring when tabbing through the status bar).
 - [ ] Confirm still works; the opponent's turn and the game end look as before.
+
+## After M1: confirm on the board
+
+Deploy `modules/` and `nexo.css`; no server change, an ongoing table is fine (F5). Supersedes "After M1: steady status bar while drafting" (the invisible status bar button is gone).
+
+- [ ] Your turn: the status bar shows only "You must place 1 to N discs", never Confirm or Reset turn, at any point of the draft.
+- [ ] Phone (or device mode at 375px) and desktop: note the board's top edge, then draft a tower, cycle it, draft a second, undo one, cycle one past its highest, confirm: the board's frame never moves or resizes (the towers may still slide inside it as the draft re-centres).
+- [ ] One drafted tower: under it, side by side and centred, a neutral round undo button (curved arrow) and a green confirm button (white tick), the same size, a small gap between, both at least 32px on screen, with a shadow, over the row below.
+- [ ] Two drafted towers: each has its undo button; only the current one (gold ring) has confirm too. Undo the current one: the ring and confirm move to the other tower.
+- [ ] Tap undo, tap confirm, tap the gap between them: the tower under the buttons never gets a disc added.
+- [ ] Edges: a drafted tower in the board's leftmost or rightmost column keeps both buttons wholly inside the board (nudged sideways); one on the bottom row shows them above the tower instead. Use `debug_fillBoard` with a few empty spots to reach the edges.
+- [ ] Confirm: both buttons grey out at once; double-tapping confirm sends one turn only (one log row). Then the towers fly in and the badges and buttons disappear.
+- [ ] A refused turn can't be reached through the UI (the draft only offers legal moves). To check the recovery, block the request in the browser's dev tools (Network > Block request URL for `actPlaceTowers`) and confirm: BGA shows an error, the buttons come back usable, and confirming again with the block removed works.
+- [ ] The opponent, spectators and replays never see these buttons. F5 mid-draft: no draft, no buttons.
+- [ ] No errors in the browser console.

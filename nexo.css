@@ -88,19 +88,6 @@ body .sliding-clone {
   display: block;
 }
 
-#generalactions .bgabutton.action-row-strut {
-  visibility: hidden;
-  width: 0px;
-  min-width: 0px;
-  margin-left: 0px;
-  margin-right: 0px;
-  padding-left: 0px;
-  padding-right: 0px;
-  border-left-width: 0px;
-  border-right-width: 0px;
-  pointer-events: none;
-}
-
 .nexo-tower {
   position: relative;
   flex-shrink: 0;
@@ -333,7 +320,7 @@ html.hide-stack-heights .tower-height-number {
   height: var(--cell-size);
   pointer-events: none;
   --pending-badge-size: max(calc(18px / var(--board-zoom, 1)), calc(var(--cell-size) * 0.26));
-  --pending-undo-size: max(calc(32px / var(--board-zoom, 1)), calc(var(--cell-size) * 0.38));
+  --pending-button-size: max(calc(32px / var(--board-zoom, 1)), calc(var(--cell-size) * 0.38));
 }
 .pending-controls .pending-count-badge {
   position: absolute;
@@ -355,46 +342,75 @@ html.hide-stack-heights .tower-height-number {
   line-height: 1;
   box-shadow: 0 1px 3px rgba(40, 30, 18, 0.35);
 }
-.pending-controls .pending-undo-button {
+.pending-controls .pending-actions {
   position: absolute;
-  left: 50%;
-  top: calc(100% - var(--cell-size) * 0.08 + 6px);
-  translate: -50% 0px;
+  z-index: 1;
+  display: flex;
+  gap: 6px;
+  pointer-events: auto;
+  --actions-width: calc(var(--pending-actions-count) * var(--pending-button-size) + (var(--pending-actions-count) - 1) * 6px);
+  --actions-margin: calc(4px / var(--board-zoom, 1));
+  --actions-below-top: calc(var(--cell-size) * 0.92 + 6px);
+  --actions-above-top: calc(-1 * var(--pending-button-size) - 6px);
+  --actions-room-below: calc((var(--board-size) - var(--layer-offset-y, 0) - var(--y)) * var(--cell-size) - var(--actions-margin));
+  --actions-overflow-below: max(0px, var(--actions-below-top) + var(--pending-button-size) - var(--actions-room-below));
+  left: clamp(-1 * (var(--layer-offset-x, 0) + var(--x)) * var(--cell-size) + var(--actions-margin), (var(--cell-size) - var(--actions-width)) / 2, (var(--board-size) - var(--layer-offset-x, 0) - var(--x)) * var(--cell-size) - var(--actions-margin) - var(--actions-width));
+  top: calc(var(--actions-below-top) - min(var(--actions-below-top) - var(--actions-above-top), var(--actions-overflow-below) * 1000));
+}
+.pending-controls .current-pending-actions {
+  z-index: 2;
+}
+.pending-controls .pending-button {
+  flex: none;
   box-sizing: border-box;
-  width: var(--pending-undo-size);
-  height: var(--pending-undo-size);
+  width: var(--pending-button-size);
+  height: var(--pending-button-size);
   padding: 0px;
   margin: 0px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(27, 27, 29, 0.1);
   border-radius: 50%;
-  background: linear-gradient(160deg, #ffffff 0%, #f0eee9 100%);
-  color: #1b1b1d;
   box-shadow: 0 1px 2px rgba(40, 30, 18, 0.25), 0 3px 8px -2px rgba(40, 30, 18, 0.35);
-  pointer-events: auto;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
 }
-.pending-controls .pending-undo-button svg {
-  width: calc(var(--pending-undo-size) * 0.6);
-  height: calc(var(--pending-undo-size) * 0.6);
+.pending-controls .pending-button svg {
+  width: calc(var(--pending-button-size) * 0.6);
+  height: calc(var(--pending-button-size) * 0.6);
   fill: none;
   stroke: currentColor;
   stroke-width: 2.4;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.pending-controls .pending-undo-button:hover, .pending-controls .pending-undo-button:focus-visible {
+.pending-controls .pending-button:disabled {
+  cursor: default;
+  filter: grayscale(1) contrast(0.55) brightness(1.2);
+}
+.pending-controls .pending-undo-button {
+  border: 1px solid rgba(27, 27, 29, 0.1);
+  background: linear-gradient(160deg, #ffffff 0%, #f0eee9 100%);
+  color: #1b1b1d;
+}
+.pending-controls .pending-undo-button:not(:disabled):hover, .pending-controls .pending-undo-button:not(:disabled):focus-visible {
   border-color: var(--legal-spot-border);
   box-shadow: 0 1px 2px rgba(40, 30, 18, 0.25), 0 3px 8px -2px rgba(40, 30, 18, 0.35), 0 0 8px var(--legal-spot-glow);
   outline: none;
 }
-
-body.lockedInterface .pending-undo-button {
-  visibility: hidden;
+.pending-controls .pending-confirm-button {
+  border: 1px solid #2a7a37;
+  background: linear-gradient(160deg, #4cae5b 0%, #2f8a3e 100%);
+  color: #ffffff;
+}
+.pending-controls .pending-confirm-button svg {
+  stroke-width: 3;
+}
+.pending-controls .pending-confirm-button:not(:disabled):hover, .pending-controls .pending-confirm-button:not(:disabled):focus-visible {
+  background: linear-gradient(160deg, #5cc06b 0%, #36994a 100%);
+  box-shadow: 0 1px 2px rgba(40, 30, 18, 0.25), 0 3px 8px -2px rgba(40, 30, 18, 0.35), 0 0 8px rgba(60, 170, 80, 0.55);
+  outline: none;
 }
 
 #nexo-board.showing-largest-groups .board-tower:not(.largest-group-tower) {

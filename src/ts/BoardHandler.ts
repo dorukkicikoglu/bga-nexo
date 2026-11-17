@@ -17,14 +17,17 @@ export type DraftView = {
     pending: PendingTower[];
     legalNewSpots: NexoSpot[];
     replaceableTowers: NexoTower[];
-    selectedSpot: NexoSpot | null;
+    selectedSpot: NexoSpot | null; //the current drafted tower: the gold ring, and the confirm button under it
     discColor: DiscColor;
+    confirming: boolean; //the turn is on its way to the server: the buttons stay, disabled
 };
 
-//what the draft's clicks on the board do (PlaceTowers): a highlighted spot or a drafted tower, and a drafted tower's undo button
+//what the draft's clicks on the board do (PlaceTowers): a highlighted spot or a drafted tower, a drafted tower's undo button,
+//the confirm button
 export type DraftClickHandlers = {
     spotClicked: (spot: NexoSpot) => void;
     undoClicked: (spot: NexoSpot) => void;
+    confirmClicked: () => void;
 };
 
 /**
@@ -55,6 +58,8 @@ export class BoardHandler {
 
     //the undo button's icon: a curved arrow turning back counter-clockwise, drawn with currentColor
     private static readonly UNDO_ICON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12a7 7 0 1 0 2.05-4.95"/><path d="M11 7.05H7.05V3.1"/></svg>';
+    //the confirm button's icon: a tick
+    private static readonly CONFIRM_ICON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 
     constructor(private game: Game, towers: NexoTower[]) {
         this.boardSize = this.game.getRules().gridSize + 2;
@@ -226,6 +231,9 @@ export class BoardHandler {
         //a slide set while another runs carries on from where the layer is, so the layer never jumps
         this.layerElement.style.transition = slide ? `translate ${Game.BOARD_RECENTER_DURATION}ms ${Game.BOARD_RECENTER_EASING}` : 'none';
         this.layerElement.style.translate = `calc(${this.boardSize / 2 - centerX} * var(--cell-size)) calc(${this.boardSize / 2 - centerY} * var(--cell-size))`;
+        //the same offsets, in spots, for what must stay inside the board (Game.scss: .pending-actions)
+        this.layerElement.style.setProperty('--layer-offset-x', (this.boardSize / 2 - centerX).toString());
+        this.layerElement.style.setProperty('--layer-offset-y', (this.boardSize / 2 - centerY).toString());
         if(slide)
             await this.game.bga.gameui.wait(Game.BOARD_RECENTER_DURATION);
     }
@@ -315,12 +323,19 @@ export class BoardHandler {
     }
 
     //on each drafted tower, in a layer over every tower: a badge with its height (the discs it adds) on its top right corner and,
-    //just under it, a round undo button that takes it back. The button's click never reaches the spot underneath
+    //just under it, round buttons: undo (takes it back) and, under the current tower only, confirm (sends the whole turn).
+    //Game.scss keeps them inside the board (nudged sideways, or above the tower on the bottom row). Their clicks never reach
+    //the tower or spot underneath. While the turn is on its way to the server, both are disabled
     private renderPendingControls(): void {
         this.controlsLayer.innerHTML = '';
+        const draft = this.draft;
+        if(!draft)
+            return;
 
-        for(const pendingTower of this.draft?.pending ?? []){
+        const currentKey = draft.selectedSpot ? BoardRules.key(draft.selectedSpot.x, draft.selectedSpot.y) : null;
+        for(const pendingTower of draft.pending){
             const spot: NexoSpot = { x: pendingTower.x, y: pendingTower.y };
+            const isCurrent = BoardRules.key(spot.x, spot.y) === currentKey;
             const controls = document.createElement('div');
             controls.className = 'pending-controls';
             BoardHandler.placeOnBoard(controls, spot);
@@ -329,20 +344,32 @@ export class BoardHandler {
             badge.className = 'pending-count-badge';
             badge.textContent = pendingTower.height.toString();
 
-            const undoButton = document.createElement('button');
-            undoButton.type = 'button';
-            undoButton.className = 'pending-undo-button';
-            undoButton.title = _('Take this tower back');
-            undoButton.setAttribute('aria-label', undoButton.title);
-            undoButton.innerHTML = BoardHandler.UNDO_ICON_SVG;
-            undoButton.addEventListener('click', (event: MouseEvent) => {
-                event.stopPropagation(); //not a click on the drafted tower under it, which would add a disc
-                this.draftClickHandlers?.undoClicked(spot);
-            });
+            const actions = document.createElement('div');
+            actions.className = 'pending-actions' + (isCurrent ? ' current-pending-actions' : '');
+            actions.style.setProperty('--pending-actions-count', isCurrent ? '2' : '1');
+            actions.appendChild(this.createPendingButton('pending-undo-button', _('Take this tower back'), BoardHandler.UNDO_ICON_SVG, draft.confirming, () => this.draftClickHandlers?.undoClicked(spot)));
+            if(isCurrent)
+                actions.appendChild(this.createPendingButton('pending-confirm-button', _('Confirm'), BoardHandler.CONFIRM_ICON_SVG, draft.confirming, () => this.draftClickHandlers?.confirmClicked()));
 
-            controls.append(badge, undoButton);
+            controls.append(badge, actions);
             this.controlsLayer.appendChild(controls);
         }
+    }
+
+    private createPendingButton(className: string, label: string, iconSVG: string, disabled: boolean, onClick: () => void): HTMLButtonElement {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'pending-button ' + className;
+        button.title = label;
+        button.setAttribute('aria-label', label);
+        button.innerHTML = iconSVG;
+        button.disabled = disabled;
+        button.addEventListener('click', (event: MouseEvent) => {
+            event.stopPropagation(); //not a click on the drafted tower under it, which would add a disc
+            if(!button.disabled)
+                onClick();
+        });
+        return button;
     }
 
     //an enemy tower under a drafted replacement fades (being-replaced)
@@ -357,6 +384,8 @@ export class BoardHandler {
             return;
 
         const target = event.target as HTMLElement;
+        if(target.closest('.pending-actions'))
+            return; //a disabled button's click, which no listener of its own receives: never a click on the tower under it
         const clicked = (target.closest('.pending-tower') ?? target.closest('.board-spot.clickable-spot')) as HTMLElement | null;
         if(!clicked)
             return;
