@@ -27,10 +27,13 @@ $disc-face-ratio: 0.45;
 $disc-thickness-ratio: 0.09;
 $tower-base-ratio: 0.08;
 
-//disc colors: face (its top), face-light (the highlight on the top), side and side-dark (the edge, lit in the middle)
+//disc colors: face (its top), face-light (the highlight on the top), side and side-dark (the edge, lit in the middle), and the
+//seam between two stacked discs, like the real game's thin dark gaps: seam-above, a 1px line along the upper disc's lower edge,
+//and seam-below, a 1px line just under it, along the lower disc's rim. Red: a lighter edge over a maroon line. Black: a dark
+//line would not show on black, so a dark gap over a grey highlight on the lower disc's rim
 $disc-colors: (
-    "red": (face: #d42a20, face-light: #ff6a5c, side: #a8150e, side-dark: #6a0905, number: #ffffff),
-    "black": (face: #2b2c31, face-light: #63656e, side: #17181b, side-dark: #050506, number: #ffffff),
+    "red": (face: #d42a20, face-light: #ff6a5c, side: #a8150e, side-dark: #6a0905, number: #ffffff, seam-above: rgba(255, 140, 125, 0.55), seam-below: #3a0402),
+    "black": (face: #2b2c31, face-light: #63656e, side: #17181b, side-dark: #050506, number: #ffffff, seam-above: #000000, seam-below: rgba(150, 153, 164, 0.6)),
 );
 
 $pending-tower-opacity: 0.6; //a tower of the turn being drafted
@@ -188,6 +191,10 @@ $passed-banner-z-index: 1000;
         background: radial-gradient(ellipse closest-side at 50% 50%, var(--disc-face-light) 0%, var(--disc-face) 62%, var(--disc-face) 93%, var(--disc-side) 98%, transparent 100%) top center / 100% var(--disc-face-height) no-repeat;
         &::before{ content: ""; position: absolute; z-index: -1; left: 0px; right: 0px; top: calc(var(--disc-face-height) / 2); bottom: calc(var(--disc-face-height) / 2); background: linear-gradient(90deg, var(--disc-side-dark), var(--disc-side) 35%, var(--disc-side) 65%, var(--disc-side-dark)); }
         &::after{ content: ""; position: absolute; z-index: -1; left: 0px; right: 0px; bottom: 0px; height: var(--disc-face-height); border-radius: 50%; background: linear-gradient(90deg, var(--disc-side-dark), var(--disc-side) 35%, var(--disc-side) 65%, var(--disc-side-dark)); box-shadow: 0 1px 1px rgba(0, 0, 0, 0.45); }
+        //the seam between two discs (every disc but the bottom one, along its bottom curve, which lies exactly on the rim of the
+        //disc under it): --disc-seam-above just inside the curve, --disc-seam-below just under it. 1px at the front, thinning
+        //to nothing at the sides like a real rim
+        & + .tower-disc::after{ box-shadow: inset 0 -1px 0 var(--disc-seam-above), 0 1px 0 var(--disc-seam-below); }
     }
     //the height, on the top face
     .tower-height-number{ position: absolute; left: 0px; right: 0px; bottom: calc(var(--tower-base) + var(--disc-thickness) * var(--tower-height)); height: var(--disc-face-height);
@@ -196,12 +203,16 @@ $passed-banner-z-index: 1000;
 @each $name, $colors in $disc-colors {
     .nexo-tower[data-disc-color="#{$name}"]{
         --disc-face: #{map.get($colors, face)}; --disc-face-light: #{map.get($colors, face-light)}; --disc-side: #{map.get($colors, side)}; --disc-side-dark: #{map.get($colors, side-dark)}; --disc-number: #{map.get($colors, number)};
+        --disc-seam-above: #{map.get($colors, seam-above)}; --disc-seam-below: #{map.get($colors, seam-below)};
     }
 }
 //a single disc with no number: the reserve on player boards
 .nexo-tower.mini-tower{ --cell-size: #{$mini-cell-size};
     .tower-height-number{ display: none; }
 }
+//the "Show stack heights" preference off (PrefHandler.applyStackHeights, a class on <html>): no number on any tower, on the
+//board, the flying copies, the height menu or the log rows. The numbers stay in the page, only hidden
+html.hide-stack-heights .tower-height-number{ display: none; }
 //end towers
 
 //board (BoardHandler): a window of --board-window-size spots across and down. .board-layer holds the spots and towers at their

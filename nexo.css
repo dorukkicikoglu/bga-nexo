@@ -119,6 +119,9 @@ body .sliding-clone {
   background: linear-gradient(90deg, var(--disc-side-dark), var(--disc-side) 35%, var(--disc-side) 65%, var(--disc-side-dark));
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
 }
+.nexo-tower .tower-disc + .tower-disc::after {
+  box-shadow: inset 0 -1px 0 var(--disc-seam-above), 0 1px 0 var(--disc-seam-below);
+}
 .nexo-tower .tower-height-number {
   position: absolute;
   left: 0px;
@@ -141,6 +144,8 @@ body .sliding-clone {
   --disc-side: #a8150e;
   --disc-side-dark: #6a0905;
   --disc-number: #ffffff;
+  --disc-seam-above: rgba(255, 140, 125, 0.55);
+  --disc-seam-below: #3a0402;
 }
 
 .nexo-tower[data-disc-color=black] {
@@ -149,12 +154,18 @@ body .sliding-clone {
   --disc-side: #17181b;
   --disc-side-dark: #050506;
   --disc-number: #ffffff;
+  --disc-seam-above: #000000;
+  --disc-seam-below: rgba(150, 153, 164, 0.6);
 }
 
 .nexo-tower.mini-tower {
   --cell-size: 26px;
 }
 .nexo-tower.mini-tower .tower-height-number {
+  display: none;
+}
+
+html.hide-stack-heights .tower-height-number {
   display: none;
 }
 

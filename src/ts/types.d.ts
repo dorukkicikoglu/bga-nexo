@@ -20,7 +20,13 @@ interface NexoGamedatas extends Gamedatas<NexoPlayer> {
     towers: NexoTower[];
     rules: NexoRulesData;
     discColorByPlayerColor: Record<string, DiscColor>;
+    pref_names: GamePrefs;
     endGameScoring?: EndGameScoreData;
+}
+
+//gamepreferences.jsonc's ids, by name (Game.php $userPrefs)
+interface GamePrefs{
+    show_stack_heights: number;
 }
 
 //material.inc.php's constants, sent once in gamedatas

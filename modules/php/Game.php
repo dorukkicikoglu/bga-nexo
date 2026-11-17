@@ -25,6 +25,9 @@ use Bga\GameFramework\Actions\Debug;
 class Game extends \Bga\GameFramework\Table
 {
     public NEXOTableManager $tableManager;
+    public array $userPrefs = array(
+        'show_stack_heights' => 100,
+    );
 
     /**
      * Your global variables labels:
@@ -127,6 +130,7 @@ class Game extends \Bga\GameFramework\Table
             'discsPerPlayer' => DISCS_PER_PLAYER,
         ];
         $result['discColorByPlayerColor'] = DISC_COLOR_BY_PLAYER_COLOR;
+        $result['pref_names'] = $this->userPrefs;
 
         $state = $this->gamestate->getCurrentMainState();
         if($state->name == 'gameEnd')

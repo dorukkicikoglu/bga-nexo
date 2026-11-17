@@ -18,6 +18,7 @@ import { LogMutationObserver } from "./LogMutationObserver";
 import { TooltipHandler } from "./TooltipHandler";
 import { EndGameScoringHandler } from "./EndGameScoringHandler";
 import { HeightMenu } from "./HeightMenu";
+import { PrefHandler } from "./PrefHandler";
 
 //optional settings of Game.animateSlide / animateSlideAway
 export type SlideOptions = {
@@ -56,6 +57,7 @@ export class Game {
     public heightMenu: HeightMenu;
     public logMutationObserver: LogMutationObserver;
     public tooltipHandler: TooltipHandler;
+    public prefHandler: PrefHandler;
     private endGameScoringHandler: EndGameScoringHandler;
 
     constructor(bga: Bga<NexoPlayer, NexoGamedatas>) {
@@ -107,6 +109,7 @@ export class Game {
         this.heightMenu = new HeightMenu(this);
         this.logMutationObserver = new LogMutationObserver(this);
         this.tooltipHandler = new TooltipHandler(this);
+        this.prefHandler = new PrefHandler(this, gamedatas.pref_names);
         this.bga.gameui.onScreenWidthChange = () => this.onScreenWidthChange();
 
         if(gamedatas.hasOwnProperty('endGameScoring'))

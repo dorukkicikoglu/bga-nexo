@@ -1136,6 +1136,35 @@ class HeightMenu {
     }
 }
 
+class PrefHandler {
+    constructor(game, prefNameToIndex) {
+        this.game = game;
+        this.prefNameToIndex = prefNameToIndex;
+        this.game.bga.userPreferences.onChange = (prefIndex, prefValue) => this.onGameUserPreferenceChanged(prefIndex, prefValue);
+        for (const prefName in this.prefNameToIndex) {
+            const prefIndex = this.prefNameToIndex[prefName];
+            this.onGameUserPreferenceChanged(prefIndex, this.game.bga.userPreferences.get(prefIndex), true);
+        }
+    }
+    //on page load (isInitialLoad) the state classes haven't received their args yet, so nothing is redrawn
+    onGameUserPreferenceChanged(prefIndex, prefValue, isInitialLoad = false) {
+        switch (prefIndex) {
+            case this.prefNameToIndex.show_stack_heights:
+                this.applyStackHeights(prefValue);
+                break;
+        }
+    }
+    //game specific functions
+    //one class on <html>, so it reaches every tower: the board, the flying copies and the height menu (both in <body>) and
+    //the log rows. Any value other than Disabled is Enabled (the default; also a missing value, as for a spectator with no
+    //saved preference)
+    applyStackHeights(prefValue) {
+        document.documentElement.classList.toggle('hide-stack-heights', prefValue == PrefHandler.STACK_HEIGHTS_DISABLED);
+    }
+}
+//"Show stack heights" (gamepreferences.jsonc, pref 100): the height number on top of every tower, 1 Enabled, 2 Disabled
+PrefHandler.STACK_HEIGHTS_DISABLED = 2;
+
 /**
  *------
  * BGA framework: Gregory Isabelli & Emmanuel Colin & BoardGameArena
@@ -1190,6 +1219,7 @@ class Game {
         this.heightMenu = new HeightMenu(this);
         this.logMutationObserver = new LogMutationObserver(this);
         this.tooltipHandler = new TooltipHandler(this);
+        this.prefHandler = new PrefHandler(this, gamedatas.pref_names);
         this.bga.gameui.onScreenWidthChange = () => this.onScreenWidthChange();
         if (gamedatas.hasOwnProperty('endGameScoring'))
             this.endGameScoringHandler.displayEndGameScore(gamedatas.endGameScoring);

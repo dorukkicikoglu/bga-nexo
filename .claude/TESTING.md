@@ -162,3 +162,12 @@ Deploy `modules/` and `nexo.css`; no schema change, an ongoing table is fine (F5
 - [ ] Mobile (portrait): the board fills the game area's width; nothing overflows horizontally. Rotate the phone: it resizes.
 - [ ] The height menu still opens next to its spot and its buttons keep their size; flights to and from the board land on the right spots.
 
+## After M1: "Show stack heights" preference
+
+Deploy `gamepreferences.jsonc`, `modules/` and `nexo.css`, then Studio's game page > "Reload game options configuration". No schema change; open a new table, or F5 an ongoing one after the reload.
+
+- [ ] BGA's preferences menu (the cog) lists "Show stack heights", Enabled by default; a new player sees numbers on every tower.
+- [ ] Switch it to Disabled: at once, with no reload, no number on the board's towers, the drafted towers, the height menu's buttons (their tooltip still says the height) or the log rows. Back to Enabled: they all come back.
+- [ ] Disabled, then F5: still no numbers. Each player's choice is their own (the opponent's screen doesn't change).
+- [ ] Disabled, watch the opponent's turn: the flying towers and replaced towers have no number while they fly, and none appears when they land.
+- [ ] A spectator sees numbers (the default).

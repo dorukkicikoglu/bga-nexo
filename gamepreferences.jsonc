@@ -23,4 +23,17 @@
     "default": 0
   }
   */
+
+  "100": {
+    "name": "Show stack heights",
+    "values": {
+      "1": {
+        "name": "Enabled"
+      },
+      "2": {
+        "name": "Disabled"
+      }
+    },
+    "default": 1
+  }
 }
