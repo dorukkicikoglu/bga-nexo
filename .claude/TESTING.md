@@ -382,3 +382,16 @@ Deploy `nexo.css` (F5 is fine).
 - [ ] The board's colour, brightness, light top-left corner, shadow and rounded corners are as before; no edge or empty corner anywhere.
 - [ ] Resize the window (small and large board) and try a phone (about 375 and 430 px wide): the veins scale with the board and keep their direction.
 - [ ] Towers, legal spots, the undo and confirm buttons all show and work as before.
+
+## After M1: background parallax
+
+Deploy `modules/` and `nexo.css`; no schema change, an ongoing table is fine (F5).
+
+- [ ] Desktop, page at its top: the background looks exactly as before (arc, its shadow, veins, red disc).
+- [ ] Scroll down slowly: the black disc drifts left, the marble and the red disc drift left more slowly; it feels like the surface drifting, not sliding. Scroll back up: everything returns, and sits exactly in place at the top.
+- [ ] Scroll far down (past about 2300px): the drift stops at its most (black about 90px, marble about 40px); no gap or edge ever shows on the right.
+- [ ] At the most drift: the arc's soft shadow still hugs its edge (no white line or doubled shadow between them); text and log rows over the black stay readable.
+- [ ] Clicks and scrolling everywhere behave as before (nothing new catches a click); the board, log, player boards and chat stay above the background.
+- [ ] Phone (or a window under 768px): the same, smaller (black about 45px, marble about 20px at most).
+- [ ] System setting "Reduce motion" on (macOS Accessibility > Display, or iOS): no drift at all, also when switched while the page is open.
+- [ ] No jank while scrolling, and no errors in the console.

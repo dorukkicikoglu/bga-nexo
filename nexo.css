@@ -14,8 +14,30 @@
   --bg-log-towers-placed: linear-gradient(90deg, rgba(252, 251, 249, 0.97), rgba(240, 238, 233, 0.95));
   --bg-log-player-passed: linear-gradient(90deg, rgba(246, 246, 245, 0.97), rgba(232, 232, 230, 0.95));
   --bg-log-game-end: linear-gradient(90deg, #ffffff, #f0eee9);
+  --bg-parallax-near-ratio: 0.042;
+  --bg-parallax-near-cap: 90px;
+  --bg-parallax-far-ratio: 0.0175;
+  --bg-parallax-far-cap: 40px;
+  --bg-parallax-near-overscan: calc(var(--bg-parallax-near-cap) + 2px);
+  --bg-parallax-far-overscan: calc(var(--bg-parallax-far-cap) + 2px);
+  --bg-parallax-near-shift: calc(-1 * min(var(--nexo-parallax, 0px) * var(--bg-parallax-near-ratio), var(--bg-parallax-near-cap)));
+  --bg-parallax-far-shift: calc(-1 * min(var(--nexo-parallax, 0px) * var(--bg-parallax-far-ratio), var(--bg-parallax-far-cap)));
 }
 
+@media (max-width: 767.98px) {
+  :root {
+    --bg-parallax-near-ratio: 0.035;
+    --bg-parallax-near-cap: 45px;
+    --bg-parallax-far-ratio: 0.015;
+    --bg-parallax-far-cap: 20px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --bg-parallax-near-ratio: 0;
+    --bg-parallax-far-ratio: 0;
+  }
+}
 .mobile_version {
   --cell-size: 76px;
 }
@@ -38,7 +60,7 @@ body {
   --bg-red-disc-width: min(var(--bg-red-disc-fit-width), max(0px, (var(--bg-red-disc-fit-width) - 103.7288135593px) * 1000));
   --bg-red-disc-height: calc(var(--bg-red-disc-width) * 0.3490196078);
   --bg-red-disc-bottom: max(16vh, 48px + var(--bg-red-disc-height) * 0.4269662921);
-  --bg-red-disc-position: right calc(var(--bg-red-disc-right) - var(--bg-red-disc-width) * 0.7235294118)
+  --bg-red-disc-position: right calc(var(--bg-parallax-far-overscan) + var(--bg-red-disc-right) - var(--bg-red-disc-width) * 0.7235294118)
       bottom calc(var(--bg-red-disc-bottom) - var(--bg-red-disc-height) * 0.4606741573);
 }
 body.mobile_version {
@@ -51,18 +73,35 @@ body::before, body::after {
   position: fixed;
   left: 0px;
   top: 0px;
-  right: 0px;
   bottom: 0px;
   z-index: -1;
   pointer-events: none;
+  will-change: transform;
 }
 body::before {
-  background: url(img/bg_red_disc.png) var(--bg-red-disc-position)/var(--bg-red-disc-width) var(--bg-red-disc-height) no-repeat, radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), transparent calc(var(--bg-arc-radius) - 2px), rgba(40, 30, 18, 0.16) var(--bg-arc-radius), rgba(40, 30, 18, 0.05) calc(var(--bg-arc-radius) + 1.6vw * 0.55), transparent calc(var(--bg-arc-radius) + 1.6vw)), linear-gradient(113deg, transparent 62%, rgba(110, 104, 94, 0.06) 62.35%, transparent 62.8%), linear-gradient(109deg, transparent 63.2%, rgba(110, 104, 94, 0.03) 63.9%, transparent 64.8%), linear-gradient(104deg, transparent 75.2%, rgba(110, 104, 94, 0.035) 75.5%, transparent 75.9%), linear-gradient(121deg, transparent 85%, rgba(110, 104, 94, 0.06) 85.25%, transparent 85.6%), radial-gradient(ellipse 45vw 30vh at 78% 70%, rgba(120, 112, 100, 0.035), transparent 70%), radial-gradient(ellipse 35vw 25vh at 92% 18%, rgba(120, 112, 100, 0.035), transparent 70%), radial-gradient(ellipse 70vw 60vh at 85% 0%, #fdfbf8, transparent 75%), #f6f3ed;
+  right: calc(-1 * var(--bg-parallax-far-overscan));
+  transform: translate3d(var(--bg-parallax-far-shift), 0, 0);
+  background: url(img/bg_red_disc.png) var(--bg-red-disc-position)/var(--bg-red-disc-width) var(--bg-red-disc-height) no-repeat, linear-gradient(113deg, transparent calc(62% - var(--bg-parallax-far-overscan) * 0.5707130091), rgba(110, 104, 94, 0.06) calc(62.35% - var(--bg-parallax-far-overscan) * 0.5739347761), transparent calc(62.8% - var(--bg-parallax-far-overscan) * 0.578077048)), linear-gradient(109deg, transparent calc(63.2% - var(--bg-parallax-far-overscan) * 0.5975677398), rgba(110, 104, 94, 0.03) calc(63.9% - var(--bg-parallax-far-overscan) * 0.6041863698), transparent calc(64.8% - var(--bg-parallax-far-overscan) * 0.612696037)), linear-gradient(104deg, transparent calc(75.2% - var(--bg-parallax-far-overscan) * 0.7296623862), rgba(110, 104, 94, 0.035) calc(75.5% - var(--bg-parallax-far-overscan) * 0.7325732733), transparent calc(75.9% - var(--bg-parallax-far-overscan) * 0.7364544562)), linear-gradient(121deg, transparent calc(85% - var(--bg-parallax-far-overscan) * 0.7285922056), rgba(110, 104, 94, 0.06) calc(85.25% - var(--bg-parallax-far-overscan) * 0.7307351238), transparent calc(85.6% - var(--bg-parallax-far-overscan) * 0.7337352094)), radial-gradient(ellipse 45vw 30vh at calc((100% - var(--bg-parallax-far-overscan)) * 0.78) 70%, rgba(120, 112, 100, 0.035), transparent 70%), radial-gradient(ellipse 35vw 25vh at calc((100% - var(--bg-parallax-far-overscan)) * 0.92) 18%, rgba(120, 112, 100, 0.035), transparent 70%), radial-gradient(ellipse 70vw 60vh at calc((100% - var(--bg-parallax-far-overscan)) * 0.85) 0%, #fdfbf8, transparent 75%), #f6f3ed;
 }
 body::after {
-  background: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), transparent calc(var(--bg-arc-radius) - 9vw), rgba(255, 255, 255, 0.045) calc(var(--bg-arc-radius) - 1.8vw), transparent var(--bg-arc-radius)), radial-gradient(ellipse 55vw 40vh at 22% 72%, rgba(255, 255, 255, 0.055), transparent 70%), linear-gradient(64deg, transparent 18%, rgba(255, 255, 255, 0.03) 19.5%, transparent 21%), linear-gradient(58deg, transparent 34%, rgba(255, 255, 255, 0.02) 35%, transparent 36.5%), linear-gradient(72deg, transparent 46%, rgba(255, 255, 255, 0.03) 46.8%, transparent 47.8%), linear-gradient(155deg, rgb(30.75, 30.75, 30.75) 0%, #121212 55%, rgb(23.1, 23.1, 23.1) 100%);
+  right: calc(-1 * var(--bg-parallax-near-overscan));
+  transform: translate3d(var(--bg-parallax-near-shift), 0, 0);
+  background: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), transparent calc(var(--bg-arc-radius) - 9vw), rgba(255, 255, 255, 0.045) calc(var(--bg-arc-radius) - 1.8vw), transparent var(--bg-arc-radius)), radial-gradient(ellipse 55vw 40vh at calc((100% - var(--bg-parallax-near-overscan)) * 0.22) 72%, rgba(255, 255, 255, 0.055), transparent 70%), linear-gradient(64deg, transparent calc(18% - var(--bg-parallax-near-overscan) * 0.1617829283), rgba(255, 255, 255, 0.03) calc(19.5% - var(--bg-parallax-near-overscan) * 0.175264839), transparent calc(21% - var(--bg-parallax-near-overscan) * 0.1887467497)), linear-gradient(58deg, transparent calc(34% - var(--bg-parallax-near-overscan) * 0.2883363527), rgba(255, 255, 255, 0.02) calc(35% - var(--bg-parallax-near-overscan) * 0.2968168337), transparent calc(36.5% - var(--bg-parallax-near-overscan) * 0.3095375551)), linear-gradient(72deg, transparent calc(46% - var(--bg-parallax-near-overscan) * 0.4374859975), rgba(255, 255, 255, 0.03) calc(46.8% - var(--bg-parallax-near-overscan) * 0.4450944496), transparent calc(47.8% - var(--bg-parallax-near-overscan) * 0.4546050148)), linear-gradient(155deg, rgb(30.75, 30.75, 30.75) 0%, #121212 calc(55% - var(--bg-parallax-near-overscan) * 0.232440044), rgb(23.1, 23.1, 23.1) calc(100% - var(--bg-parallax-near-overscan) * 0.4226182617));
   -webkit-mask-image: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), #000000 calc(var(--bg-arc-radius) - 0.75px), transparent calc(var(--bg-arc-radius) + 0.75px));
   mask-image: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), #000000 calc(var(--bg-arc-radius) - 0.75px), transparent calc(var(--bg-arc-radius) + 0.75px));
+}
+
+body .background-arc-shadow {
+  position: fixed;
+  left: 0px;
+  top: 0px;
+  right: calc(-1 * var(--bg-parallax-near-overscan));
+  bottom: 0px;
+  z-index: -1;
+  pointer-events: none;
+  will-change: transform;
+  transform: translate3d(var(--bg-parallax-near-shift), 0, 0);
+  background: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), transparent calc(var(--bg-arc-radius) - 2px), rgba(40, 30, 18, 0.16) var(--bg-arc-radius), rgba(40, 30, 18, 0.05) calc(var(--bg-arc-radius) + 1.6vw * 0.55), transparent calc(var(--bg-arc-radius) + 1.6vw));
 }
 
 @media (orientation: portrait) {

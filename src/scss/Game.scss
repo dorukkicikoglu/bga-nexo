@@ -70,6 +70,21 @@ $bg-arc-portrait-center-y: 10vw;
 $bg-arc-mobile-radius: 320vh;
 $bg-arc-mobile-center-x: -295vh;
 $bg-arc-mobile-center-y: -30vh;
+//parallax (BackgroundHandler): scrolling down drifts the background to the left, and back as the page scrolls up; at the page's
+//top it is exactly where it would be without it. Two depths: the near layer (the black disc and its shadow) moves faster than the
+//far one (the marble surface and the red disc). Each moves ratio px per px scrolled, at most cap px. Under
+//$bg-parallax-mobile-breakpoint wide, the mobile values. Every layer reaches past the window's right edge by its cap plus
+//$bg-parallax-overscan-margin, so no edge ever shows. prefers-reduced-motion: no movement at all
+$bg-parallax-near-ratio: 0.042;
+$bg-parallax-near-cap: 90px;
+$bg-parallax-far-ratio: 0.0175;
+$bg-parallax-far-cap: 40px;
+$bg-parallax-mobile-breakpoint: 768px;
+$bg-parallax-mobile-near-ratio: 0.035;
+$bg-parallax-mobile-near-cap: 45px;
+$bg-parallax-mobile-far-ratio: 0.015;
+$bg-parallax-mobile-far-cap: 20px;
+$bg-parallax-overscan-margin: 2px; //against a hairline at the right edge from subpixel rounding
 //a red disc lying on the surface in the bottom-right corner (img/bg_red_disc.png, its shadow baked in), the top layer of the
 //surface (body::before). Its disc is $bg-red-disc-token-ratio times a board tower's disc wide, from the board's spot size on
 //screen (--board-cell-screen-size, BoardHandler.fitToViewport). Placed by its disc's centre, from the window's right and bottom
@@ -181,6 +196,35 @@ $log-snapshot-changed-fill: rgba($selected-spot-color, 0.22);
     --bg-log-towers-placed: #{$log-background-towers-placed};
     --bg-log-player-passed: #{$log-background-player-passed};
     --bg-log-game-end: #{$log-background-game-end};
+
+    //the background's parallax ($bg-parallax-*): BackgroundHandler reads the ratios and caps here and sets --nexo-parallax (the
+    //page's scroll offset, px, clamped where every layer has reached its cap). Each layer reaches past the window's right edge by
+    //its overscan and moves left by min(scroll * ratio, cap)
+    --bg-parallax-near-ratio: #{$bg-parallax-near-ratio};
+    --bg-parallax-near-cap: #{$bg-parallax-near-cap};
+    --bg-parallax-far-ratio: #{$bg-parallax-far-ratio};
+    --bg-parallax-far-cap: #{$bg-parallax-far-cap};
+    --bg-parallax-near-overscan: calc(var(--bg-parallax-near-cap) + #{$bg-parallax-overscan-margin});
+    --bg-parallax-far-overscan: calc(var(--bg-parallax-far-cap) + #{$bg-parallax-overscan-margin});
+    --bg-parallax-near-shift: calc(-1 * min(var(--nexo-parallax, 0px) * var(--bg-parallax-near-ratio), var(--bg-parallax-near-cap)));
+    --bg-parallax-far-shift: calc(-1 * min(var(--nexo-parallax, 0px) * var(--bg-parallax-far-ratio), var(--bg-parallax-far-cap)));
+}
+@media (max-width: #{$bg-parallax-mobile-breakpoint - 0.02px}){
+    :root{ --bg-parallax-near-ratio: #{$bg-parallax-mobile-near-ratio}; --bg-parallax-near-cap: #{$bg-parallax-mobile-near-cap};
+        --bg-parallax-far-ratio: #{$bg-parallax-mobile-far-ratio}; --bg-parallax-far-cap: #{$bg-parallax-mobile-far-cap}; }
+}
+@media (prefers-reduced-motion: reduce){
+    :root{ --bg-parallax-near-ratio: 0; --bg-parallax-far-ratio: 0; }
+}
+
+//the parallax's layers reach past the window's right edge by $overscan, which would move whatever they place in % of their own
+//box. These keep each gradient exactly where it was in a window-sized box: a position across (in % of the box's width) is taken
+//of the box less the overscan, and a linear-gradient's stop (in % of its gradient line, whose length grows by
+//overscan * sin(angle) for angles between 0deg and 180deg) loses that share of the overscan
+@function overscan-x($x, $overscan){ @return calc((100% - #{$overscan}) * #{math.div($x, 100%)}); }
+@function overscan-stop($stop, $angle, $overscan){
+    @if $stop == 0% { @return 0%; }
+    @return calc(#{$stop} - #{$overscan} * #{math.div($stop, 100%) * math.sin($angle)});
 }
 
 //mobile: BGA lays the game out at least 740px wide and scales it down to the phone, so the board needs a large
@@ -191,8 +235,10 @@ $log-snapshot-changed-fill: rgba($selected-spot-color, 0.22);
 //height. This stylesheet only loads on Nexo's pages, so styling body here affects no other page. isolation: body is its own
 //stacking context, so the z-index -1 layers paint over body's own background (and over BGA's on html) and under all of the
 //page. It sets no containing block, so position: fixed elements are unaffected. body keeps only the fallback color.
-//::before is the surface (marble, plus the disc's shadow as a ring just outside the disc's edge), ::after the disc: a layer as
-//big as the window, cut to the circle by a radial-gradient mask with a 1px soft edge (a crisp curve without jagged pixels)
+//::before is the surface (marble and the red disc), ::after the disc: a layer as big as the window, cut to the circle by a
+//radial-gradient mask with a 1px soft edge (a crisp curve without jagged pixels); the disc's shadow is a third layer between
+//them (.background-arc-shadow). All three drift left as the page scrolls ($bg-parallax-*), each reaching past the window's right
+//edge by its overscan
 body{ background: $bg-surface-color; isolation: isolate;
     --bg-arc-radius: #{$bg-arc-radius}; --bg-arc-center-x: #{$bg-arc-center-x}; --bg-arc-center-y: #{$bg-arc-center-y};
     --bg-arc-center: var(--bg-arc-center-x) calc(100% + var(--bg-arc-center-y));
@@ -214,36 +260,44 @@ body{ background: $bg-surface-color; isolation: isolate;
     --bg-red-disc-width: min(var(--bg-red-disc-fit-width), max(0px, (var(--bg-red-disc-fit-width) - #{math.div($bg-red-disc-min-width, $bg-red-disc-disc-share)}) * 1000));
     --bg-red-disc-height: calc(var(--bg-red-disc-width) * #{$bg-red-disc-image-ratio});
     --bg-red-disc-bottom: max(#{$bg-red-disc-bottom}, #{$bg-red-disc-chatbar-clearance} + var(--bg-red-disc-height) * #{$bg-red-disc-half-height-share});
-    --bg-red-disc-position: right calc(var(--bg-red-disc-right) - var(--bg-red-disc-width) * #{1 - $bg-red-disc-center-x-share})
+    --bg-red-disc-position: right calc(var(--bg-parallax-far-overscan) + var(--bg-red-disc-right) - var(--bg-red-disc-width) * #{1 - $bg-red-disc-center-x-share})
         bottom calc(var(--bg-red-disc-bottom) - var(--bg-red-disc-height) * #{1 - $bg-red-disc-center-y-share});
     &.mobile_version{ --bg-red-disc-right: #{$bg-red-disc-mobile-right}; --bg-red-disc-width: var(--bg-red-disc-wanted-width);
         --bg-red-disc-bottom: max(#{$bg-red-disc-mobile-min-bottom}, var(--board-bottom-gap, 0px) / 2); }
-    &::before, &::after{ content: ""; position: fixed; left: 0px; top: 0px; right: 0px; bottom: 0px; z-index: -1; pointer-events: none; }
-    &::before{
+    &::before, &::after{ content: ""; position: fixed; left: 0px; top: 0px; bottom: 0px; z-index: -1; pointer-events: none; will-change: transform; }
+    //the far layer: the surface, and the red disc lying on it
+    &::before{ right: calc(-1 * var(--bg-parallax-far-overscan)); transform: translate3d(var(--bg-parallax-far-shift), 0, 0);
         background:
             $bg-red-disc-image var(--bg-red-disc-position) / var(--bg-red-disc-width) var(--bg-red-disc-height) no-repeat,
-            radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), transparent calc(var(--bg-arc-radius) - 2px), $bg-disc-shadow-color var(--bg-arc-radius),
-                rgba($bg-disc-shadow-color, 0.05) calc(var(--bg-arc-radius) + #{$bg-disc-shadow-width} * 0.55), transparent calc(var(--bg-arc-radius) + #{$bg-disc-shadow-width})),
-            linear-gradient(113deg, transparent 62%, $bg-surface-vein-color 62.35%, transparent 62.8%),
-            linear-gradient(109deg, transparent 63.2%, rgba($bg-surface-vein-color, 0.03) 63.9%, transparent 64.8%),
-            linear-gradient(104deg, transparent 75.2%, rgba($bg-surface-vein-color, 0.035) 75.5%, transparent 75.9%),
-            linear-gradient(121deg, transparent 85%, $bg-surface-vein-color 85.25%, transparent 85.6%),
-            radial-gradient(ellipse 45vw 30vh at 78% 70%, $bg-surface-cloud-color, transparent 70%),
-            radial-gradient(ellipse 35vw 25vh at 92% 18%, $bg-surface-cloud-color, transparent 70%),
-            radial-gradient(ellipse 70vw 60vh at 85% 0%, $bg-surface-light, transparent 75%),
+            linear-gradient(113deg, transparent overscan-stop(62%, 113deg, var(--bg-parallax-far-overscan)), $bg-surface-vein-color overscan-stop(62.35%, 113deg, var(--bg-parallax-far-overscan)), transparent overscan-stop(62.8%, 113deg, var(--bg-parallax-far-overscan))),
+            linear-gradient(109deg, transparent overscan-stop(63.2%, 109deg, var(--bg-parallax-far-overscan)), rgba($bg-surface-vein-color, 0.03) overscan-stop(63.9%, 109deg, var(--bg-parallax-far-overscan)), transparent overscan-stop(64.8%, 109deg, var(--bg-parallax-far-overscan))),
+            linear-gradient(104deg, transparent overscan-stop(75.2%, 104deg, var(--bg-parallax-far-overscan)), rgba($bg-surface-vein-color, 0.035) overscan-stop(75.5%, 104deg, var(--bg-parallax-far-overscan)), transparent overscan-stop(75.9%, 104deg, var(--bg-parallax-far-overscan))),
+            linear-gradient(121deg, transparent overscan-stop(85%, 121deg, var(--bg-parallax-far-overscan)), $bg-surface-vein-color overscan-stop(85.25%, 121deg, var(--bg-parallax-far-overscan)), transparent overscan-stop(85.6%, 121deg, var(--bg-parallax-far-overscan))),
+            radial-gradient(ellipse 45vw 30vh at overscan-x(78%, var(--bg-parallax-far-overscan)) 70%, $bg-surface-cloud-color, transparent 70%),
+            radial-gradient(ellipse 35vw 25vh at overscan-x(92%, var(--bg-parallax-far-overscan)) 18%, $bg-surface-cloud-color, transparent 70%),
+            radial-gradient(ellipse 70vw 60vh at overscan-x(85%, var(--bg-parallax-far-overscan)) 0%, $bg-surface-light, transparent 75%),
             $bg-surface-color;
     }
-    &::after{
+    //the near layer: the black disc
+    &::after{ right: calc(-1 * var(--bg-parallax-near-overscan)); transform: translate3d(var(--bg-parallax-near-shift), 0, 0);
         background:
             radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), transparent calc(var(--bg-arc-radius) - 9vw), $bg-disc-rim-color calc(var(--bg-arc-radius) - 1.8vw), transparent var(--bg-arc-radius)),
-            radial-gradient(ellipse 55vw 40vh at 22% 72%, $bg-disc-sheen-color, transparent 70%),
-            linear-gradient(64deg, transparent 18%, $bg-disc-vein-color 19.5%, transparent 21%),
-            linear-gradient(58deg, transparent 34%, rgba($bg-disc-vein-color, 0.02) 35%, transparent 36.5%),
-            linear-gradient(72deg, transparent 46%, $bg-disc-vein-color 46.8%, transparent 47.8%),
-            linear-gradient(155deg, color.adjust($bg-disc-color, $lightness: 5%) 0%, $bg-disc-color 55%, color.adjust($bg-disc-color, $lightness: 2%) 100%);
+            radial-gradient(ellipse 55vw 40vh at overscan-x(22%, var(--bg-parallax-near-overscan)) 72%, $bg-disc-sheen-color, transparent 70%),
+            linear-gradient(64deg, transparent overscan-stop(18%, 64deg, var(--bg-parallax-near-overscan)), $bg-disc-vein-color overscan-stop(19.5%, 64deg, var(--bg-parallax-near-overscan)), transparent overscan-stop(21%, 64deg, var(--bg-parallax-near-overscan))),
+            linear-gradient(58deg, transparent overscan-stop(34%, 58deg, var(--bg-parallax-near-overscan)), rgba($bg-disc-vein-color, 0.02) overscan-stop(35%, 58deg, var(--bg-parallax-near-overscan)), transparent overscan-stop(36.5%, 58deg, var(--bg-parallax-near-overscan))),
+            linear-gradient(72deg, transparent overscan-stop(46%, 72deg, var(--bg-parallax-near-overscan)), $bg-disc-vein-color overscan-stop(46.8%, 72deg, var(--bg-parallax-near-overscan)), transparent overscan-stop(47.8%, 72deg, var(--bg-parallax-near-overscan))),
+            linear-gradient(155deg, color.adjust($bg-disc-color, $lightness: 5%) 0%, $bg-disc-color overscan-stop(55%, 155deg, var(--bg-parallax-near-overscan)), color.adjust($bg-disc-color, $lightness: 2%) overscan-stop(100%, 155deg, var(--bg-parallax-near-overscan)));
         -webkit-mask-image: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), #000000 calc(var(--bg-arc-radius) - 0.75px), transparent calc(var(--bg-arc-radius) + 0.75px));
         mask-image: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), #000000 calc(var(--bg-arc-radius) - 0.75px), transparent calc(var(--bg-arc-radius) + 0.75px));
     }
+}
+//the black disc's soft shadow on the surface, a ring just outside its edge: its own layer between the two above (BackgroundHandler
+//puts it first in <body>, so it paints after body::before and before body::after), so it moves with the disc, not the surface.
+//The disc's mask would cut it off if it were on body::after
+body .background-arc-shadow{ position: fixed; left: 0px; top: 0px; right: calc(-1 * var(--bg-parallax-near-overscan)); bottom: 0px; z-index: -1; pointer-events: none;
+    will-change: transform; transform: translate3d(var(--bg-parallax-near-shift), 0, 0);
+    background: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), transparent calc(var(--bg-arc-radius) - 2px), $bg-disc-shadow-color var(--bg-arc-radius),
+        rgba($bg-disc-shadow-color, 0.05) calc(var(--bg-arc-radius) + #{$bg-disc-shadow-width} * 0.55), transparent calc(var(--bg-arc-radius) + #{$bg-disc-shadow-width}));
 }
 @media (orientation: portrait){
     body{ --bg-arc-radius: #{$bg-arc-portrait-radius}; --bg-arc-center-x: #{$bg-arc-portrait-center-x}; --bg-arc-center-y: #{$bg-arc-portrait-center-y}; }

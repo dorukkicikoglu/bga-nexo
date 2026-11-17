@@ -18,6 +18,7 @@ import { LogMutationObserver } from "./LogMutationObserver";
 import { TooltipHandler } from "./TooltipHandler";
 import { EndGameScoringHandler } from "./EndGameScoringHandler";
 import { PrefHandler } from "./PrefHandler";
+import { BackgroundHandler } from "./BackgroundHandler";
 
 //optional settings of Game.animateTowerSlide / animateTowerSlideAway
 export type SlideOptions = {
@@ -53,6 +54,7 @@ export class Game {
     public logMutationObserver: LogMutationObserver;
     public tooltipHandler: TooltipHandler;
     public prefHandler: PrefHandler;
+    public backgroundHandler: BackgroundHandler;
     private endGameScoringHandler: EndGameScoringHandler;
 
     constructor(bga: Bga<NexoPlayer, NexoGamedatas>) {
@@ -89,6 +91,7 @@ export class Game {
             </div>
         `);
 
+        this.backgroundHandler = BackgroundHandler.getInstance();
         this.myPlayerID = this.bga.players.getCurrentPlayerId();
         this.boardRules = new BoardRules(gamedatas.rules);
         this.endGameScoringHandler = new EndGameScoringHandler(this);
