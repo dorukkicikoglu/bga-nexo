@@ -331,3 +331,17 @@ Deploy `modules/` only; an ongoing table is fine (F5).
 - [ ] The opponent's turn (as the passive player and as a spectator) and a replay: the board re-centres once their towers have landed, with the same short slide. Fast replay: no slide, the board just ends centred.
 - [ ] Phone (375px) and desktop: nothing outside the board moves during the draft.
 - [ ] No errors in the browser console.
+
+## After M1: placeholders stay until their discs land
+
+Deploy `modules/` only; an ongoing table is fine (F5).
+
+- [ ] Your turn, one 1-disc tower: confirm: the semi-transparent placeholder stays on its spot while the disc flies in, and the solid disc replaces it as it lands, with no gap or flicker.
+- [ ] One 3-disc tower: the placeholder's bottom disc turns solid as the first disc lands, then the second, then the top one; the placeholder's upper discs still show over the solid ones below until their own disc lands.
+- [ ] "Show stack heights" Enabled: the number stays on the placeholder's top face until the top disc lands, then the solid tower's number takes its place; it never shows a wrong height in between.
+- [ ] Several towers (a 2 and a 1, also 4 towers of 1): each placeholder stays until its own spot's discs land; later spots' placeholders wait in place until their turn.
+- [ ] A replacement: the enemy tower flies back to its owner's stacks at once while your placeholder stays on the spot until your discs land.
+- [ ] Undo and cycling past the highest still remove a drafted tower at once.
+- [ ] Instantaneous mode (or a hidden tab when the turn confirms): no placeholder left on the board after the turn.
+- [ ] The opponent and spectators: unchanged (they never had placeholders).
+- [ ] No errors in the browser console.

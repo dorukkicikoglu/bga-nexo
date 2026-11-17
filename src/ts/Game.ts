@@ -171,10 +171,13 @@ export class Game {
     //lands at the tower's own size and place, so nothing jumps at the end. Each disc shows in the tower as it lands, the height
     //number with the top one. Everything is measured on screen (getBoundingClientRect), and the copies (in <body>, outside
     //BGA's mobile scaling of the game area) convert screen px with their measured zoom, so they match on desktop and mobile
-    //alike. Resolves once the top disc has landed. Everything before the first await runs synchronously
-    public async animateTowerSlide(towerElement: HTMLDivElement, fromDiscRects: DOMRect[], fallbackFromRect: DOMRect, durationMs: number, staggerMs: number = Game.TOWER_DISC_STAGGER, options: SlideOptions = {}): Promise<void> {
+    //alike. A placeholder (the drafted tower on the same spot, in front of it) hides its disc i, and with the top one its height
+    //number, as disc i lands, so the solid disc takes its place in the same frame. Resolves once the top disc has landed.
+    //Everything before the first await runs synchronously
+    public async animateTowerSlide(towerElement: HTMLDivElement, fromDiscRects: DOMRect[], fallbackFromRect: DOMRect, durationMs: number, staggerMs: number = Game.TOWER_DISC_STAGGER, options: SlideOptions = {}, placeholder: HTMLDivElement | null = null): Promise<void> {
         const toRect = towerElement.getBoundingClientRect();
         const discParts = Game.getTowerDiscParts(towerElement);
+        const placeholderParts = placeholder ? Game.getTowerDiscParts(placeholder) : [];
         const slidingClones = discParts.map((_, discIndex) => this.createDiscSlidingClone(towerElement, discIndex)); //before the tower's own discs are hidden
         const startRects = slidingClones.map((slidingClone, discIndex) => fromDiscRects[discIndex] ? this.getCloneRectOverDisc(slidingClone, discIndex, fromDiscRects[discIndex]) : fallbackFromRect);
 
@@ -183,6 +186,7 @@ export class Game {
         await Promise.all(slidingClones.map(async (slidingClone, discIndex) => {
             await this.moveSlidingClone(slidingClone, startRects[discIndex], toRect, durationMs, { ...options, delayMs: (options.delayMs ?? 0) + discIndex * staggerMs });
             discParts[discIndex].forEach(element => element.style.visibility = null);
+            placeholderParts[discIndex]?.forEach(element => element.style.visibility = 'hidden');
         }));
     }
 

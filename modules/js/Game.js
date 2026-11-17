@@ -889,16 +889,21 @@ class BoardHandler {
             }
             replacedElement.remove();
         }
-        //a tower I drafted waited here as a placeholder until its spot's turn: from now on it plays like anyone else's
-        draftedElements.get(key)?.remove();
+        //a tower I drafted waited here as a placeholder until its spot's turn: it stays while its discs fly in, each of its discs
+        //hiding as the real one lands on it, and goes once the top one has landed
+        const placeholder = draftedElements.get(key) ?? null;
         draftedElements.delete(key);
         const towerElement = this.addBoardTower({ x: placement.x, y: placement.y, player_id: playerID, height: placement.height });
+        if (placeholder)
+            this.towersLayer.appendChild(placeholder); //in front of the new tower: its upper discs still sit over the discs landed under them
         //the new tower's discs leave the player's stacks, bottom disc first: the first disc taken is the bottom one's. The same
         //flight for every viewer, the player who drafted it included
         const mover = this.game.players[playerID];
         const takenDiscRects = mover?.takeDiscs(placement.height) ?? [];
         if (animate && mover)
-            flights.push(this.game.animateTowerSlide(towerElement, takenDiscRects, mover.getReserveRect(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }));
+            flights.push(this.game.animateTowerSlide(towerElement, takenDiscRects, mover.getReserveRect(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }, placeholder).finally(() => placeholder?.remove()));
+        else
+            placeholder?.remove(); //nothing flies: the tower is already whole
         return flights;
     }
     //end of the game: each player's largest group(s) glow in their color, every other tower dims
@@ -1267,16 +1272,20 @@ class Game {
     //lands at the tower's own size and place, so nothing jumps at the end. Each disc shows in the tower as it lands, the height
     //number with the top one. Everything is measured on screen (getBoundingClientRect), and the copies (in <body>, outside
     //BGA's mobile scaling of the game area) convert screen px with their measured zoom, so they match on desktop and mobile
-    //alike. Resolves once the top disc has landed. Everything before the first await runs synchronously
-    async animateTowerSlide(towerElement, fromDiscRects, fallbackFromRect, durationMs, staggerMs = Game.TOWER_DISC_STAGGER, options = {}) {
+    //alike. A placeholder (the drafted tower on the same spot, in front of it) hides its disc i, and with the top one its height
+    //number, as disc i lands, so the solid disc takes its place in the same frame. Resolves once the top disc has landed.
+    //Everything before the first await runs synchronously
+    async animateTowerSlide(towerElement, fromDiscRects, fallbackFromRect, durationMs, staggerMs = Game.TOWER_DISC_STAGGER, options = {}, placeholder = null) {
         const toRect = towerElement.getBoundingClientRect();
         const discParts = Game.getTowerDiscParts(towerElement);
+        const placeholderParts = placeholder ? Game.getTowerDiscParts(placeholder) : [];
         const slidingClones = discParts.map((_, discIndex) => this.createDiscSlidingClone(towerElement, discIndex)); //before the tower's own discs are hidden
         const startRects = slidingClones.map((slidingClone, discIndex) => fromDiscRects[discIndex] ? this.getCloneRectOverDisc(slidingClone, discIndex, fromDiscRects[discIndex]) : fallbackFromRect);
         discParts.forEach(part => part.forEach(element => element.style.visibility = 'hidden'));
         await Promise.all(slidingClones.map(async (slidingClone, discIndex) => {
             await this.moveSlidingClone(slidingClone, startRects[discIndex], toRect, durationMs, { ...options, delayMs: (options.delayMs ?? 0) + discIndex * staggerMs });
             discParts[discIndex].forEach(element => element.style.visibility = null);
+            placeholderParts[discIndex]?.forEach(element => element.style.visibility = 'hidden');
         }));
     }
     //the other way round: a tower flies from its spot back to its owner's reserve stacks and disappears, one disc at a time: top

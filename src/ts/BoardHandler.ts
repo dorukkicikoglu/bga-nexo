@@ -474,18 +474,22 @@ export class BoardHandler {
             replacedElement.remove();
         }
 
-        //a tower I drafted waited here as a placeholder until its spot's turn: from now on it plays like anyone else's
-        draftedElements.get(key)?.remove();
+        //a tower I drafted waited here as a placeholder until its spot's turn: it stays while its discs fly in, each of its discs
+        //hiding as the real one lands on it, and goes once the top one has landed
+        const placeholder = draftedElements.get(key) ?? null;
         draftedElements.delete(key);
 
         const towerElement = this.addBoardTower({ x: placement.x, y: placement.y, player_id: playerID, height: placement.height });
+        if(placeholder)
+            this.towersLayer.appendChild(placeholder); //in front of the new tower: its upper discs still sit over the discs landed under them
 
         //the new tower's discs leave the player's stacks, bottom disc first: the first disc taken is the bottom one's. The same
         //flight for every viewer, the player who drafted it included
         const mover = this.game.players[playerID];
         const takenDiscRects = mover?.takeDiscs(placement.height) ?? [];
         if(animate && mover)
-            flights.push(this.game.animateTowerSlide(towerElement, takenDiscRects, mover.getReserveRect(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }));
+            flights.push(this.game.animateTowerSlide(towerElement, takenDiscRects, mover.getReserveRect(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }, placeholder).finally(() => placeholder?.remove()));
+        else placeholder?.remove(); //nothing flies: the tower is already whole
         return flights;
     }
 
