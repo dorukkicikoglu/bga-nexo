@@ -387,11 +387,36 @@ class BoardHandler {
         const borders = this.boardElement.offsetWidth - this.boardElement.clientWidth; //the board's own border, both sides
         const maxHeight = (window.innerHeight - boardTop - Game.BOARD_VIEWPORT_MARGIN) / zoom - borders;
         const maxWidth = containerWidth - borders;
-        const cellSize = Math.max(Game.MIN_BOARD_CELL_SIZE, Math.floor(Math.min(maxHeight, maxWidth) / this.boardSize)) + 'px';
-        if (this.boardElement.style.getPropertyValue('--cell-size') === cellSize)
-            return;
-        this.boardElement.style.setProperty('--cell-size', cellSize);
-        this.game.heightMenu?.reposition(); //an open height menu follows its spot
+        const cellSize = Math.max(Game.MIN_BOARD_CELL_SIZE, Math.floor(Math.min(maxHeight, maxWidth) / this.boardSize));
+        if (this.boardElement.style.getPropertyValue('--cell-size') !== cellSize + 'px') {
+            this.boardElement.style.setProperty('--cell-size', cellSize + 'px');
+            this.game.heightMenu?.reposition(); //an open height menu follows its spot
+        }
+        this.measureForBackgroundDisc(cellSize * zoom);
+    }
+    /**
+     * The page background's red disc ($bg-red-disc-* in Game.scss) lives in body::before, which can't read the board's
+     * --cell-size: hand it, on body, the board's spot size on screen and where the board and the player boards are, from the
+     * window's right edge (the player boards only when beside the board) and its bottom edge (page at its top). Game.scss
+     * decides the disc's size and place from these. Set only when they change
+     */
+    measureForBackgroundDisc(cellScreenSize) {
+        const viewport = document.documentElement;
+        const boardRect = this.boardElement.getBoundingClientRect();
+        const panelsRect = document.getElementById('player_boards')?.getBoundingClientRect();
+        const panelsBeside = !!panelsRect && panelsRect.width > 0 && panelsRect.left >= boardRect.right;
+        const values = {
+            '--board-cell-screen-size': cellScreenSize,
+            '--board-right-gap': viewport.clientWidth - boardRect.right,
+            '--panels-right-gap': panelsBeside ? viewport.clientWidth - panelsRect.left : 0,
+            '--panels-bottom-gap': panelsBeside ? viewport.clientHeight - (panelsRect.bottom + window.scrollY) : 0,
+            '--board-bottom-gap': viewport.clientHeight - (boardRect.bottom + window.scrollY),
+        };
+        for (const [name, value] of Object.entries(values)) {
+            const px = Math.round(value) + 'px';
+            if (document.body.style.getPropertyValue(name) !== px)
+                document.body.style.setProperty(name, px);
+        }
     }
     //a tower of height discs in discColor: one .tower-disc per disc, bottom one first, and its height as a number on top. Also
     //used for log rows, the player boards' reserve and the height menu, each sized by its own --cell-size

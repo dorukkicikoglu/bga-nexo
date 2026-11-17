@@ -27,6 +27,24 @@ body {
   --bg-arc-center-x: -90vw;
   --bg-arc-center-y: 5vw;
   --bg-arc-center: var(--bg-arc-center-x) calc(100% + var(--bg-arc-center-y));
+  --bg-red-disc-right: 16vw;
+  --bg-red-disc-wanted-width: calc(var(--board-cell-screen-size, clamp(160px, 16vw, 320px) * 0.3707893414) * 2.6969491525);
+  --bg-red-disc-wanted-half-height: calc(var(--bg-red-disc-wanted-width) * 0.1490196078);
+  --bg-red-disc-wanted-top: calc(max(16vh, 48px + var(--bg-red-disc-wanted-half-height)) + var(--bg-red-disc-wanted-half-height));
+  --bg-red-disc-board-room: calc(var(--board-right-gap, 100vw) - var(--bg-red-disc-right) - 16px);
+  --bg-red-disc-panels-room: calc(var(--bg-red-disc-right) - var(--panels-right-gap, 0px) - 16px
+      + max(0px, var(--panels-bottom-gap, 0px) - var(--bg-red-disc-wanted-top) - 16px) * 1000);
+  --bg-red-disc-fit-width: min(var(--bg-red-disc-wanted-width), 2 * min(var(--bg-red-disc-board-room), var(--bg-red-disc-panels-room)) / 0.462745098);
+  --bg-red-disc-width: min(var(--bg-red-disc-fit-width), max(0px, (var(--bg-red-disc-fit-width) - 103.7288135593px) * 1000));
+  --bg-red-disc-height: calc(var(--bg-red-disc-width) * 0.3490196078);
+  --bg-red-disc-bottom: max(16vh, 48px + var(--bg-red-disc-height) * 0.4269662921);
+  --bg-red-disc-position: right calc(var(--bg-red-disc-right) - var(--bg-red-disc-width) * 0.7235294118)
+      bottom calc(var(--bg-red-disc-bottom) - var(--bg-red-disc-height) * 0.4606741573);
+}
+body.mobile_version {
+  --bg-red-disc-right: 12vw;
+  --bg-red-disc-width: var(--bg-red-disc-wanted-width);
+  --bg-red-disc-bottom: max(7vh, var(--board-bottom-gap, 0px) / 2);
 }
 body::before, body::after {
   content: "";
@@ -39,7 +57,7 @@ body::before, body::after {
   pointer-events: none;
 }
 body::before {
-  background: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), transparent calc(var(--bg-arc-radius) - 2px), rgba(40, 30, 18, 0.16) var(--bg-arc-radius), rgba(40, 30, 18, 0.05) calc(var(--bg-arc-radius) + 1.6vw * 0.55), transparent calc(var(--bg-arc-radius) + 1.6vw)), linear-gradient(113deg, transparent 62%, rgba(110, 104, 94, 0.06) 62.35%, transparent 62.8%), linear-gradient(109deg, transparent 63.2%, rgba(110, 104, 94, 0.03) 63.9%, transparent 64.8%), linear-gradient(104deg, transparent 75.2%, rgba(110, 104, 94, 0.035) 75.5%, transparent 75.9%), linear-gradient(121deg, transparent 85%, rgba(110, 104, 94, 0.06) 85.25%, transparent 85.6%), radial-gradient(ellipse 45vw 30vh at 78% 70%, rgba(120, 112, 100, 0.035), transparent 70%), radial-gradient(ellipse 35vw 25vh at 92% 18%, rgba(120, 112, 100, 0.035), transparent 70%), radial-gradient(ellipse 70vw 60vh at 85% 0%, #fdfbf8, transparent 75%), #f6f3ed;
+  background: url(img/bg_red_disc.png) var(--bg-red-disc-position)/var(--bg-red-disc-width) var(--bg-red-disc-height) no-repeat, radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), transparent calc(var(--bg-arc-radius) - 2px), rgba(40, 30, 18, 0.16) var(--bg-arc-radius), rgba(40, 30, 18, 0.05) calc(var(--bg-arc-radius) + 1.6vw * 0.55), transparent calc(var(--bg-arc-radius) + 1.6vw)), linear-gradient(113deg, transparent 62%, rgba(110, 104, 94, 0.06) 62.35%, transparent 62.8%), linear-gradient(109deg, transparent 63.2%, rgba(110, 104, 94, 0.03) 63.9%, transparent 64.8%), linear-gradient(104deg, transparent 75.2%, rgba(110, 104, 94, 0.035) 75.5%, transparent 75.9%), linear-gradient(121deg, transparent 85%, rgba(110, 104, 94, 0.06) 85.25%, transparent 85.6%), radial-gradient(ellipse 45vw 30vh at 78% 70%, rgba(120, 112, 100, 0.035), transparent 70%), radial-gradient(ellipse 35vw 25vh at 92% 18%, rgba(120, 112, 100, 0.035), transparent 70%), radial-gradient(ellipse 70vw 60vh at 85% 0%, #fdfbf8, transparent 75%), #f6f3ed;
 }
 body::after {
   background: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), transparent calc(var(--bg-arc-radius) - 9vw), rgba(255, 255, 255, 0.045) calc(var(--bg-arc-radius) - 1.8vw), transparent var(--bg-arc-radius)), radial-gradient(ellipse 55vw 40vh at 22% 72%, rgba(255, 255, 255, 0.055), transparent 70%), linear-gradient(64deg, transparent 18%, rgba(255, 255, 255, 0.03) 19.5%, transparent 21%), linear-gradient(58deg, transparent 34%, rgba(255, 255, 255, 0.02) 35%, transparent 36.5%), linear-gradient(72deg, transparent 46%, rgba(255, 255, 255, 0.03) 46.8%, transparent 47.8%), linear-gradient(155deg, rgb(30.75, 30.75, 30.75) 0%, #121212 55%, rgb(23.1, 23.1, 23.1) 100%);
@@ -692,3 +710,5 @@ body .passed-banner.passed-banner-flying .passed-banner-name {
 .dijitTooltipLeft, .dijitTooltipRight {
   max-width: calc(100vw - 30px);
 }
+
+/*# sourceMappingURL=nexo.css.map */

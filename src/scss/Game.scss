@@ -61,6 +61,28 @@ $bg-arc-center-y: 5vw; //below the window's bottom edge
 $bg-arc-portrait-radius: 150vw;
 $bg-arc-portrait-center-x: -105vw;
 $bg-arc-portrait-center-y: 10vw;
+//a red disc lying on the surface in the bottom-right corner (img/bg_red_disc.png, its shadow baked in), the top layer of the
+//surface (body::before). Its disc is $bg-red-disc-token-ratio times a board tower's disc wide, from the board's spot size on
+//screen (--board-cell-screen-size, BoardHandler.fitToViewport). Placed by its disc's centre, from the window's right and bottom
+//edges. On desktop it shrinks to keep clear of the board and the player boards, and hides below $bg-red-disc-min-width
+$bg-red-disc-image: url(img/bg_red_disc.png);
+$bg-red-disc-token-ratio: 1.6; //the disc's width, in tower discs on the board
+$bg-red-disc-right: 16vw; //from the window's right edge to the disc's centre (83% across)
+$bg-red-disc-bottom: 16vh; //from the window's bottom edge to the disc's centre (84% down)
+$bg-red-disc-chatbar-clearance: 48px; //the disc's bottom edge stays at least this far above the window's bottom (BGA's chat bar)
+$bg-red-disc-clearance: 16px; //the gap kept between the disc and the board, and the disc and the player boards
+$bg-red-disc-min-width: 48px; //narrower than this, the disc hides
+$bg-red-disc-fallback-width: clamp(160px, 16vw, 320px); //the whole image's width until the board has measured itself
+//mobile (body.mobile_version): never shrunk nor hidden. Its centre sits in the middle of the free space under the board (page at
+//its top), at least $bg-red-disc-mobile-min-bottom up; a smaller $bg-red-disc-mobile-right crops it off the right edge
+$bg-red-disc-mobile-right: 12vw;
+$bg-red-disc-mobile-min-bottom: 7vh;
+//the image's geometry (255 x 89 px): the disc's width, its centre and its half height, as shares of the image (the shadow is the rest)
+$bg-red-disc-image-ratio: math.div(89, 255); //height / width
+$bg-red-disc-disc-share: math.div(118, 255);
+$bg-red-disc-center-x-share: math.div(70.5, 255);
+$bg-red-disc-center-y-share: math.div(48, 89);
+$bg-red-disc-half-height-share: math.div(38, 89); //from the disc's centre to its top or bottom edge (y 10 to 86)
 
 //the material set: the board, the player boards and the log rows in the page background's palette, a white marble a little
 //lighter than the surface, charcoal for lines and dots (the black discs' tone) and the game's red
@@ -127,9 +149,32 @@ $log-snapshot-changed-fill: rgba($selected-spot-color, 0.22);
 body{ background: $bg-surface-color; isolation: isolate;
     --bg-arc-radius: #{$bg-arc-radius}; --bg-arc-center-x: #{$bg-arc-center-x}; --bg-arc-center-y: #{$bg-arc-center-y};
     --bg-arc-center: var(--bg-arc-center-x) calc(100% + var(--bg-arc-center-y));
+    //the red disc (see $bg-red-disc-*), from what BoardHandler.fitToViewport measures: --board-cell-screen-size, and from the
+    //window's right edge to the board's right edge (--board-right-gap) and to the player boards' left edge (--panels-right-gap, 0
+    //when they are not beside the board), and from its bottom edge to the player boards' bottom (--panels-bottom-gap, page at its
+    //top). The board always blocks the disc's left side. The player boards block its right side only when they reach down to the
+    //disc (checked at its wanted size: below them is the log, which may cover it); otherwise the max(0px, ...) * 1000 term makes
+    //that room endless. The disc takes the widest size that keeps $bg-red-disc-clearance from both; under the minimum, the last
+    //max(0px, ...) * 1000 step gives 0: hidden
+    --bg-red-disc-right: #{$bg-red-disc-right};
+    --bg-red-disc-wanted-width: calc(var(--board-cell-screen-size, #{$bg-red-disc-fallback-width} * #{math.div($bg-red-disc-disc-share, $disc-width-ratio * $bg-red-disc-token-ratio)}) * #{math.div($disc-width-ratio * $bg-red-disc-token-ratio, $bg-red-disc-disc-share)});
+    --bg-red-disc-wanted-half-height: calc(var(--bg-red-disc-wanted-width) * #{$bg-red-disc-image-ratio * $bg-red-disc-half-height-share});
+    --bg-red-disc-wanted-top: calc(max(#{$bg-red-disc-bottom}, #{$bg-red-disc-chatbar-clearance} + var(--bg-red-disc-wanted-half-height)) + var(--bg-red-disc-wanted-half-height));
+    --bg-red-disc-board-room: calc(var(--board-right-gap, 100vw) - var(--bg-red-disc-right) - #{$bg-red-disc-clearance});
+    --bg-red-disc-panels-room: calc(var(--bg-red-disc-right) - var(--panels-right-gap, 0px) - #{$bg-red-disc-clearance}
+        + max(0px, var(--panels-bottom-gap, 0px) - var(--bg-red-disc-wanted-top) - #{$bg-red-disc-clearance}) * 1000);
+    --bg-red-disc-fit-width: min(var(--bg-red-disc-wanted-width), 2 * min(var(--bg-red-disc-board-room), var(--bg-red-disc-panels-room)) / #{$bg-red-disc-disc-share});
+    --bg-red-disc-width: min(var(--bg-red-disc-fit-width), max(0px, (var(--bg-red-disc-fit-width) - #{math.div($bg-red-disc-min-width, $bg-red-disc-disc-share)}) * 1000));
+    --bg-red-disc-height: calc(var(--bg-red-disc-width) * #{$bg-red-disc-image-ratio});
+    --bg-red-disc-bottom: max(#{$bg-red-disc-bottom}, #{$bg-red-disc-chatbar-clearance} + var(--bg-red-disc-height) * #{$bg-red-disc-half-height-share});
+    --bg-red-disc-position: right calc(var(--bg-red-disc-right) - var(--bg-red-disc-width) * #{1 - $bg-red-disc-center-x-share})
+        bottom calc(var(--bg-red-disc-bottom) - var(--bg-red-disc-height) * #{1 - $bg-red-disc-center-y-share});
+    &.mobile_version{ --bg-red-disc-right: #{$bg-red-disc-mobile-right}; --bg-red-disc-width: var(--bg-red-disc-wanted-width);
+        --bg-red-disc-bottom: max(#{$bg-red-disc-mobile-min-bottom}, var(--board-bottom-gap, 0px) / 2); }
     &::before, &::after{ content: ""; position: fixed; left: 0px; top: 0px; right: 0px; bottom: 0px; z-index: -1; pointer-events: none; }
     &::before{
         background:
+            $bg-red-disc-image var(--bg-red-disc-position) / var(--bg-red-disc-width) var(--bg-red-disc-height) no-repeat,
             radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), transparent calc(var(--bg-arc-radius) - 2px), $bg-disc-shadow-color var(--bg-arc-radius),
                 rgba($bg-disc-shadow-color, 0.05) calc(var(--bg-arc-radius) + #{$bg-disc-shadow-width} * 0.55), transparent calc(var(--bg-arc-radius) + #{$bg-disc-shadow-width})),
             linear-gradient(113deg, transparent 62%, $bg-surface-vein-color 62.35%, transparent 62.8%),

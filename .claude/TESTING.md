@@ -226,3 +226,14 @@ Deploy `modules/`, `nexo.css` and `gameinfos.jsonc`, then Studio's game page > "
 - [ ] Legal spots and replaceable rings in your disc color, the selected spot gold, as before.
 - [ ] The end of the game: the log row reads "name wins with N connected towers" (or "share the victory" on a tie), and the largest groups glow as before.
 - [ ] No errors in the browser console on load, during a turn, or on F5.
+
+## After M1: red disc in the background
+
+Deploy `modules/`, `nexo.css` and `img/bg_red_disc.png`; no schema change, an ongoing table is fine (F5).
+
+- [ ] Desktop (about 1584 x 814): a red disc with its shadow in the bottom-right corner, its centre about 83% across and 84% down, between the board and the right column, about 1.6 times a board disc wide. Scroll the page: it stays put.
+- [ ] Clicks near it go through (nothing blocks the log, the chat bar or the board).
+- [ ] Resize the window: it scales with the board's discs and stays in the corner. Make the window narrow until the board nears it: it shrinks, never overlaps the board, and disappears when there's no room. Make it short until the player boards reach down to it: same.
+- [ ] It stays clear of the "Discuss at this table" bar at the bottom; an open chat window, the log rows and the height menu all cover it.
+- [ ] Mobile (or a phone, portrait): bottom right under the board, the same size relative to the board's discs, partly cropped off the right edge at most, never shrunk to nothing. Landscape phone: still there, behind the board where it can't fit.
+- [ ] Light and dark BGA themes: the disc looks the same, the black disc in the bottom left is untouched.
