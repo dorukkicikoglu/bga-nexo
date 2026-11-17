@@ -49,7 +49,7 @@ The other player's view of a turn (and a spectator's):
 - [ ] The log row reads "name [tower][tower]...", each tower drawn with its height.
 
 Replacements:
-- [ ] An enemy tower you can out-height has a pulsing orange ring. Towers as tall as your discs left (or height 5) have none.
+- [ ] An enemy tower you can out-height has a dashed ring in your color around its base, like an empty legal spot (no orange, no pulse). Towers as tall as your discs left (or height 5) have none.
 - [ ] Click one: the menu's caption shows that tower and "Replace: at least N discs", and its towers start at its height + 1. Once picked, the enemy tower fades under your drafted one.
 - [ ] Confirm: on the other screen the enemy tower flies back to its owner's reserve, whose board bounces, then the new one flies in. The owner's reserve goes up by the replaced height. The log shows "[enemy tower, crossed] → [your tower]" on an orange tint.
 - [ ] A replacement that splits the opponent's group lowers their score at once.
@@ -88,14 +88,14 @@ Opening and choosing:
 - [ ] Click or tap a legal (ringed) spot: a gold ring on the spot and a small menu right next to it, with an arrow pointing at the spot. One button per possible height, each a tower of that height in your color with its number on top; caption "Tower height". Buttons are a comfortable tap size (about 48px on desktop, a little bigger on mobile).
 - [ ] The status bar title doesn't change when the menu opens or closes ("You must place 1 to N discs"); no height buttons in the status bar.
 - [ ] Click a height: the drafted tower appears and the menu closes. The next menu only offers the heights the discs left allow (after a 3, only 1 and 2).
-- [ ] Click an orange-ringed enemy tower: the caption shows that enemy tower and "Replace: at least N discs" (N = its height + 1), and the lowest button is N.
+- [ ] Click a ringed enemy tower: the caption shows that enemy tower and "Replace: at least N discs" (N = its height + 1), and the lowest button is N.
 - [ ] A spot with one possible height (1 disc left, or replacing a 4 with exactly 5 left) drafts it at once, with no menu.
 - [ ] With the menu open, keys 1 to 5 pick a height it offers (other digits do nothing). Typing digits in the chat does nothing to the board.
 
 Closing and moving:
 - [ ] Click outside the menu (empty board area, the log, the page): it closes, nothing drafted, the gold ring goes.
 - [ ] Click the same spot again: it closes. Escape: it closes.
-- [ ] Click another legal spot or orange tower with the menu open: the menu moves there in one click.
+- [ ] Click another legal spot or ringed enemy tower with the menu open: the menu moves there in one click.
 - [ ] Click a drafted tower with the menu open: the tower is taken back and the menu closes.
 - [ ] Confirm, Reset turn and the end of the turn close it too.
 
@@ -124,7 +124,7 @@ Deploy `modules/` and `nexo.css`; no schema change, an ongoing table is fine (F5
 Board:
 - [ ] The board is a pale white marble slab (no beige) with small rounded corners and a soft shadow; it reads well where it crosses the black arc's edge.
 - [ ] (Superseded by After M1: Yaxha grid: no dots, no outline.)
-- [ ] Legal spots: see After M1: Yaxha grid. Replaceable enemy towers: the pulsing orange ring. The selected spot: gold. All three are easy to tell apart, for both players.
+- [ ] Legal spots: see After M1: Yaxha grid. Replaceable enemy towers: the same dashed ring in your color, around their base. The selected spot: gold. All three are easy to tell apart, for both players.
 - [ ] Discs look exactly as before.
 
 Anchored grid: superseded by After M1: Yaxha grid (the contents now re-centre).
@@ -140,7 +140,7 @@ Deploy `modules/` and `nexo.css`; no schema change, an ongoing table is fine (F5
 
 Display:
 - [ ] Only towers and legal spots show: no grid dots, no frame, no empty space marked out. (Board size: see After M1: board size.)
-- [ ] Legal spots are dashed ellipses in your own color (red or black), only on your turn while you place (pointer, solid on hover); the selected spot's gold ring and the replaceable towers' orange ring are as before. The passive player, a spectator and a replay see no ellipses at all.
+- [ ] Legal spots are dashed ellipses in your own color (red or black), only on your turn while you place (pointer, solid on hover); the selected spot's gold ring and the replaceable towers get the same dashed ring in your color as the empty spots (see After M1: replaceable rings). The passive player, a spectator and a replay see no ellipses at all.
 - [ ] When the turn passes, the board doesn't slide on either screen: both players' boards sit in the same place.
 - [ ] Game start: red sees one legal spot in the middle of the board, black an empty board; after the first tower, the tower sits in the middle on both screens (with 4 legal spots around it on the placing player's).
 
@@ -171,3 +171,12 @@ Deploy `gamepreferences.jsonc`, `modules/` and `nexo.css`, then Studio's game pa
 - [ ] Disabled, then F5: still no numbers. Each player's choice is their own (the opponent's screen doesn't change).
 - [ ] Disabled, watch the opponent's turn: the flying towers and replaced towers have no number while they fly, and none appears when they land.
 - [ ] A spectator sees numbers (the default).
+
+## After M1: replaceable rings
+
+Deploy `nexo.css`; no schema change, an ongoing table is fine (F5).
+
+- [ ] As black: the red towers you can replace have a black dashed ring around their base, the same style as the empty legal spots; as red, black towers get a red one. No orange ring and no pulse anywhere.
+- [ ] Hover a ringed tower: its ring turns solid, like an empty spot's. Click it: the gold selected ring and the height menu, as before.
+- [ ] The passive player, a spectator and a replay see no rings at all.
+

@@ -85,7 +85,6 @@ $spot-dot-color: rgba($material-charcoal, 0.22); //an empty spot the grid can st
 $possible-area-border: rgba($material-charcoal, 0.22); //the thin outline of every spot the grid can still reach
 $possible-area-fill: rgba($material-charcoal, 0.025); //and its very faint fill, setting it apart from the rest of the board
 $legal-spot-color: $material-red; //an empty spot where the active player may place a new tower
-$replaceable-spot-color: #f08a00; //an enemy tower the active player may replace
 $selected-spot-color: #ffc400; //the spot waiting for its height
 
 //player boards (BGA's .player-board) and log rows
@@ -238,22 +237,17 @@ html.hide-stack-heights .tower-height-number{ display: none; }
     &.clickable-spot, &.legal-spot{
         &::before{ content: ""; position: absolute; box-sizing: border-box; left: calc((var(--cell-size) - var(--spot-ring-width)) / 2); bottom: var(--spot-ring-bottom); width: var(--spot-ring-width); height: var(--spot-ring-height); border-radius: 50%; transition: background-color 0.15s ease, box-shadow 0.15s ease; }
     }
-    //a legal spot, shown only to the player drafting, in their own disc color (--legal-spot-*, below); dashed, solid on hover
-    &.legal-spot::before{ border: 2px dashed var(--legal-spot-border); background-color: var(--legal-spot-fill); }
-    &.legal-spot.clickable-spot:hover::before{ border-style: solid; background-color: var(--legal-spot-hover-fill); box-shadow: 0 0 8px var(--legal-spot-glow); }
-    //an enemy tower that can be replaced: a wider orange ring around its base, pulsing, over which the tower stands
-    &.replaceable-spot::before{ left: calc((var(--cell-size) - var(--spot-ring-width) * 1.2) / 2); bottom: calc(var(--spot-ring-bottom) - var(--spot-ring-height) * 0.1); width: calc(var(--spot-ring-width) * 1.2); height: calc(var(--spot-ring-height) * 1.2);
-        border: 3px dashed $replaceable-spot-color; background-color: rgba($replaceable-spot-color, 0.15); animation: replaceable-spot-pulse 1.6s ease-in-out infinite; }
-    &.replaceable-spot:hover::before{ border-style: solid; background-color: rgba($replaceable-spot-color, 0.35); }
+    //a legal spot, and an enemy tower that can be replaced (a legal spot too): shown only to the player drafting, in their own
+    //disc color (--legal-spot-*, below); dashed, solid on hover
+    &.legal-spot::before, &.replaceable-spot::before{ border: 2px dashed var(--legal-spot-border); background-color: var(--legal-spot-fill); }
+    &.legal-spot.clickable-spot:hover::before, &.replaceable-spot:hover::before{ border-style: solid; background-color: var(--legal-spot-hover-fill); box-shadow: 0 0 8px var(--legal-spot-glow); }
+    //the replaceable tower's ring is a little wider, around its base, under the tower
+    &.replaceable-spot::before{ left: calc((var(--cell-size) - var(--spot-ring-width) * 1.2) / 2); bottom: calc(var(--spot-ring-bottom) - var(--spot-ring-height) * 0.1); width: calc(var(--spot-ring-width) * 1.2); height: calc(var(--spot-ring-height) * 1.2); }
     &.selected-spot::before{ border: 3px solid $selected-spot-color !important; background-color: rgba($selected-spot-color, 0.35) !important; box-shadow: 0 0 10px $selected-spot-color; animation: none; }
 }
 //the legal spots' color: the drafting player's disc color (BoardHandler.renderSpots)
 @each $name, $colors in $disc-colors {
     #nexo-board[data-legal-spot-color="#{$name}"]{ --legal-spot-border: #{rgba(map.get($colors, face), 0.75)}; --legal-spot-fill: #{rgba(map.get($colors, face), 0.12)}; --legal-spot-hover-fill: #{rgba(map.get($colors, face), 0.26)}; --legal-spot-glow: #{rgba(map.get($colors, face), 0.5)}; }
-}
-@keyframes replaceable-spot-pulse{ 0%, 100%{ box-shadow: 0 0 0px rgba($replaceable-spot-color, 0); } 50%{ box-shadow: 0 0 10px rgba($replaceable-spot-color, 0.9); } }
-@media (prefers-reduced-motion: reduce){
-    .board-spot.replaceable-spot::before{ animation: none; }
 }
 
 //towers on the board: later rows over earlier ones (a tall tower never leaves its spot, but its glow can). Clicks go to the spot
