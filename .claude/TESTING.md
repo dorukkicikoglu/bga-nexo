@@ -263,3 +263,15 @@ Deploy `nexo.css` only; an ongoing table is fine (F5).
 - [ ] Player boards: each stack's discs read as separate pieces at a glance on both colors (count a stack of 3 and a stack of 5). The row is a few px taller, no wider; the PASSED stamp is still centred on the row.
 - [ ] The log snapshots (24px spots) and the height menu: seams visible, nothing overflows its cell.
 - [ ] Flights between the stacks and the board still start and land without a jump.
+
+## After M1: own towers fly too
+
+Deploy `modules/` only; an ongoing table is fine (F5).
+
+- [ ] Your turn, 1 disc: after Confirm, the drafted placeholder stays until its turn, then goes and the disc flies from the top of your rightmost non-empty stack onto the spot; that stack loses the disc as it leaves.
+- [ ] Your turn, 5 discs (one 5-disc tower, then also 5 towers of 1): the discs leave your stacks one after another, 50ms apart within a tower, spot by spot in the order you drafted; the stacks shrink right to left as each one leaves.
+- [ ] Capture: your replacement of an enemy tower: the enemy discs fly back onto their stacks while your new tower's discs fly in from yours, on the same spot, at the same time. The opponent's replacement of yours: the same, seen from the other side.
+- [ ] The opponent's view of the same turns (second browser) and a spectator's: identical flights.
+- [ ] F5 mid-game (also during the other player's turn): the stacks match the tooltip count, the board matches; no flight on load.
+- [ ] Replay from a log row: the same flights. Fast replay or instantaneous mode: nothing flies, stacks and board just match after each turn.
+- [ ] No errors in the browser console.

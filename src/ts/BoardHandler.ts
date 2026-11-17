@@ -323,9 +323,10 @@ export class BoardHandler {
      * A confirmed turn, played one spot at a time in the order the turn was drafted (the payload's order): on each spot, the
      * replaced enemy tower (if any) flies back onto its owner's reserve stacks on their player board, top disc first, while
      * the new tower's discs fly from the top of the player's stacks onto it, bottom disc first (discs TOWER_DISC_STAGGER
-     * apart); once every disc has landed, the next spot starts. A tower I drafted is already in place: it stays drafted
-     * until its spot comes, then just becomes solid (its discs leave my stacks then). With animations off nothing flies and
-     * nothing is awaited: every spot applies at once, stacks included. Resolves once every tower has landed.
+     * apart); once every disc has landed, the next spot starts. Every viewer sees the same flights, the player who drafted
+     * the turn included: their drafted towers only stay as placeholders until their spot's turn, then fly in from their
+     * stacks like anyone's. With animations off nothing flies and nothing is awaited: every spot applies at once, stacks
+     * included. Resolves once every tower has landed.
      */
     public async applyPlacements(playerID: number, placements: NexoPlacement[]): Promise<void> {
         //the turn is over: no more clicks while it animates (the next PlaceTowers sets a handler again)
@@ -351,8 +352,7 @@ export class BoardHandler {
     }
 
     //one spot of a confirmed turn: swaps its towers on the board, moves their discs between the player boards' reserve stacks
-    //(with animations off too, so the stacks match the turn) and returns the flights to await (none with animations off, or for
-    //a tower I drafted that replaces nothing)
+    //(with animations off too, so the stacks match the turn) and returns the flights to await (none with animations off)
     private applyPlacement(playerID: number, placement: NexoPlacement, draftedElements: Map<string, HTMLDivElement>, animate: boolean): Promise<void>[] {
         const key = BoardRules.key(placement.x, placement.y);
         const flights: Promise<void>[] = [];
@@ -373,19 +373,16 @@ export class BoardHandler {
             replacedElement.remove();
         }
 
+        //a tower I drafted waited here as a placeholder until its spot's turn: from now on it plays like anyone else's
+        draftedElements.get(key)?.remove();
+        draftedElements.delete(key);
+
         const towerElement = this.addBoardTower({ x: placement.x, y: placement.y, player_id: playerID, height: placement.height });
 
-        //the new tower's discs leave the player's stacks, bottom disc first: the first disc taken is the bottom one's
+        //the new tower's discs leave the player's stacks, bottom disc first: the first disc taken is the bottom one's. The same
+        //flight for every viewer, the player who drafted it included
         const mover = this.game.players[playerID];
         const takenDiscRects = mover?.takeDiscs(placement.height) ?? [];
-
-        const draftedElement = draftedElements.get(key);
-        if(draftedElement){
-            draftedElement.remove();
-            draftedElements.delete(key);
-            return flights;
-        }
-
         if(animate && mover)
             flights.push(this.game.animateTowerSlide(towerElement, takenDiscRects, mover.getReserveRect(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }));
         return flights;
