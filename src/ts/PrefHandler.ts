@@ -12,7 +12,7 @@
 import { Game } from "./Game";
 
 export class PrefHandler{
-    //"Show stack heights" (gamepreferences.jsonc, pref 100): the height number on top of every tower, 1 Enabled, 2 Disabled
+    //"Always show stack heights" (gamepreferences.jsonc, pref 100): the height number on top of every tower, 1 Enabled, 2 Disabled
     private static readonly STACK_HEIGHTS_DISABLED = 2;
     //Game.php $userPrefs, for gamedatas without pref_names: a replay starts from the gamedatas saved when its game began, so a
     //game begun before a preference existed has no pref_names (or lacks the newer ones). Keep in sync with Game.php

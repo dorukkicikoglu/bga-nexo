@@ -282,7 +282,7 @@ $passed-banner-z-index: 1000;
         --disc-seam-above: #{map.get($colors, seam-above)}; --disc-seam-below: #{map.get($colors, seam-below)};
     }
 }
-//the "Show stack heights" preference off (PrefHandler.applyStackHeights, a class on <html>): no number on any tower, on the
+//the "Always show stack heights" preference off (PrefHandler.applyStackHeights, a class on <html>): no number on any tower, on the
 //board, the flying copies or the log rows (a drafted tower's count badge stays). The numbers stay in the page, only hidden
 html.hide-stack-heights .tower-height-number{ display: none; }
 //end towers

@@ -70,7 +70,7 @@ None.
 
 ## Preferences [BGA]
 
-- **Show stack heights** (pref 100, `show_stack_heights`): Enabled (1, default) / Disabled (2). Disabled hides the height number on top of every tower: on the board, the flying towers and the log rows (a drafted tower's count badge stays). Display only, applied at once (no reload).
+- **Always show stack heights** (pref 100, `show_stack_heights`): Enabled (1, default) / Disabled (2). Disabled hides the height number on top of every tower: on the board, the flying towers and the log rows (a drafted tower's count badge stays). Display only, applied at once (no reload).
 
 ## Hidden information
 
