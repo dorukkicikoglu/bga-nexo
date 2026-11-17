@@ -27,9 +27,9 @@ export type DraftView = {
  * a tower's grid position never changes. Only the layer moves: like Yaxha's centerCubesContainer(), its translate centres the
  * bounding box of the towers plus the legal spots in the board (centerContents), sliding over BOARD_RECENTER_DURATION when
  * that box changes, at once on load. The legal spots count in the box for everyone but only the player drafting sees them.
- * Nothing else is drawn: no empty spots, no grid outline. The board is (gridSize + 2)
- * spots across and down: the largest box is gridSize + 1 (4 columns of towers with a legal spot on each side; with 5, no
- * spot beyond them is legal), plus half a spot on each side.
+ * Nothing else is drawn: no empty spots, no grid outline. The board is (gridSize + 2) spots across and down: the largest
+ * box is gridSize + 1 (4 columns of towers with a legal spot on each side; with 5, no spot beyond them is legal), plus half
+ * a spot on each side.
  */
 export class BoardHandler {
     private boardElement: HTMLDivElement;
@@ -50,7 +50,7 @@ export class BoardHandler {
         this.boardSize = this.game.getRules().gridSize + 2;
 
         this.boardElement = document.getElementById('nexo-board') as HTMLDivElement;
-        this.boardElement.style.setProperty('--board-window-size', this.boardSize.toString());
+        this.boardElement.style.setProperty('--board-size', this.boardSize.toString());
         this.boardElement.innerHTML = `
             <div class="board-layer">
                 <div class="spots-layer"></div>
@@ -242,13 +242,9 @@ export class BoardHandler {
             });
         }
 
-        if(this.draft){
+        if(this.draft)
             this.boardElement.setAttribute('data-legal-spot-color', this.draft.discColor); //the drafting player's own disc color
-            this.boardElement.setAttribute('data-draft-color', this.draft.discColor);
-        } else {
-            this.boardElement.removeAttribute('data-legal-spot-color');
-            this.boardElement.removeAttribute('data-draft-color');
-        }
+        else this.boardElement.removeAttribute('data-legal-spot-color');
     }
 
     //the turn being drafted (PlaceTowers), or null once it is over: its towers shown semi-transparent on their spots (a replaced
@@ -263,7 +259,6 @@ export class BoardHandler {
 
     public setSpotClickHandler(handler: ((spot: NexoSpot) => void) | null): void {
         this.spotClickHandler = handler;
-        this.boardElement.classList.toggle('accepting-clicks', !!handler);
     }
 
     private renderPending(): void {
@@ -278,13 +273,10 @@ export class BoardHandler {
         }
     }
 
+    //an enemy tower under a drafted replacement fades (being-replaced)
     private updateTowerDraftClasses(): void {
         const replacedKeys = new Set((this.draft?.pending ?? []).filter(tower => tower.kind === 'replace').map(tower => BoardRules.key(tower.x, tower.y)));
-        const replaceableKeys = new Set((this.draft?.replaceableTowers ?? []).map(tower => BoardRules.key(tower.x, tower.y)));
-        this.towerElements.forEach((element, key) => {
-            element.classList.toggle('being-replaced', replacedKeys.has(key));
-            element.classList.toggle('replaceable-tower', replaceableKeys.has(key));
-        });
+        this.towerElements.forEach((element, key) => element.classList.toggle('being-replaced', replacedKeys.has(key)));
     }
 
     //a click on a tower of the draft takes it back; a click on a highlighted spot (empty or an enemy tower) selects it
@@ -304,9 +296,9 @@ export class BoardHandler {
      * A confirmed turn, played one spot at a time in the order the turn was drafted (the payload's order): on each spot, the
      * replaced enemy tower (if any) flies back to its owner's reserve on their player board, top disc first, while the new
      * tower flies from the player's reserve onto it, bottom disc first (discs TOWER_DISC_STAGGER apart); once every disc has
-     * landed, the next spot starts. A tower I
-     * drafted is already in place: it stays drafted until its spot comes, then just becomes solid. With animations off nothing
-     * flies and nothing is awaited: every spot applies at once. Resolves once every tower has landed.
+     * landed, the next spot starts. A tower I drafted is already in place: it stays drafted until its spot comes, then just
+     * becomes solid. With animations off nothing flies and nothing is awaited: every spot applies at once. Resolves once
+     * every tower has landed.
      */
     public async applyPlacements(playerID: number, placements: NexoPlacement[]): Promise<void> {
         //the turn is over: no more clicks while it animates (the next PlaceTowers sets a handler again)

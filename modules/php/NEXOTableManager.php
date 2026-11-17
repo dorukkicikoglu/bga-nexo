@@ -155,7 +155,7 @@ class NEXOTableManager{
      * replacement, the tower it replaces. The turn is checked as a whole ([BGA], see SPEC.md > Turn sequence): every new
      * tower must reach the towers already on the board through towers placed this turn, so the order the towers were
      * drafted in doesn't matter. A spot can only be used once in a turn: replacing a tower placed earlier in the turn
-     * would mean replacing your own tower.
+     * would mean replacing your own tower. On an empty board, one of the new towers must be at 0 0.
      */
     function validateTurn(int $playerID, array $placements): array{
         if(count($placements) < 1)
@@ -217,6 +217,10 @@ class NEXOTableManager{
                 ];
             }
         }
+
+        //[BGA] the very first tower of the game goes at 0 0 (coordinates are relative, so every spot of an empty board is the same)
+        if(empty($board) && !isset($newTowersBoard[self::cellKey(0, 0)]))
+            throw new UserException(clienttranslate('The first tower of the game must be placed on the centre spot'));
 
         //replacements keep their spot occupied, so only the new towers change adjacency and the grid's bounds
         $finalBoard = $board + $newTowersBoard;

@@ -35,7 +35,6 @@ interface NexoRulesData {
     minTowerHeight: number;
     maxTowerHeight: number;
     maxDiscsPerTurn: number;
-    discsPerPlayer: number;
 }
 
 type DiscColor = 'red' | 'black';

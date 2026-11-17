@@ -128,7 +128,6 @@ class Game extends \Bga\GameFramework\Table
             'minTowerHeight' => MIN_TOWER_HEIGHT,
             'maxTowerHeight' => MAX_TOWER_HEIGHT,
             'maxDiscsPerTurn' => MAX_DISCS_PER_TURN,
-            'discsPerPlayer' => DISCS_PER_PLAYER,
         ];
         $result['discColorByPlayerColor'] = DISC_COLOR_BY_PLAYER_COLOR;
         $result['pref_names'] = $this->userPrefs;
@@ -150,6 +149,9 @@ class Game extends \Bga\GameFramework\Table
         // number of colors defined here must correspond to the maximum number of players allowed for the gams.
         $gameinfos = $this->getGameinfos();
         $default_colors = $gameinfos['player_colors'];
+        //[BGA] the colors are random every game, whatever the seats: red starts, so neither the seat order nor a favourite
+        //color decides who starts (no reattributeColorsBasedOnPreferences, favorite_colors_support false)
+        shuffle($default_colors);
 
         foreach ($players as $player_id => $player) {
             // Now you can access both $player_id and $player array
@@ -171,7 +173,6 @@ class Game extends \Bga\GameFramework\Table
             )
         );
 
-        $this->reattributeColorsBasedOnPreferences($players, $gameinfos["player_colors"]);
         $this->reloadPlayersBasicInfos();
 
         //Setup the initial game situation: an empty board, DISCS_PER_PLAYER discs in each reserve (dbmodel.sql default)
@@ -184,7 +185,7 @@ class Game extends \Bga\GameFramework\Table
         // Init global values with their initial values.
         $this->bga->globals->set('consecutivePasses', 0);
 
-        //the player with the red discs begins (reattributeColorsBasedOnPreferences may have given red to either player)
+        //the player with the red discs begins, whatever BGA's own choice of first player
         $this->gamestate->changeActivePlayer($this->getFirstPlayerID());
 
         return PlaceTowers::class;
@@ -229,8 +230,7 @@ class Game extends \Bga\GameFramework\Table
     //end utility functions
 
     /**
-     * Example of debug function.
-     * Here, jump to a state you want to test (by default, jump to next player state)
+     * Jumps to a state you want to test (by default, 10: PlaceTowers).
      * You can trigger it on Studio using the Debug button on the right of the top bar.
      */
     #[Debug(reload: true)]

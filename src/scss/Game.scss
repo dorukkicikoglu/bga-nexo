@@ -15,7 +15,7 @@
 
 //placeholder art: discs and spots are drawn in CSS. Every size and color is a variable below, so real art can replace them
 //(a disc sprite would go in .tower-disc's background, see "towers")
-$cell-size: min(5.6vw, 72px); //one spot of the grid on desktop; the board is (2 * GRID_SIZE - 1) spots wide and tall
+$cell-size: min(5.6vw, 72px); //one spot of the grid on desktop, the default; the board sets its own (BoardHandler.fitToViewport)
 $mobile-cell-size: 76px; //BGA lays the game out at 740px or more and scales it down on a phone (gameinfos game_interface_width)
 $log-snapshot-cell-size: 24px; //one spot of a log row's board snapshot (a 5x5 board: 5 of them across), scaled down only in a row too narrow for it
 $mini-cell-size: 26px; //the reserve disc on player boards
@@ -63,9 +63,9 @@ $bg-arc-portrait-center-x: -105vw;
 $bg-arc-portrait-center-y: 10vw;
 
 //the material set: the board, the player boards and the log rows in the page background's palette, a white marble a little
-//lighter than the surface, charcoal for lines and dots (the black discs' tone) and the game's red for the legal spots
+//lighter than the surface, charcoal for lines and dots (the black discs' tone) and the game's red
 $material-charcoal: #1b1b1d; //near-black: dots, lines, text, the black player's accent
-$material-red: #d42a20; //the game's red (the red discs' face): legal spots, the red player's accent
+$material-red: #d42a20; //the game's red (the red discs' face): the red player's accent
 $marble-white: #fcfbf9; //the board's and panels' marble, a little lighter than the page's surface
 $marble-white-shade: #f0eee9; //the same marble, toward its far corner
 $marble-vein-color: rgba(100, 96, 90, 0.05); //very faint veins on the board
@@ -81,10 +81,6 @@ $board-background: radial-gradient(ellipse 70% 55% at 30% 20%, #ffffff 0%, trans
     linear-gradient(111deg, transparent 67%, rgba($marble-vein-color, 0.035) 67.6%, transparent 68.5%),
     linear-gradient(160deg, $marble-white 0%, $marble-white-shade 100%);
 $board-border-color: rgba($material-charcoal, 0.1);
-$spot-dot-color: rgba($material-charcoal, 0.22); //an empty spot the grid can still reach
-$possible-area-border: rgba($material-charcoal, 0.22); //the thin outline of every spot the grid can still reach
-$possible-area-fill: rgba($material-charcoal, 0.025); //and its very faint fill, setting it apart from the rest of the board
-$legal-spot-color: $material-red; //an empty spot where the active player may place a new tower
 $selected-spot-color: #ffc400; //the spot waiting for its height
 
 //player boards (BGA's .player-board) and log rows
@@ -118,7 +114,7 @@ $log-snapshot-changed-fill: rgba($selected-spot-color, 0.22);
     --bg-log-game-end: #{$log-background-game-end};
 }
 
-//mobile, like Riviera: BGA lays the game out at least 740px wide and scales it down to the phone, so the board needs a large
+//mobile: BGA lays the game out at least 740px wide and scales it down to the phone, so the board needs a large
 //logical size to stay readable once scaled
 .mobile_version{ --cell-size: #{$mobile-cell-size}; }
 
@@ -161,10 +157,9 @@ body{ background: $bg-surface-color; isolation: isolate;
     body{ --bg-arc-radius: #{$bg-arc-portrait-radius}; --bg-arc-center-x: #{$bg-arc-portrait-center-x}; --bg-arc-center-y: #{$bg-arc-portrait-center-y}; }
 }
 
-@mixin text-shade($color, $size) { text-shadow: #{$size} 0 $color, -#{$size} 0 $color, 0 #{$size} $color, 0 -#{$size} $color, #{math.div($size, 2)} #{math.div($size, 2)} $color, -#{math.div($size, 2)} -#{math.div($size, 2)} $color, #{math.div($size, 2)} -#{math.div($size, 2)} $color, -#{math.div($size, 2)} #{math.div($size, 2)} $color; }
 @mixin non-selectable() { -webkit-touch-callout: none; -webkit-user-select: none; -khtml-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
 
-//the copy that flies between containers in Game.animateSlide: pinned to the viewport's top-left corner and moved and
+//the copies that fly in Game.animateTowerSlide / animateTowerSlideAway: pinned to the viewport's top-left corner and moved and
 //scaled by its transform only, so it can start at the source's size and land at the destination's
 body .sliding-clone{ position: fixed; left: 0px; top: 0px; z-index: 1000; margin: 0; pointer-events: none; transform-origin: 0 0; will-change: transform; }
 
@@ -185,7 +180,7 @@ $passed-banner-z-index: 1000;
 //element's background (an ellipse in the top --disc-face-height of the box), its side a rectangle (::before) and its bottom
 //curve an ellipse (::after), both behind the face (z-index -1 inside the disc's own stacking context). Each disc sits one
 //thickness above the one under it, so only the top face and a band of every disc's edge show. The box is one spot, whatever
-//the height, so a tower always measures the same (Game.animateSlide scales by height). Never a transform on a tower: it is
+//the height, so a tower always measures the same (Game.getSlidingCloneTransform scales by height). Never a transform on a tower: it is
 //cloned to fly (Game.createSlidingClone)
 .nexo-tower{ position: relative; flex-shrink: 0; box-sizing: border-box; width: var(--cell-size); height: var(--cell-size); pointer-events: none; @include non-selectable();
     --disc-width: calc(var(--cell-size) * #{$disc-width-ratio});
@@ -222,13 +217,12 @@ $passed-banner-z-index: 1000;
 html.hide-stack-heights .tower-height-number{ display: none; }
 //end towers
 
-//board (BoardHandler): a window of --board-window-size spots across and down. .board-layer holds the spots and towers at their
+//board (BoardHandler): --board-size spots across and down (GRID_SIZE + 2). .board-layer holds the spots and towers at their
 //own board coordinates (--x, --y, spots of --cell-size) and its translate (set inline, transitioned only while recentering)
-//brings the window into view. Overflow is hidden: while the window slides, spots of the old window pass its edge
+//centres them on the board. Overflow is hidden, so nothing ever shows outside the board
 #nexo-board-container{ display: flex; flex-direction: column; align-items: center; padding: 10px 0px; } //10px from the status bar and, at the page's top, the window's bottom (BoardHandler.fitToViewport)
-#nexo-board{ position: relative; box-sizing: content-box; width: calc(var(--board-window-size, 9) * var(--cell-size)); height: calc(var(--board-window-size, 9) * var(--cell-size)); overflow: hidden;
+#nexo-board{ position: relative; box-sizing: content-box; width: calc(var(--board-size) * var(--cell-size)); height: calc(var(--board-size) * var(--cell-size)); overflow: hidden;
     border: 1px solid $board-border-color; border-radius: $board-radius; background: $board-background; box-shadow: $slab-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.9); @include non-selectable();
-    --draft-spot-color: #{$legal-spot-color};
 }
 .board-layer{ position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
 .spots-layer, .towers-layer{ position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
@@ -251,7 +245,7 @@ html.hide-stack-heights .tower-height-number{ display: none; }
     &.legal-spot.clickable-spot:hover::before, &.replaceable-spot:hover::before{ border-style: solid; background-color: var(--legal-spot-hover-fill); box-shadow: 0 0 8px var(--legal-spot-glow); }
     //the replaceable tower's ring is a little wider, around its base, under the tower
     &.replaceable-spot::before{ left: calc((var(--cell-size) - var(--spot-ring-width) * 1.2) / 2); bottom: calc(var(--spot-ring-bottom) - var(--spot-ring-height) * 0.1); width: calc(var(--spot-ring-width) * 1.2); height: calc(var(--spot-ring-height) * 1.2); }
-    &.selected-spot::before{ border: 3px solid $selected-spot-color !important; background-color: rgba($selected-spot-color, 0.35) !important; box-shadow: 0 0 10px $selected-spot-color; animation: none; }
+    &.selected-spot::before{ border: 3px solid $selected-spot-color !important; background-color: rgba($selected-spot-color, 0.35) !important; box-shadow: 0 0 10px $selected-spot-color; }
 }
 //the legal spots' color: the drafting player's disc color (BoardHandler.renderSpots)
 @each $name, $colors in $disc-colors {
@@ -342,7 +336,7 @@ $height-menu-z-index: 948;
         .reserve-times{ font-weight: normal; opacity: 0.7; }
     }
     &[data-empty-reserve="true"] .reserve-indicator{ opacity: 0.45; }
-    //PASSED, like Riviera's round status stamp: only while data-passed is true
+    //PASSED: a tilted stamp, only while data-passed is true
     .passed-stamp{ @include passed-stamp-look(1); rotate: -6deg;
         opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s; }
     &[data-passed="true"] .passed-stamp{ opacity: 1; visibility: visible; }
@@ -414,10 +408,8 @@ $log-types: "towers-placed", "player-passed", "game-end";
         //an empty spot: a faint dot where a tower's bottom disc would sit
         .empty-snapshot-cell::before{ content: ""; position: absolute; left: 50%; bottom: calc(var(--cell-size) * #{$tower-base-ratio + math.div($disc-width-ratio * $disc-face-ratio, 2)}); width: 3px; height: 3px;
             translate: -50% 50%; border-radius: 50%; background: $log-snapshot-dot-color; }
-        //a spot the turn touched (a new tower or a replacement): a gold ring and a soft gold glow. With no tower left on it,
-        //a dashed ring instead (where a tower came from; never in base Nexo, where a spot never empties)
+        //a spot the turn touched (a new tower or a replacement): a gold ring and a soft gold glow
         .changed-snapshot-cell{ background: $log-snapshot-changed-fill; box-shadow: inset 0 0 0 1.5px $log-snapshot-changed-color, 0 0 4px rgba($log-snapshot-changed-color, 0.55); }
-        .changed-snapshot-cell.empty-snapshot-cell{ background: none; box-shadow: none; outline: 1.5px dashed $log-snapshot-changed-color; outline-offset: -1.5px; }
         //the board's towers at snapshot size: a larger number, readable on a small face
         .snapshot-tower .tower-height-number{ font-size: calc(var(--cell-size) * 0.36); }
     }
@@ -426,7 +418,6 @@ $log-types: "towers-placed", "player-passed", "game-end";
     }
     .game-end-row{ color: $log-text-color; }
 }
-//the log backgrounds are pale, so light player colors get a dark outline to stay readable (none in Nexo's two colors for now)
 //end logs
 
 //tooltips: no tooltip, BGA's plain ones included, is ever wider than the screen

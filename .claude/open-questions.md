@@ -1,25 +1,10 @@
 # Nexo: open questions
 
-Questions the rulebook (`misc/Nexo_Rules (EN).pdf`) leaves open, with the default we built. Each is marked **[BGA]** in SPEC.md where it applies. Move a question to "Settled" once the publisher (or you) answers it, and fix SPEC.md if the answer differs.
+Questions the rulebook (`misc/Nexo_Rules (EN).pdf`) leaves open, and their answers. Each is marked **[BGA]** in SPEC.md where it differs from or goes beyond the rulebook. Move a question to "Settled" once the publisher (or you) answers it, and fix SPEC.md if the answer differs.
 
 ## Open
 
-1. **Within one turn, can a new tower be adjacent only to a tower placed earlier that same turn?**
-   Built: **yes.** The server checks the turn as a whole: every new tower must reach the towers already on the board through the turn's other new towers (`NEXOTableManager::validateTurn()`, `isConnected()`), which is the same as "towers resolve in order" for any order that works. Taking a drafted tower back also drops any new tower that no longer connects (`BoardRules.keepConnectedPending()`).
-2. **Can a spot taken earlier in the turn be replaced again in the same turn?**
-   Built: **no.** It would mean replacing your own tower. A spot is used once per turn (`validateTurn()` rejects a repeated spot; the client never offers it).
-3. **Can a replacement tower be placed on an enemy tower that isn't adjacent to anything?**
-   Built: **yes, no adjacency check.** The rulebook only asks adjacency of a tower on an empty spot. In practice every tower on the board is connected to the others (spots are never emptied), so it never matters.
-4. **Can a player pass while they still have a valid move?**
-   Built: **no.** "You must place a minimum of 1": passing is only for a player with no valid move, and it is automatic.
-5. **Where does the first tower go?**
-   Built: at 0 0. The grid is invisible and relative, so every spot of an empty board is the same; the first player's first click is on the board's centre spot.
-6. **A player whose only moves would need more than 5 discs (every enemy tower is height 5, or taller than their reserve allows) and with no empty legal spot.**
-   Built: they have no valid move and pass, as the rulebook's "because you cannot replace an opponent's tower" says.
-7. **Two groups of the same player tied for largest.**
-   Built: the score is that size either way; the end-game highlight shows both groups.
-8. **A height with a single option.**
-   Built [BGA, UI only]: when a clicked spot allows only one height (1 disc left, or replacing a 4 with the last 5), the tower is drafted at once, with no height menu.
+(none)
 
 ## Conflicts between the brief and the rulebook
 
@@ -33,4 +18,21 @@ None found. The brief's rules summary matches the English rulebook. The rulebook
 
 ## Settled
 
-(none yet)
+Answered by you on 2026-11-17; each matches the code as built.
+
+1. **Within one turn, can a new tower be adjacent only to a tower placed earlier that same turn?**
+   Yes: a new tower may be adjacent to any tower, including one placed earlier in the same turn; the turn is checked as a whole and the drafting order doesn't matter **[BGA]** (`NEXOTableManager::validateTurn()`, `BoardRules.keepConnectedPending()`). Rulebook: "every new tower must be placed orthogonally adjacent (horizontally or vertically) to at least 1 existing tower of any color."
+2. **Can a spot taken earlier in the turn be replaced again in the same turn?**
+   No: you never replace your own tower (`validateTurn()` rejects a repeated spot; the client never offers it). Rulebook: "Replace an enemy's tower with a new tower." and "You cannot place discs on top of an existing tower!"
+3. **Can a replacement tower be placed on an enemy tower that isn't adjacent to anything?**
+   No adjacency check, because the case can't happen: every tower on the board except the first is adjacent to another tower, and spots are never emptied. Rulebook: "Except for the first tower, every new tower must be placed orthogonally adjacent [...] to at least 1 existing tower"; the replacement rule asks for no adjacency.
+4. **Can a player pass while they still have a valid move?**
+   No voluntary pass: a player with a valid move must place; one with no valid move (no discs, or discs but nowhere legal to put them) is passed automatically **[BGA: automatic]**. Rulebook: "On your turn, you must place a minimum of 1 and a maximum of 5 from your reserve." and "If you can no longer make a valid move [...] you must pass."
+5. **Where does the first tower go?**
+   At 0 0, enforced on the server too **[BGA]**: the grid is invisible and relative, so every spot of an empty board is the same.
+6. **A player whose only moves would need more than 5 discs (or more than their reserve) and with no legal empty spot.**
+   They have no valid move and pass. Rulebook: "If you can no longer make a valid move – either because you have no discs left in your reserve or because you cannot replace an opponent's tower – you must pass."
+7. **Two groups of the same player tied for largest.**
+   They score that size, and the end-game highlight shows both **[BGA: highlight]**. Rulebook: "Identify your single largest area of orthogonally connected towers. Each tower of this area scores 1 point."
+8. **A height with a single option.**
+   A spot with only one legal height (1 disc left, or replacing a 4 with the last 5) drafts that tower at once, with no height menu **[BGA, UI only]**.

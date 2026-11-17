@@ -13,14 +13,7 @@ import { Game } from "./Game";
 import { BoardHandler } from "./BoardHandler";
 import { BoardRules } from "./BoardRules";
 
-interface LogRowData { //this is used to return strings containing log-class-tag divs
-    log_html: string;
-    log_class: string;
-}
-
 export class LogMutationObserver{
-	private nextTimestampValue:string = '';
-
     constructor(private game: Game) {
 		this.observeLogs();
     }
@@ -49,12 +42,11 @@ export class LogMutationObserver{
         observer.observe($('chatbar'), config); //mobile notifs
 
         if(this.game.isReplay()){ //to observe replayLogs that appears at the bottom of the page on replays
-            let replayLogsObserverStarted = false;
             const replayLogsObserver = new MutationObserver((mutations, obs) => {
               for (const mutation of mutations) {
                 if (mutation.addedNodes.length) {
                     mutation.addedNodes.forEach((node: HTMLDivElement) => {
-                        if(!replayLogsObserverStarted && node instanceof HTMLElement && node.id.startsWith('replaylogs')) {
+                        if(node instanceof HTMLElement && node.id.startsWith('replaylogs')) {
                             this.processLogDiv(node);
                         }
                     });
@@ -86,30 +78,11 @@ export class LogMutationObserver{
         }
 
         classTags.forEach(classTag => classTag.remove());
-
-        node.querySelectorAll('.playername').forEach((playerName: HTMLElement) => {
-            playerName.setAttribute('player-color', this.game.rgbToHex(window.getComputedStyle(playerName).color));
-        });
-
-        if(this.game.isDesktop() && node.classList.contains('a-game-log')){
-            let timestamp: HTMLDivElement[] = Array.from(node.querySelectorAll('.timestamp'));
-            if(timestamp.length > 0){
-                this.nextTimestampValue = timestamp[0].innerText;
-            } else if(this.observeLogs.hasOwnProperty('nextTimestampValue')){
-                let newTimestamp: HTMLDivElement = document.createElement('div');
-                newTimestamp.classList.add('timestamp');
-                newTimestamp.innerHTML = this.nextTimestampValue;
-
-                node.appendChild(newTimestamp);
-            }
-        }
     }
 
-    //gapBefore: the row starts a new group in the log (log-gap-before, a gap on the side of the previous row). Decided from the
-    //notification's args, never from the rows around it, so live rows, F5 and replays all get the same gaps
-    private addLogClassTag(logHTML: string, logClass: string, gapBefore: boolean = false): LogRowData {
-        const gapTagHTML = gapBefore ? '<div log-class-tag="log-gap-before"></div>' : '';
-        return { log_html: logHTML + `<div log-class-tag="${logClass}"></div>` + gapTagHTML, log_class: logClass };
+    //the row's class (logClass, its *-log type) as a log-class-tag, which processLogDiv moves onto the row
+    private addLogClassTag(logHTML: string, logClass: string): LogRowData {
+        return { log_html: logHTML + `<div log-class-tag="${logClass}"></div>`, log_class: logClass };
     }
 
     //the row's player's disc color as a class on the row (red-disc-log, black-disc-log): its accent bar. From the notification's
@@ -175,8 +148,8 @@ export class LogMutationObserver{
     /**
      * [BGA] A turn's board snapshot: one .snapshot-cell per spot of the bounding box of the towers (BoardRules.getBounds, the
      * main board's own coordinates, so negative ones too), row by row, each holding its tower (createTowerDiv, sized by the
-     * snapshot's --cell-size) or a faint dot. The turn's spots (placements) get .changed-snapshot-cell; one with no tower would
-     * get a dashed ring (never in Nexo: a spot never empties). Built from the notification's args alone, so a reload and a
+     * snapshot's --cell-size) or a faint dot. The turn's spots (placements) get .changed-snapshot-cell, a gold ring. Built
+     * from the notification's args alone, so a reload and a
      * replay draw the same. A turn logged before board_snapshot existed shows its own towers only
      */
     private getBoardSnapshotHTML(player_id: number, placements: NexoPlacement[], boardSnapshot?: string): string {

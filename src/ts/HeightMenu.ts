@@ -47,8 +47,6 @@ export class HeightMenu {
     constructor(private game: Game) {
     }
 
-    public isOpen(): boolean { return !!this.menuElement; }
-
     //opens the menu at request.spot, or moves it there (a new menu is built: the heights may differ)
     public open(request: HeightMenuRequest, onChoose: (height: number) => void, onDismiss: () => void): void {
         this.removeMenuElement();

@@ -28,10 +28,10 @@ Changes after a milestone get their own section: "## After MN: <change>".
 Deploy: `modules/`, `nexo.css`, `dbmodel.sql`, `*.jsonc` (SFTP uploads them on save; `src/`, `.claude/`, `node_modules/` are ignored). The schema is new, so start a **new** table. Check that `modules/php/States/PlayerTurn.php` is gone from Studio too (it took id 10). Keep the browser console open: report any error.
 
 Setup:
-- [ ] A 2-player game starts without errors. One player is red, the other black (try a table where your favorite color is black, too).
+- [ ] A 2-player game starts without errors. One player is red, the other black.
 - [ ] The red player is active first, whatever the seat order.
 - [ ] Each player board shows a red or black disc "× 25" and a score of 0. No PASSED stamp.
-- [ ] The board shows a single legal spot (a dashed ellipse) in its centre, red for the red player, black for the black player. Black sees "<name> must place towers" and can't click it.
+- [ ] Red sees a single legal spot (a red dashed ellipse) in the board's centre. Black sees an empty board and "<name> must place towers", with nothing clickable.
 - [ ] `SELECT * FROM towers` is empty; `SELECT player_id, player_color, reserve, passed FROM player`: 25 and `no` each.
 
 Drafting (as the active player):
@@ -46,15 +46,15 @@ Drafting (as the active player):
 The other player's view of a turn (and a spectator's):
 - [ ] New towers fly one after another from the mover's reserve disc on their player board to their spots.
 - [ ] After each turn the board's contents slide smoothly to stay centred, never jump (see After M1: Yaxha grid).
-- [ ] The log row reads "name [tower][tower]...", each tower drawn with its height.
+- [ ] The log row reads "name [board snapshot]" (details: After M1: board snapshot in the log).
 
 Replacements:
 - [ ] An enemy tower you can out-height has a dashed ring in your color around its base, like an empty legal spot (no orange, no pulse). Towers as tall as your discs left (or height 5) have none.
 - [ ] Click one: the menu's caption shows that tower and "Replace: at least N discs", and its towers start at its height + 1. Once picked, the enemy tower fades under your drafted one.
-- [ ] Confirm: on the other screen the enemy tower flies back to its owner's reserve, whose board bounces, then the new one flies in. The owner's reserve goes up by the replaced height. The log shows "[enemy tower, crossed] → [your tower]" on an orange tint.
+- [ ] Confirm: on the other screen the enemy tower flies back to its owner's reserve while the new one flies in; once the turn's last tower has landed, the owner's board bounces and their reserve goes up by the replaced height. The log row's snapshot shows your tower on that spot, ringed in gold.
 - [ ] A replacement that splits the opponent's group lowers their score at once.
 
-Server checks (browser console, `bgaPerformAction` / `gameui.bga.actions.performAction('actPlaceTowers', {placements: '...'})`):
+Server checks (browser console, `window[0].gameui.bga.actions.performAction('actPlaceTowers', {placements: '...'})`):
 - [ ] `[{"x":5,"y":5,"height":1}]` (not adjacent): "Every new tower must be orthogonally adjacent to a tower".
 - [ ] Two towers totalling 6 discs: "You cannot place more than 5 discs in a turn".
 - [ ] A tower on your own tower: "You cannot place discs on top of an existing tower".
@@ -131,7 +131,7 @@ Anchored grid: superseded by After M1: Yaxha grid (the contents now re-centre).
 
 Player boards and log:
 - [ ] Player boards: the same white marble and a soft shadow, no beige.
-- [ ] Log rows: white marble, near-black text, a soft line under each, a red bar on the left of the red player's rows and a black bar on the black player's (pass rows too; the game end row in the winner's color, neutral on a shared victory). "You" stays red; other names in their color. No gold tones.
+- [ ] Log rows: white marble, near-black text, a soft line under each, a red bar on the left of the red player's rows and a black bar on the black player's (pass rows too; the game end row in the winner's color, neutral on a shared victory). "You" and other names in their own player's color. No gold tones (the board snapshot's gold rings came later, see After M1: board snapshot in the log).
 - [ ] Timestamps, hovering a row and the replay links ("replay from this move") work as before, in the desktop log, the mobile log and a replay.
 
 ## After M1: Yaxha grid
@@ -171,6 +171,7 @@ Deploy `gamepreferences.jsonc`, `modules/` and `nexo.css`, then Studio's game pa
 - [ ] Disabled, then F5: still no numbers. Each player's choice is their own (the opponent's screen doesn't change).
 - [ ] Disabled, watch the opponent's turn: the flying towers and replaced towers have no number while they fly, and none appears when they land.
 - [ ] A spectator sees numbers (the default).
+- [ ] Replay (`replayFrom`) of a game begun before "Show stack heights" existed: it loads (no `show_stack_heights` error in the console), and the towers show or hide their numbers according to your preference; switching it during the replay applies at once.
 
 ## After M1: replaceable rings
 
@@ -189,7 +190,6 @@ Deploy `modules/` and `nexo.css`; no schema change, an ongoing table is fine (F5
 - [ ] Your own turn with replacements: after Confirm, each replaced tower flies away in turn and your drafted tower on that spot becomes solid then; the drafted towers still waiting show no × on hover and don't react to clicks.
 - [ ] The next notification (a pass banner, the end of the game) and the board's re-centring wait until the last spot has landed.
 - [ ] Replay from a log row: the same one-spot-at-a-time sequence. Fast replay, instantaneous mode or F5: everything applies at once, no flight.
-- [ ] Replay (`replayFrom`) of a game begun before "Show stack heights" existed: it loads (no `show_stack_heights` error in the console), and the towers show or hide their numbers according to your preference; switching it during the replay applies at once.
 - [ ] Discs of a tower leave one after the other (50ms apart): a new tower's bottom disc first, each disc appearing in the tower as it lands, the height number with the top one; a replaced tower's top disc first. The next spot starts only after the last disc has landed.
 
 ## After M1: replay keeps every log row
@@ -199,7 +199,7 @@ Deploy `modules/`; no schema change, an ongoing table is fine (F5).
 - [ ] With at least 3 turns played: "Replay from this move" on the game's first move, as the red player. When the replay ends, every log row is there (the first move included).
 - [ ] The same as the black player: the red player's first move is still in the log when the replay ends.
 - [ ] The same as a spectator, if BGA lets a spectator start the replay (see the note on spectators): every row remains.
-- [ ] If a row is missing anyway: in the console, `document.querySelectorAll('#logs .log:not(.a-game-log), [id^="replaylogs"] .gamelogreview:not(.a-game-log)')` lists the rows the log CSS hides; paste the text of the "places towers" one.
+- [ ] If a row is missing anyway: in the console, `window[0].document.querySelectorAll('#logs .log:not(.a-game-log), [id^="replaylogs"] .gamelogreview:not(.a-game-log)')` lists the rows the log CSS hides; paste the text of the "places towers" one.
 
 ## After M1: board snapshot in the log
 
@@ -213,3 +213,16 @@ Deploy `modules/` and `nexo.css`; no schema change. Start a fresh table: turns l
 - [ ] Mobile layout (or a phone): the table log shows the same rows, snapshots inside the log's width.
 - [ ] F5: every row rebuilds with the same snapshots and gold rings. Replay from a log row and an archived replay: the same rows.
 - [ ] "Show stack heights" off: no numbers on the snapshot towers; on: numbers readable on the towers' faces.
+
+## After M1: docs audit
+
+Deploy `modules/`, `nexo.css` and `gameinfos.jsonc`, then Studio's game page > "Reload game informations"; no schema change, an ongoing table is fine (F5) except for the colors check. Mostly dead code removed, so everything should look and play as before.
+
+- [ ] Start several new tables (and a rematch): red lands on either seat at random, and whoever is red is always active first.
+
+- [ ] New table, as red, before placing anything: `window[0].gameui.bga.actions.performAction('actPlaceTowers', {placements: '[{"x":1,"y":0,"height":1}]'})` is refused with "The first tower of the game must be placed on the centre spot". Clicking the centre spot and confirming still works.
+- [ ] A turn as usual on both screens: towers and replaced towers fly disc by disc to and from the player boards' reserve discs, land at the right size and place, and the owner's board bounces.
+- [ ] Log rows: name, snapshot and colored bar as before, on desktop, the mobile table log and a replay; timestamps still show on desktop.
+- [ ] Legal spots and replaceable rings in your disc color, the selected spot gold, as before.
+- [ ] The end of the game: the log row reads "name wins with N connected towers" (or "share the victory" on a tie), and the largest groups glow as before.
+- [ ] No errors in the browser console on load, during a turn, or on F5.

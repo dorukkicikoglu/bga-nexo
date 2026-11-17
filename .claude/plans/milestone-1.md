@@ -1,10 +1,10 @@
-> Status: built 2026-11-16 in one go (no approval stop, at your request), awaiting BGA Studio test (see .claude/TESTING.md). After M1: the status bar height buttons became a popup next to the spot (`src/ts/HeightMenu.ts`, NEW), see SPEC.md > Milestones.
+> Status: built 2026-11-16 in one go (no approval stop, at your request), tested on BGA Studio (see .claude/TESTING.md). Later changes (the height menu, `src/ts/HeightMenu.ts` NEW, the Yaxha grid, `PrefHandler.ts` and the rest) are listed in SPEC.md > Milestones; the tables below describe M1 as built.
 
 # Nexo: Milestone 1 (Base game)
 
 ## Context
 
-Nexo is a fresh copy of the BGA template. You asked for the whole base game in one milestone: rules, full server validation, a draft-then-confirm client, automatic passes, live scores and the end-game highlight, built like Riviera (`reference/`, identical to `../riviera`). No AI opponent, no secret bomb. Open rule questions and their defaults: `.claude/open-questions.md`.
+Nexo is a fresh copy of the BGA template. You asked for the whole base game in one milestone: rules, full server validation, a draft-then-confirm client, automatic passes, live scores and the end-game highlight, built like Riviera (`reference/riviera/`). No AI opponent, no secret bomb. Open rule questions and their defaults: `.claude/open-questions.md`.
 
 Decisions:
 - **Reserve as a `player` column**, not the newer framework's `PlayerCounter` (the template's example): like Riviera's own `player` columns, and our notifications update the client, so no framework counter notifications.
@@ -52,7 +52,7 @@ Legend: **NEW** = no Riviera equivalent · **COPY** = Riviera unchanged · **ADA
 | `src/ts/BoardHandler.ts` | NEW | Riviera's game-area handlers | Board window, towers, spots, draft, flights. |
 | `src/ts/PlayerHandler.ts` | ADAPT | Riviera | Reserve, PASSED stamp, score, bounce. |
 | `src/ts/LogMutationObserver.ts` | ADAPT | Riviera (core copied) | Three `createLog*` rows. |
-| `src/ts/TooltipHandler.ts` | ADAPT | Riviera | Board tooltips only. |
+| `src/ts/TooltipHandler.ts` | ADAPT | Riviera | Player board tooltips only (reserve, PASSED, score). |
 | `src/ts/EndGameScoringHandler.ts` | ADAPT | Riviera | Group highlight instead of a table. |
 | `src/ts/States/PlaceTowers.ts` | NEW | Riviera's state classes | The draft. |
 | `src/ts/States/GameEnd.ts` | ADAPT | Riviera | Clears the draft. |

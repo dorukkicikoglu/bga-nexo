@@ -32,8 +32,7 @@ if (!defined('GRID_SIZE')) { // guard since this included multiple times
     define("DISC_COLOR_BY_PLAYER_COLOR", ['ff0000' => 'red', '000000' => 'black']);
     define("FIRST_DISC_COLOR", 'red');
 
-    //a placement in a turn: a new tower on an empty spot, or one replacing an enemy tower. Kept as a field so another kind
-    //(a later expansion) can be added without changing the turn's shape
+    //a placement in a turn: a new tower on an empty spot, or one replacing an enemy tower
     define("PLACEMENT_NEW", 'new');
     define("PLACEMENT_REPLACE", 'replace');
 }

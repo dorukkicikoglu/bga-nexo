@@ -12,20 +12,13 @@
 
 export type GridBounds = { minX: number; maxX: number; minY: number; maxY: number; };
 
-//the board rules the draft needs, the same as NEXOTableManager's (which checks the whole turn again on confirm). A board is a
-//Map "x,y" => spot; every method is pure
+//the board rules the draft needs (bounds, legal spots, height options, connectivity), the same as NEXOTableManager's (which
+//checks the whole turn again on confirm). A board is a Map "x,y" => spot; every method is pure
 export class BoardRules {
     constructor(private rules: NexoRulesData) {
     }
 
     public static key(x: number, y: number): string { return x + ',' + y; }
-
-    public getRules(): NexoRulesData { return this.rules; }
-
-    //the most discs a player may still use this turn: never more than maxDiscsPerTurn in a turn, never more than their reserve
-    public getDiscsLeftThisTurn(reserve: number, discsUsed: number): number {
-        return Math.max(0, Math.min(this.rules.maxDiscsPerTurn, reserve) - discsUsed);
-    }
 
     public static getBounds(board: Map<string, NexoSpot>): GridBounds | null {
         if(board.size === 0)
@@ -66,17 +59,6 @@ export class BoardRules {
             }
         }
         return Array.from(spots.values());
-    }
-
-    //the spots the grid can still reach: every column from maxX - (gridSize - 1) to minX + (gridSize - 1), the same for rows.
-    //Once gridSize columns (or rows) are taken, only those remain. Null for an empty board (anywhere)
-    public getPossibleArea(board: Map<string, NexoSpot>): GridBounds | null {
-        const bounds = BoardRules.getBounds(board);
-        if(!bounds)
-            return null;
-
-        const reach = this.rules.gridSize - 1;
-        return { minX: bounds.maxX - reach, maxX: bounds.minX + reach, minY: bounds.maxY - reach, maxY: bounds.minY + reach };
     }
 
     //the heights a tower on this spot may have with maxHeight discs left: from 1 (a new tower) or the enemy tower's height + 1
@@ -127,27 +109,5 @@ export class BoardRules {
         }
 
         return pending.filter(tower => tower.kind === 'replace' || reached.has(BoardRules.key(tower.x, tower.y)));
-    }
-
-    //the player's largest areas of orthogonally connected towers (height doesn't matter), every one of the largest size
-    public static getLargestGroups(towers: NexoTower[], playerID: number): NexoSpot[][] {
-        const ownBoard = new Map<string, NexoSpot>();
-        for(const tower of towers){
-            if(tower.player_id === playerID)
-                ownBoard.set(BoardRules.key(tower.x, tower.y), tower);
-        }
-
-        const grouped = new Set<string>();
-        const groups: NexoSpot[][] = [];
-        for(const key of ownBoard.keys()){
-            if(grouped.has(key))
-                continue;
-            const component = BoardRules.getComponent(ownBoard, key);
-            component.forEach(componentKey => grouped.add(componentKey));
-            groups.push(Array.from(component).map(componentKey => ({ x: ownBoard.get(componentKey).x, y: ownBoard.get(componentKey).y })));
-        }
-
-        const largestSize = Math.max(0, ...groups.map(group => group.length));
-        return groups.filter(group => group.length === largestSize && largestSize > 0);
     }
 }

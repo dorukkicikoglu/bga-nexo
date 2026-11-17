@@ -9,18 +9,13 @@
  *
  * BoardRules.ts
  */
-//the board rules the draft needs, the same as NEXOTableManager's (which checks the whole turn again on confirm). A board is a
-//Map "x,y" => spot; every method is pure
+//the board rules the draft needs (bounds, legal spots, height options, connectivity), the same as NEXOTableManager's (which
+//checks the whole turn again on confirm). A board is a Map "x,y" => spot; every method is pure
 class BoardRules {
     constructor(rules) {
         this.rules = rules;
     }
     static key(x, y) { return x + ',' + y; }
-    getRules() { return this.rules; }
-    //the most discs a player may still use this turn: never more than maxDiscsPerTurn in a turn, never more than their reserve
-    getDiscsLeftThisTurn(reserve, discsUsed) {
-        return Math.max(0, Math.min(this.rules.maxDiscsPerTurn, reserve) - discsUsed);
-    }
     static getBounds(board) {
         if (board.size === 0)
             return null;
@@ -55,15 +50,6 @@ class BoardRules {
             }
         }
         return Array.from(spots.values());
-    }
-    //the spots the grid can still reach: every column from maxX - (gridSize - 1) to minX + (gridSize - 1), the same for rows.
-    //Once gridSize columns (or rows) are taken, only those remain. Null for an empty board (anywhere)
-    getPossibleArea(board) {
-        const bounds = BoardRules.getBounds(board);
-        if (!bounds)
-            return null;
-        const reach = this.rules.gridSize - 1;
-        return { minX: bounds.maxX - reach, maxX: bounds.minX + reach, minY: bounds.maxY - reach, maxY: bounds.minY + reach };
     }
     //the heights a tower on this spot may have with maxHeight discs left: from 1 (a new tower) or the enemy tower's height + 1
     getHeightOptions(replacedHeight, discsLeft) {
@@ -108,25 +94,6 @@ class BoardRules {
                 BoardRules.getComponent(occupied, startKey).forEach(key => reached.add(key));
         }
         return pending.filter(tower => tower.kind === 'replace' || reached.has(BoardRules.key(tower.x, tower.y)));
-    }
-    //the player's largest areas of orthogonally connected towers (height doesn't matter), every one of the largest size
-    static getLargestGroups(towers, playerID) {
-        const ownBoard = new Map();
-        for (const tower of towers) {
-            if (tower.player_id === playerID)
-                ownBoard.set(BoardRules.key(tower.x, tower.y), tower);
-        }
-        const grouped = new Set();
-        const groups = [];
-        for (const key of ownBoard.keys()) {
-            if (grouped.has(key))
-                continue;
-            const component = BoardRules.getComponent(ownBoard, key);
-            component.forEach(componentKey => grouped.add(componentKey));
-            groups.push(Array.from(component).map(componentKey => ({ x: ownBoard.get(componentKey).x, y: ownBoard.get(componentKey).y })));
-        }
-        const largestSize = Math.max(0, ...groups.map(group => group.length));
-        return groups.filter(group => group.length === largestSize && largestSize > 0);
     }
 }
 
@@ -351,9 +318,9 @@ class GameEnd {
  * a tower's grid position never changes. Only the layer moves: like Yaxha's centerCubesContainer(), its translate centres the
  * bounding box of the towers plus the legal spots in the board (centerContents), sliding over BOARD_RECENTER_DURATION when
  * that box changes, at once on load. The legal spots count in the box for everyone but only the player drafting sees them.
- * Nothing else is drawn: no empty spots, no grid outline. The board is (gridSize + 2)
- * spots across and down: the largest box is gridSize + 1 (4 columns of towers with a legal spot on each side; with 5, no
- * spot beyond them is legal), plus half a spot on each side.
+ * Nothing else is drawn: no empty spots, no grid outline. The board is (gridSize + 2) spots across and down: the largest
+ * box is gridSize + 1 (4 columns of towers with a legal spot on each side; with 5, no spot beyond them is legal), plus half
+ * a spot on each side.
  */
 class BoardHandler {
     constructor(game, towers) {
@@ -368,7 +335,7 @@ class BoardHandler {
         this.spotClickHandler = null;
         this.boardSize = this.game.getRules().gridSize + 2;
         this.boardElement = document.getElementById('nexo-board');
-        this.boardElement.style.setProperty('--board-window-size', this.boardSize.toString());
+        this.boardElement.style.setProperty('--board-size', this.boardSize.toString());
         this.boardElement.innerHTML = `
             <div class="board-layer">
                 <div class="spots-layer"></div>
@@ -532,14 +499,10 @@ class BoardHandler {
                 this.spotsLayer.appendChild(spot);
             });
         }
-        if (this.draft) {
+        if (this.draft)
             this.boardElement.setAttribute('data-legal-spot-color', this.draft.discColor); //the drafting player's own disc color
-            this.boardElement.setAttribute('data-draft-color', this.draft.discColor);
-        }
-        else {
+        else
             this.boardElement.removeAttribute('data-legal-spot-color');
-            this.boardElement.removeAttribute('data-draft-color');
-        }
     }
     //the turn being drafted (PlaceTowers), or null once it is over: its towers shown semi-transparent on their spots (a replaced
     //enemy tower fades under its replacement), legal spots and replaceable towers highlighted
@@ -552,7 +515,6 @@ class BoardHandler {
     }
     setSpotClickHandler(handler) {
         this.spotClickHandler = handler;
-        this.boardElement.classList.toggle('accepting-clicks', !!handler);
     }
     renderPending() {
         this.pendingElements.forEach(element => element.remove());
@@ -564,13 +526,10 @@ class BoardHandler {
             this.pendingElements.set(BoardRules.key(pendingTower.x, pendingTower.y), pendingElement);
         }
     }
+    //an enemy tower under a drafted replacement fades (being-replaced)
     updateTowerDraftClasses() {
         const replacedKeys = new Set((this.draft?.pending ?? []).filter(tower => tower.kind === 'replace').map(tower => BoardRules.key(tower.x, tower.y)));
-        const replaceableKeys = new Set((this.draft?.replaceableTowers ?? []).map(tower => BoardRules.key(tower.x, tower.y)));
-        this.towerElements.forEach((element, key) => {
-            element.classList.toggle('being-replaced', replacedKeys.has(key));
-            element.classList.toggle('replaceable-tower', replaceableKeys.has(key));
-        });
+        this.towerElements.forEach((element, key) => element.classList.toggle('being-replaced', replacedKeys.has(key)));
     }
     //a click on a tower of the draft takes it back; a click on a highlighted spot (empty or an enemy tower) selects it
     onBoardClick(event) {
@@ -586,9 +545,9 @@ class BoardHandler {
      * A confirmed turn, played one spot at a time in the order the turn was drafted (the payload's order): on each spot, the
      * replaced enemy tower (if any) flies back to its owner's reserve on their player board, top disc first, while the new
      * tower flies from the player's reserve onto it, bottom disc first (discs TOWER_DISC_STAGGER apart); once every disc has
-     * landed, the next spot starts. A tower I
-     * drafted is already in place: it stays drafted until its spot comes, then just becomes solid. With animations off nothing
-     * flies and nothing is awaited: every spot applies at once. Resolves once every tower has landed.
+     * landed, the next spot starts. A tower I drafted is already in place: it stays drafted until its spot comes, then just
+     * becomes solid. With animations off nothing flies and nothing is awaited: every spot applies at once. Resolves once
+     * every tower has landed.
      */
     async applyPlacements(playerID, placements) {
         //the turn is over: no more clicks while it animates (the next PlaceTowers sets a handler again)
@@ -659,15 +618,11 @@ class BoardHandler {
  * PlayerHandler.ts
  */
 class PlayerHandler {
-    constructor(game, playerID, playerName, playerColor, playerNo, reserve, passed, score) {
+    constructor(game, playerID, reserve, passed) {
         this.game = game;
         this.playerID = playerID;
-        this.playerName = playerName;
-        this.playerColor = playerColor;
-        this.playerNo = playerNo;
         this.reserve = reserve;
         this.passed = passed;
-        this.score = score;
         this.createPlayerBoardContainer();
         this.setReserve(this.reserve);
         this.showPassedStamp(false); //Game.updatePassedStamps() decides once every player board exists
@@ -761,7 +716,6 @@ class PlayerHandler {
     }
     //every live score change goes through here: BGA's score counter is the player's largest group
     setScore(score) {
-        this.score = score;
         this.game.bga.playerPanels.getScoreCounter(this.playerID)?.toValue(score);
     }
     //the one shared bounce (discs given back by a replacement land on this board), removed on animationend
@@ -774,17 +728,14 @@ class PlayerHandler {
     }
     //where towers leave from and replaced towers fly back to
     getReserveIconElement() { return this.reserveIcon; }
-    getPlayerID() { return this.playerID; }
     getReserve() { return this.reserve; } //as tracked by setReserve()
     isPassed() { return this.passed; }
-    getScore() { return this.score; } //as tracked by setScore()
 }
 PlayerHandler.BOUNCE_CLASS = 'bouncing-player-board'; //the one shared bounce class, its timing lives in Game.scss
 
 class LogMutationObserver {
     constructor(game) {
         this.game = game;
-        this.nextTimestampValue = '';
         this.observeLogs();
     }
     observeLogs() {
@@ -808,12 +759,11 @@ class LogMutationObserver {
         observer.observe($('logs'), config);
         observer.observe($('chatbar'), config); //mobile notifs
         if (this.game.isReplay()) { //to observe replayLogs that appears at the bottom of the page on replays
-            let replayLogsObserverStarted = false;
             const replayLogsObserver = new MutationObserver((mutations, obs) => {
                 for (const mutation of mutations) {
                     if (mutation.addedNodes.length) {
                         mutation.addedNodes.forEach((node) => {
-                            if (!replayLogsObserverStarted && node instanceof HTMLElement && node.id.startsWith('replaylogs')) {
+                            if (node instanceof HTMLElement && node.id.startsWith('replaylogs')) {
                                 this.processLogDiv(node);
                             }
                         });
@@ -840,27 +790,10 @@ class LogMutationObserver {
                 parentLog.classList.add('a-game-log', logClassName);
         }
         classTags.forEach(classTag => classTag.remove());
-        node.querySelectorAll('.playername').forEach((playerName) => {
-            playerName.setAttribute('player-color', this.game.rgbToHex(window.getComputedStyle(playerName).color));
-        });
-        if (this.game.isDesktop() && node.classList.contains('a-game-log')) {
-            let timestamp = Array.from(node.querySelectorAll('.timestamp'));
-            if (timestamp.length > 0) {
-                this.nextTimestampValue = timestamp[0].innerText;
-            }
-            else if (this.observeLogs.hasOwnProperty('nextTimestampValue')) {
-                let newTimestamp = document.createElement('div');
-                newTimestamp.classList.add('timestamp');
-                newTimestamp.innerHTML = this.nextTimestampValue;
-                node.appendChild(newTimestamp);
-            }
-        }
     }
-    //gapBefore: the row starts a new group in the log (log-gap-before, a gap on the side of the previous row). Decided from the
-    //notification's args, never from the rows around it, so live rows, F5 and replays all get the same gaps
-    addLogClassTag(logHTML, logClass, gapBefore = false) {
-        const gapTagHTML = gapBefore ? '<div log-class-tag="log-gap-before"></div>' : '';
-        return { log_html: logHTML + `<div log-class-tag="${logClass}"></div>` + gapTagHTML, log_class: logClass };
+    //the row's class (logClass, its *-log type) as a log-class-tag, which processLogDiv moves onto the row
+    addLogClassTag(logHTML, logClass) {
+        return { log_html: logHTML + `<div log-class-tag="${logClass}"></div>`, log_class: logClass };
     }
     //the row's player's disc color as a class on the row (red-disc-log, black-disc-log): its accent bar. From the notification's
     //args, like every per-row style
@@ -915,8 +848,8 @@ class LogMutationObserver {
     /**
      * [BGA] A turn's board snapshot: one .snapshot-cell per spot of the bounding box of the towers (BoardRules.getBounds, the
      * main board's own coordinates, so negative ones too), row by row, each holding its tower (createTowerDiv, sized by the
-     * snapshot's --cell-size) or a faint dot. The turn's spots (placements) get .changed-snapshot-cell; one with no tower would
-     * get a dashed ring (never in Nexo: a spot never empties). Built from the notification's args alone, so a reload and a
+     * snapshot's --cell-size) or a faint dot. The turn's spots (placements) get .changed-snapshot-cell, a gold ring. Built
+     * from the notification's args alone, so a reload and a
      * replay draw the same. A turn logged before board_snapshot existed shows its own towers only
      */
     getBoardSnapshotHTML(player_id, placements, boardSnapshot) {
@@ -1019,7 +952,6 @@ class HeightMenu {
         this.keyDownListener = (event) => this.onDocumentKeyDown(event);
         this.viewportChangeListener = () => this.scheduleReposition();
     }
-    isOpen() { return !!this.menuElement; }
     //opens the menu at request.spot, or moves it there (a new menu is built: the heights may differ)
     open(request, onChoose, onDismiss) {
         this.removeMenuElement();
@@ -1256,8 +1188,8 @@ class Game {
         this.endGameScoringHandler = new EndGameScoringHandler(this);
         // Setting up player boards
         for (let player_id in gamedatas.players) {
-            const { name, color, player_no, reserve, passed, score } = this.gamedatas.players[player_id];
-            this.players[player_id] = new PlayerHandler(this, parseInt(player_id), name, color, player_no, reserve, passed, Number(score));
+            const { reserve, passed } = this.gamedatas.players[player_id];
+            this.players[player_id] = new PlayerHandler(this, parseInt(player_id), reserve, passed);
         }
         this.updatePassedStamps();
         this.boardHandler = new BoardHandler(this, gamedatas.towers);
@@ -1307,7 +1239,6 @@ class Game {
     }
     divYou(attributes = {}) {
         let color = this.gamedatas.players[this.myPlayerID].color;
-        attributes['player-color'] = color;
         let html = "<span style=\"font-weight:bold;color:#" + color + ";\" " + this.getAttributesHTML(attributes) + ">" + _("You") + "</span>";
         return html;
     }
@@ -1316,53 +1247,20 @@ class Game {
             return this.divYou(attributes);
         player_id = player_id.toString();
         let color = this.gamedatas.players[player_id].color;
-        attributes['player-color'] = color;
         let html = "<span style=\"color:#" + color + ";\" " + this.getAttributesHTML(attributes) + ">" + this.gamedatas.players[player_id].name + "</span>";
         return html;
     }
     getAttributesHTML(attributes) { return Object.entries(attributes || {}).map(([key, value]) => `${key}="${value}"`).join(' '); }
-    //slides element into the container `to`, starting from where `from` is now (from may be element itself).
-    //A copy flies over the page while the real element waits hidden in `to`.
-    //With `to` null, element is already in its place (a tower on its spot) and only the copy moves.
-    //The copy also changes size on the way: it starts at the size `from` has on screen (a player board's reserve disc) and
-    //lands exactly at the size and place of element, so nothing jumps at the end.
-    //Everything is measured on screen (getBoundingClientRect), and the copy (in <body>, outside BGA's mobile scaling of the
-    //game area) converts screen px into its own px with its measured zoom, so it matches on desktop and mobile alike.
-    //`from` can also be a DOMRect on screen, for a start point with no element.
-    //With options.keepSize, the copy keeps element's size the whole way and starts centered on `from`.
-    //Everything before the first await runs synchronously, so `from` can be removed as soon as this is called
-    async animateSlide(element, from, to, durationMs, options = {}) {
-        const fromRect = (from instanceof DOMRect) ? from : from.getBoundingClientRect(); //before element moves: from may be element itself
-        const slidingClone = this.createSlidingClone(element);
-        element.style.visibility = 'hidden';
-        if (to)
-            to.appendChild(element);
-        const toRect = element.getBoundingClientRect();
-        const startRect = options.keepSize ? Game.getCenteredRect(fromRect, toRect.width, toRect.height) : fromRect;
-        await this.moveSlidingClone(slidingClone, startRect, toRect, durationMs, options);
-        element.style.visibility = null;
-    }
-    //the other way round: a copy of element flies from where element is now to toRect on screen, then disappears.
-    //Element itself is left alone and can be removed as soon as this is called (a replaced tower going back to its reserve).
-    //With options.keepSize, the copy keeps element's size and lands centered on toRect; with options.fadeOutMs, it fades out once there.
-    //The copy shows at the opacity element shows at, which it doesn't inherit in <body>
-    async animateSlideAway(element, toRect, durationMs, options = {}) {
-        const fromRect = element.getBoundingClientRect();
-        const shownOpacity = Game.getShownOpacity(element);
-        const slidingClone = this.createSlidingClone(element);
-        if (shownOpacity < 1)
-            slidingClone.style.opacity = shownOpacity.toString();
-        const endRect = options.keepSize ? Game.getCenteredRect(toRect, fromRect.width, fromRect.height) : toRect;
-        await this.moveSlidingClone(slidingClone, fromRect, endRect, durationMs, options);
-    }
-    //animateSlide for a tower already on its spot (BoardHandler.createTowerDiv), one disc at a time: each disc flies from
-    //`from` on its own, bottom disc first and staggerMs apart, as a copy of the whole tower with every other disc hidden, so
-    //it starts and lands exactly where it sits in the tower. Each disc shows in the tower as it lands, the height number with
-    //the top one. Resolves once the top disc has landed. Everything before the first await runs synchronously
+    //a tower already on its spot (BoardHandler.createTowerDiv) flies in from `from` (a player board's reserve disc), one disc
+    //at a time: each disc flies on its own, bottom disc first and staggerMs apart, as a copy of the whole tower with every
+    //other disc hidden, so it starts and lands exactly where it sits in the tower. Each copy starts at the size `from` has on
+    //screen and lands at the tower's own size and place, so nothing jumps at the end. Each disc shows in the tower as it
+    //lands, the height number with the top one. Everything is measured on screen (getBoundingClientRect), and the copies
+    //(in <body>, outside BGA's mobile scaling of the game area) convert screen px with their measured zoom, so they match on
+    //desktop and mobile alike. Resolves once the top disc has landed. Everything before the first await runs synchronously
     async animateTowerSlide(towerElement, from, durationMs, staggerMs = Game.TOWER_DISC_STAGGER, options = {}) {
-        const fromRect = from.getBoundingClientRect();
+        const startRect = from.getBoundingClientRect();
         const toRect = towerElement.getBoundingClientRect();
-        const startRect = options.keepSize ? Game.getCenteredRect(fromRect, toRect.width, toRect.height) : fromRect;
         const discParts = Game.getTowerDiscParts(towerElement);
         const slidingClones = discParts.map((_, discIndex) => this.createDiscSlidingClone(towerElement, discIndex)); //before the tower's own discs are hidden
         discParts.forEach(part => part.forEach(element => element.style.visibility = 'hidden'));
@@ -1371,18 +1269,19 @@ class Game {
             discParts[discIndex].forEach(element => element.style.visibility = null);
         }));
     }
-    //animateSlideAway for a tower, one disc at a time: top disc first, staggerMs apart, each a copy of the whole tower with
-    //every other disc hidden (the height number leaves with the top one). The tower can be removed as soon as this is called
+    //the other way round: a tower flies from its spot to toRect on screen (its owner's reserve disc) and disappears, one disc
+    //at a time: top disc first, staggerMs apart, each a copy of the whole tower with every other disc hidden (the height number
+    //leaves with the top one). The copies show at the opacity the tower shows at, which they don't inherit in <body>. The
+    //tower can be removed as soon as this is called
     async animateTowerSlideAway(towerElement, toRect, durationMs, staggerMs = Game.TOWER_DISC_STAGGER, options = {}) {
         const fromRect = towerElement.getBoundingClientRect();
         const shownOpacity = Game.getShownOpacity(towerElement);
-        const endRect = options.keepSize ? Game.getCenteredRect(toRect, fromRect.width, fromRect.height) : toRect;
         const discCount = Game.getTowerDiscParts(towerElement).length;
         await Promise.all(Array.from({ length: discCount }, (_, discIndex) => {
             const slidingClone = this.createDiscSlidingClone(towerElement, discIndex);
             if (shownOpacity < 1)
                 slidingClone.style.opacity = shownOpacity.toString();
-            return this.moveSlidingClone(slidingClone, fromRect, endRect, durationMs, { ...options, delayMs: (options.delayMs ?? 0) + (discCount - 1 - discIndex) * staggerMs });
+            return this.moveSlidingClone(slidingClone, fromRect, toRect, durationMs, { ...options, delayMs: (options.delayMs ?? 0) + (discCount - 1 - discIndex) * staggerMs });
         }));
     }
     //a tower's discs, bottom first, each with what shows and goes with it: the top disc carries the height number
@@ -1396,10 +1295,6 @@ class Game {
         const slidingClone = this.createSlidingClone(towerElement);
         Game.getTowerDiscParts(slidingClone).forEach((part, partIndex) => part.forEach(element => element.style.visibility = (partIndex === discIndex) ? null : 'hidden'));
         return slidingClone;
-    }
-    //a width x height rect on screen, centered on rect
-    static getCenteredRect(rect, width, height) {
-        return new DOMRect(rect.left + (rect.width - width) / 2, rect.top + (rect.height - height) / 2, width, height);
     }
     //element's own opacity times its ancestors'
     static getShownOpacity(element) {
@@ -1416,23 +1311,15 @@ class Game {
         document.body.appendChild(slidingClone);
         return slidingClone;
     }
-    //moves the copy from fromRect to toRect (both on screen), after options.delayMs at its start, fades it out there if
-    //options.fadeOutMs (after options.holdMs of stillness), then removes it
+    //moves the copy from fromRect to toRect (both on screen), after options.delayMs at its start, then removes it
     async moveSlidingClone(slidingClone, fromRect, toRect, durationMs, options) {
-        const { easing = Game.TOWER_SLIDE_EASING, delayMs = 0, holdMs = 0, fadeOutMs = 0 } = options;
+        const { easing = Game.TOWER_SLIDE_EASING, delayMs = 0 } = options;
         const transformOnto = this.getSlidingCloneTransform(slidingClone);
         slidingClone.style.transform = transformOnto(fromRect);
         await this.bga.gameui.wait(20); //let the clone's start position paint before the transition kicks in
         slidingClone.style.transition = `transform ${durationMs}ms ${easing} ${delayMs}ms`;
         slidingClone.style.transform = transformOnto(toRect);
         await this.bga.gameui.wait(delayMs + durationMs);
-        if (holdMs > 0)
-            await this.bga.gameui.wait(holdMs);
-        if (fadeOutMs > 0) {
-            slidingClone.style.transition = `opacity ${fadeOutMs}ms ease`;
-            slidingClone.style.opacity = '0';
-            await this.bga.gameui.wait(fadeOutMs);
-        }
         slidingClone.remove();
     }
     //returns the transform that puts the copy (a fresh createSlidingClone, untransformed) onto an on-screen rect: scaled to
@@ -1447,28 +1334,10 @@ class Game {
             return `translate(${(left - baseRect.left) / zoom}px, ${(rect.top - baseRect.top) / zoom}px) scale(${scale})`;
         };
     }
-    rgbToHex(rgb) {
-        const match = rgb.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/);
-        if (!match) {
-            console.error('-- rgb --', rgb);
-            throw new Error("Invalid RGB format");
-        }
-        // Convert each component to a two-character hexadecimal
-        const [, r, g, b] = match;
-        return [r, g, b]
-            .map((num) => {
-            const hex = parseInt(num, 10).toString(16);
-            return hex.padStart(2, '0'); // Ensure two digits
-        })
-            .join(''); // Combine into a single string
-    }
     onScreenWidthChange() {
         this.boardHandler?.fitToViewport();
         this.heightMenu?.reposition();
     }
-    isDesktop() { return document.body.classList.contains('desktop_version'); }
-    isMobile() { return document.body.classList.contains('mobile_version'); }
-    isTouchOrMobile() { return this.isMobile() || window.matchMedia('(hover: none)').matches; } //BGA's mobile layout, or a device that can't hover (a tablet in the desktop layout). Not BGA's touch-device class, which a touch laptop with a mouse has too
     isReplay() { return typeof g_replayFrom != 'undefined' || g_archive_mode; } //"replay from this move" in an ongoing game, or an archived game
     isInterfaceLocked() { return document.body.classList.contains('lockedInterface'); } //gameui.isInterfaceLocked() is not in this framework version
     getGameStateName() { return this.gamedatas.gamestate.name; }
@@ -1491,7 +1360,6 @@ class Game {
         players.forEach(player => player.showPassedStamp(showStamp && player.isPassed()));
     }
     getMyPlayerID() { return this.myPlayerID; }
-    getPlayerOrder() { return this.gamedatas.playerorder; } //turn order, starting with myself
     //end utility
     ///////////////////////////////////////////////////
     //// Reaction to cometD notifications
@@ -1514,8 +1382,9 @@ class Game {
         });
     }
     // Add the notification handlers
-    //a confirmed turn: the player's discs leave their reserve, replaced towers fly back to their owner's reserve (whose board
-    //bounces once they have landed), new towers fly to their spots, the scores update, then the board window follows the towers
+    //a confirmed turn: the player's discs leave their reserve, then spot by spot the replaced tower flies back to its owner's
+    //reserve while the new tower flies to its spot; then the reserves update, the boards that got discs back bounce, the
+    //scores update and the board re-centres
     async notif_towersPlaced(args) {
         const mover = this.players[args.player_id];
         mover?.setReserve(args.reserves[args.player_id] ?? mover.getReserve());

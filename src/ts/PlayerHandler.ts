@@ -20,7 +20,7 @@ export class PlayerHandler{
     private reserveCount: HTMLSpanElement;
     private boardElement: HTMLDivElement;
 
-	constructor(private game: Game, private playerID: number, private playerName: string, private playerColor: string, private playerNo: number, private reserve: number, private passed: boolean, private score: number) {
+	constructor(private game: Game, private playerID: number, private reserve: number, private passed: boolean) {
         this.createPlayerBoardContainer();
 
         this.setReserve(this.reserve);
@@ -132,7 +132,6 @@ export class PlayerHandler{
 
     //every live score change goes through here: BGA's score counter is the player's largest group
     public setScore(score: number): void {
-        this.score = score;
         this.game.bga.playerPanels.getScoreCounter(this.playerID)?.toValue(score);
     }
 
@@ -148,8 +147,6 @@ export class PlayerHandler{
 
     //where towers leave from and replaced towers fly back to
     public getReserveIconElement(): HTMLDivElement { return this.reserveIcon; }
-    public getPlayerID(): number { return this.playerID; }
     public getReserve(): number { return this.reserve; } //as tracked by setReserve()
     public isPassed(): boolean { return this.passed; }
-    public getScore(): number { return this.score; } //as tracked by setScore()
 }

@@ -20,13 +20,10 @@ import { EndGameScoringHandler } from "./EndGameScoringHandler";
 import { HeightMenu } from "./HeightMenu";
 import { PrefHandler } from "./PrefHandler";
 
-//optional settings of Game.animateSlide / animateSlideAway and their per-disc tower versions animateTowerSlide / animateTowerSlideAway
+//optional settings of Game.animateTowerSlide / animateTowerSlideAway
 export type SlideOptions = {
     easing?: string; //CSS timing function, Game.TOWER_SLIDE_EASING by default
-    keepSize?: boolean; //the copy keeps the element's size, centered on the other end, instead of changing size on the way
     delayMs?: number; //the copy waits this long at its start before it moves (a stagger)
-    holdMs?: number; //animateSlideAway: the copy stays fully shown this long once it has arrived, before it fades or goes
-    fadeOutMs?: number; //animateSlideAway: the copy fades out for this long once it has arrived (and held)
 };
 
 export class Game {
@@ -100,8 +97,8 @@ export class Game {
 
         // Setting up player boards
         for(let player_id in gamedatas.players) {
-            const {name, color, player_no, reserve, passed, score} = this.gamedatas.players[player_id];
-            this.players[player_id] = new PlayerHandler(this, parseInt(player_id), name, color, player_no, reserve, passed, Number(score));
+            const {reserve, passed} = this.gamedatas.players[player_id];
+            this.players[player_id] = new PlayerHandler(this, parseInt(player_id), reserve, passed);
         }
         this.updatePassedStamps();
 
@@ -155,7 +152,6 @@ export class Game {
     }
     public divYou(attributes = {}): string {
         let color = this.gamedatas.players[this.myPlayerID].color;
-        attributes['player-color'] = color;
         let html = "<span style=\"font-weight:bold;color:#" + color + ";\" " + this.getAttributesHTML(attributes) + ">" + _("You") + "</span>";
         return html;
     }
@@ -166,60 +162,21 @@ export class Game {
         player_id = player_id.toString();
 
         let color = this.gamedatas.players[player_id].color;
-        attributes['player-color'] = color;
         let html = "<span style=\"color:#" + color + ";\" " + this.getAttributesHTML(attributes) + ">" + this.gamedatas.players[player_id].name + "</span>";
         return html;
     }
     private getAttributesHTML(attributes): string{ return Object.entries(attributes || {}).map(([key, value]) => `${key}="${value}"`).join(' '); }
 
-    //slides element into the container `to`, starting from where `from` is now (from may be element itself).
-    //A copy flies over the page while the real element waits hidden in `to`.
-    //With `to` null, element is already in its place (a tower on its spot) and only the copy moves.
-    //The copy also changes size on the way: it starts at the size `from` has on screen (a player board's reserve disc) and
-    //lands exactly at the size and place of element, so nothing jumps at the end.
-    //Everything is measured on screen (getBoundingClientRect), and the copy (in <body>, outside BGA's mobile scaling of the
-    //game area) converts screen px into its own px with its measured zoom, so it matches on desktop and mobile alike.
-    //`from` can also be a DOMRect on screen, for a start point with no element.
-    //With options.keepSize, the copy keeps element's size the whole way and starts centered on `from`.
-    //Everything before the first await runs synchronously, so `from` can be removed as soon as this is called
-    public async animateSlide(element: HTMLDivElement, from: HTMLDivElement | DOMRect, to: HTMLDivElement | null, durationMs: number, options: SlideOptions = {}): Promise<void> {
-        const fromRect = (from instanceof DOMRect) ? from : from.getBoundingClientRect(); //before element moves: from may be element itself
-        const slidingClone = this.createSlidingClone(element);
-
-        element.style.visibility = 'hidden';
-        if(to)
-            to.appendChild(element);
-        const toRect = element.getBoundingClientRect();
-        const startRect = options.keepSize ? Game.getCenteredRect(fromRect, toRect.width, toRect.height) : fromRect;
-
-        await this.moveSlidingClone(slidingClone, startRect, toRect, durationMs, options);
-
-        element.style.visibility = null;
-    }
-
-    //the other way round: a copy of element flies from where element is now to toRect on screen, then disappears.
-    //Element itself is left alone and can be removed as soon as this is called (a replaced tower going back to its reserve).
-    //With options.keepSize, the copy keeps element's size and lands centered on toRect; with options.fadeOutMs, it fades out once there.
-    //The copy shows at the opacity element shows at, which it doesn't inherit in <body>
-    public async animateSlideAway(element: HTMLDivElement, toRect: DOMRect, durationMs: number, options: SlideOptions = {}): Promise<void> {
-        const fromRect = element.getBoundingClientRect();
-        const shownOpacity = Game.getShownOpacity(element);
-        const slidingClone = this.createSlidingClone(element);
-        if(shownOpacity < 1)
-            slidingClone.style.opacity = shownOpacity.toString();
-        const endRect = options.keepSize ? Game.getCenteredRect(toRect, fromRect.width, fromRect.height) : toRect;
-
-        await this.moveSlidingClone(slidingClone, fromRect, endRect, durationMs, options);
-    }
-
-    //animateSlide for a tower already on its spot (BoardHandler.createTowerDiv), one disc at a time: each disc flies from
-    //`from` on its own, bottom disc first and staggerMs apart, as a copy of the whole tower with every other disc hidden, so
-    //it starts and lands exactly where it sits in the tower. Each disc shows in the tower as it lands, the height number with
-    //the top one. Resolves once the top disc has landed. Everything before the first await runs synchronously
+    //a tower already on its spot (BoardHandler.createTowerDiv) flies in from `from` (a player board's reserve disc), one disc
+    //at a time: each disc flies on its own, bottom disc first and staggerMs apart, as a copy of the whole tower with every
+    //other disc hidden, so it starts and lands exactly where it sits in the tower. Each copy starts at the size `from` has on
+    //screen and lands at the tower's own size and place, so nothing jumps at the end. Each disc shows in the tower as it
+    //lands, the height number with the top one. Everything is measured on screen (getBoundingClientRect), and the copies
+    //(in <body>, outside BGA's mobile scaling of the game area) convert screen px with their measured zoom, so they match on
+    //desktop and mobile alike. Resolves once the top disc has landed. Everything before the first await runs synchronously
     public async animateTowerSlide(towerElement: HTMLDivElement, from: HTMLDivElement, durationMs: number, staggerMs: number = Game.TOWER_DISC_STAGGER, options: SlideOptions = {}): Promise<void> {
-        const fromRect = from.getBoundingClientRect();
+        const startRect = from.getBoundingClientRect();
         const toRect = towerElement.getBoundingClientRect();
-        const startRect = options.keepSize ? Game.getCenteredRect(fromRect, toRect.width, toRect.height) : fromRect;
         const discParts = Game.getTowerDiscParts(towerElement);
         const slidingClones = discParts.map((_, discIndex) => this.createDiscSlidingClone(towerElement, discIndex)); //before the tower's own discs are hidden
 
@@ -231,19 +188,20 @@ export class Game {
         }));
     }
 
-    //animateSlideAway for a tower, one disc at a time: top disc first, staggerMs apart, each a copy of the whole tower with
-    //every other disc hidden (the height number leaves with the top one). The tower can be removed as soon as this is called
+    //the other way round: a tower flies from its spot to toRect on screen (its owner's reserve disc) and disappears, one disc
+    //at a time: top disc first, staggerMs apart, each a copy of the whole tower with every other disc hidden (the height number
+    //leaves with the top one). The copies show at the opacity the tower shows at, which they don't inherit in <body>. The
+    //tower can be removed as soon as this is called
     public async animateTowerSlideAway(towerElement: HTMLDivElement, toRect: DOMRect, durationMs: number, staggerMs: number = Game.TOWER_DISC_STAGGER, options: SlideOptions = {}): Promise<void> {
         const fromRect = towerElement.getBoundingClientRect();
         const shownOpacity = Game.getShownOpacity(towerElement);
-        const endRect = options.keepSize ? Game.getCenteredRect(toRect, fromRect.width, fromRect.height) : toRect;
         const discCount = Game.getTowerDiscParts(towerElement).length;
 
         await Promise.all(Array.from({ length: discCount }, (_, discIndex) => {
             const slidingClone = this.createDiscSlidingClone(towerElement, discIndex);
             if(shownOpacity < 1)
                 slidingClone.style.opacity = shownOpacity.toString();
-            return this.moveSlidingClone(slidingClone, fromRect, endRect, durationMs, { ...options, delayMs: (options.delayMs ?? 0) + (discCount - 1 - discIndex) * staggerMs });
+            return this.moveSlidingClone(slidingClone, fromRect, toRect, durationMs, { ...options, delayMs: (options.delayMs ?? 0) + (discCount - 1 - discIndex) * staggerMs });
         }));
     }
 
@@ -259,11 +217,6 @@ export class Game {
         const slidingClone = this.createSlidingClone(towerElement);
         Game.getTowerDiscParts(slidingClone).forEach((part, partIndex) => part.forEach(element => element.style.visibility = (partIndex === discIndex) ? null : 'hidden'));
         return slidingClone;
-    }
-
-    //a width x height rect on screen, centered on rect
-    private static getCenteredRect(rect: DOMRect, width: number, height: number): DOMRect {
-        return new DOMRect(rect.left + (rect.width - width) / 2, rect.top + (rect.height - height) / 2, width, height);
     }
 
     //element's own opacity times its ancestors'
@@ -283,10 +236,9 @@ export class Game {
         return slidingClone;
     }
 
-    //moves the copy from fromRect to toRect (both on screen), after options.delayMs at its start, fades it out there if
-    //options.fadeOutMs (after options.holdMs of stillness), then removes it
+    //moves the copy from fromRect to toRect (both on screen), after options.delayMs at its start, then removes it
     private async moveSlidingClone(slidingClone: HTMLDivElement, fromRect: DOMRect, toRect: DOMRect, durationMs: number, options: SlideOptions): Promise<void> {
-        const { easing = Game.TOWER_SLIDE_EASING, delayMs = 0, holdMs = 0, fadeOutMs = 0 } = options;
+        const { easing = Game.TOWER_SLIDE_EASING, delayMs = 0 } = options;
         const transformOnto = this.getSlidingCloneTransform(slidingClone);
 
         slidingClone.style.transform = transformOnto(fromRect);
@@ -297,15 +249,6 @@ export class Game {
         slidingClone.style.transform = transformOnto(toRect);
 
         await this.bga.gameui.wait(delayMs + durationMs);
-
-        if(holdMs > 0)
-            await this.bga.gameui.wait(holdMs);
-
-        if(fadeOutMs > 0){
-            slidingClone.style.transition = `opacity ${fadeOutMs}ms ease`;
-            slidingClone.style.opacity = '0';
-            await this.bga.gameui.wait(fadeOutMs);
-        }
 
         slidingClone.remove();
     }
@@ -323,29 +266,10 @@ export class Game {
             return `translate(${(left - baseRect.left) / zoom}px, ${(rect.top - baseRect.top) / zoom}px) scale(${scale})`;
         };
     }
-    public rgbToHex(rgb: string): string { // Extract the numeric values using a regex
-        const match = rgb.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/);
-        if (!match){
-            console.error('-- rgb --', rgb);
-            throw new Error("Invalid RGB format");
-        }
-
-        // Convert each component to a two-character hexadecimal
-        const [, r, g, b] = match;
-        return [r, g, b]
-            .map((num) => {
-                const hex = parseInt(num, 10).toString(16);
-                return hex.padStart(2, '0'); // Ensure two digits
-            })
-            .join(''); // Combine into a single string
-    }
     public onScreenWidthChange(): void { //BGA's resize hook (window resize, including orientation changes, and BGA's own relayout); also fires once at load
         this.boardHandler?.fitToViewport();
         this.heightMenu?.reposition();
     }
-    public isDesktop(): boolean { return document.body.classList.contains('desktop_version'); }
-    public isMobile(): boolean { return document.body.classList.contains('mobile_version'); }
-    public isTouchOrMobile(): boolean { return this.isMobile() || window.matchMedia('(hover: none)').matches; } //BGA's mobile layout, or a device that can't hover (a tablet in the desktop layout). Not BGA's touch-device class, which a touch laptop with a mouse has too
     public isReplay(): boolean { return typeof g_replayFrom != 'undefined' || g_archive_mode; } //"replay from this move" in an ongoing game, or an archived game
     public isInterfaceLocked(): boolean { return document.body.classList.contains('lockedInterface'); } //gameui.isInterfaceLocked() is not in this framework version
     public getGameStateName(): string { return this.gamedatas.gamestate.name; }
@@ -369,7 +293,6 @@ export class Game {
         players.forEach(player => player.showPassedStamp(showStamp && player.isPassed()));
     }
     public getMyPlayerID(): number{ return this.myPlayerID; }
-    public getPlayerOrder(): number[]{ return this.gamedatas.playerorder; } //turn order, starting with myself
 
     //end utility
 
@@ -397,8 +320,9 @@ export class Game {
 
     // Add the notification handlers
 
-    //a confirmed turn: the player's discs leave their reserve, replaced towers fly back to their owner's reserve (whose board
-    //bounces once they have landed), new towers fly to their spots, the scores update, then the board window follows the towers
+    //a confirmed turn: the player's discs leave their reserve, then spot by spot the replaced tower flies back to its owner's
+    //reserve while the new tower flies to its spot; then the reserves update, the boards that got discs back bounce, the
+    //scores update and the board re-centres
     public async notif_towersPlaced(args: TowersPlacedArgs) {
         const mover = this.players[args.player_id];
         mover?.setReserve(args.reserves[args.player_id] ?? mover.getReserve());

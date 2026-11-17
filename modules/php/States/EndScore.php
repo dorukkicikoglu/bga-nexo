@@ -53,7 +53,7 @@ class EndScore extends \Bga\GameFramework\States\GameState
             'winner_ids' => $endGameScoring['winner_ids'],
             'winning_score' => $endGameScoring['winning_score'],
             'endGameScoring' => $endGameScoring,
-            'GAME_END_LOG_STR' => implode(', ', $winnerNames).' win with '.$endGameScoring['winning_score'].' connected towers',
+            'GAME_END_LOG_STR' => implode(', ', $winnerNames).(count($winnerNames) > 1 ? ' share the victory with ' : ' wins with ').$endGameScoring['winning_score'].' connected towers', //plain fallback: the client builds the row from winner_ids
         ]);
 
         return ST_END_GAME;
