@@ -18,7 +18,7 @@
 $cell-size: min(5.6vw, 72px); //one spot of the grid on desktop; the board is (2 * GRID_SIZE - 1) spots wide and tall
 $mobile-cell-size: 76px; //BGA lays the game out at 740px or more and scales it down on a phone (gameinfos game_interface_width)
 $log-cell-size: 30px; //towers in log rows
-$mini-cell-size: 26px; //the reserve disc on player boards and the draft panel's discs
+$mini-cell-size: 26px; //the reserve disc on player boards
 
 //a tower's discs, as shares of --cell-size: each disc's width, its top face's height (a share of the disc's width: the
 //perspective), each disc's thickness, and the gap under the bottom disc. A 5-disc tower stays inside its own spot
@@ -158,6 +158,15 @@ body{ background: $bg-surface-color; isolation: isolate;
 //scaled by its transform only, so it can start at the source's size and land at the destination's
 body .sliding-clone{ position: fixed; left: 0px; top: 0px; z-index: 1000; margin: 0; pointer-events: none; transform-origin: 0 0; will-change: transform; }
 
+//the PASSED stamp's look, at any scale: the player board's (1) and the pass banner's ($passed-banner-scale), so the banner
+//lands on the board's stamp as a scaled copy of it
+$passed-stamp-color: #5a5f6e;
+$passed-banner-scale: 3;
+$passed-banner-name-size: 22px;
+$passed-banner-z-index: 1000;
+@mixin passed-stamp-look($scale) { display: flex; align-items: center; gap: 5px * $scale; padding: 1px * $scale 7px * $scale; border: 2px * $scale solid $passed-stamp-color; border-radius: 4px * $scale;
+    background-color: rgba(255, 255, 255, 0.7); color: $passed-stamp-color; font-size: 13px * $scale; font-weight: bold; text-transform: uppercase; letter-spacing: 1px * $scale; white-space: nowrap; }
+
 //mobile: a line break right before the action buttons, like a <br>, so they and BGA's arrow button start a second line
 //under the status bar title (the hourglass stays inline with it). Desktop keeps them next to the title
 .mobile_version #generalactions::before{ content: ""; display: block; }
@@ -189,7 +198,7 @@ body .sliding-clone{ position: fixed; left: 0px; top: 0px; z-index: 1000; margin
         --disc-face: #{map.get($colors, face)}; --disc-face-light: #{map.get($colors, face-light)}; --disc-side: #{map.get($colors, side)}; --disc-side-dark: #{map.get($colors, side-dark)}; --disc-number: #{map.get($colors, number)};
     }
 }
-//a single disc with no number: the reserve on player boards and the draft panel's discs
+//a single disc with no number: the reserve on player boards
 .nexo-tower.mini-tower{ --cell-size: #{$mini-cell-size};
     .tower-height-number{ display: none; }
 }
@@ -198,7 +207,7 @@ body .sliding-clone{ position: fixed; left: 0px; top: 0px; z-index: 1000; margin
 //board (BoardHandler): a window of --board-window-size spots across and down. .board-layer holds the spots and towers at their
 //own board coordinates (--x, --y, spots of --cell-size) and its translate (set inline, transitioned only while recentering)
 //brings the window into view. Overflow is hidden: while the window slides, spots of the old window pass its edge
-#nexo-board-container{ display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 8px 0px 16px 0px; }
+#nexo-board-container{ display: flex; flex-direction: column; align-items: center; padding: 10px 0px; } //10px from the status bar and, at the page's top, the window's bottom (BoardHandler.fitToViewport)
 #nexo-board{ position: relative; box-sizing: content-box; width: calc(var(--board-window-size, 9) * var(--cell-size)); height: calc(var(--board-window-size, 9) * var(--cell-size)); overflow: hidden;
     border: 1px solid $board-border-color; border-radius: $board-radius; background: $board-background; box-shadow: $slab-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.9); @include non-selectable();
     --draft-spot-color: #{$legal-spot-color};
@@ -209,28 +218,27 @@ body .sliding-clone{ position: fixed; left: 0px; top: 0px; z-index: 1000; margin
 //one spot's box, from its board coordinates
 @mixin board-place(){ position: absolute; left: calc(var(--x) * var(--cell-size)); top: calc(var(--y) * var(--cell-size)); width: var(--cell-size); height: var(--cell-size); }
 
-//every spot the grid can still reach (BoardRules.getPossibleArea), outlined: once 5 columns or 5 rows are taken, the outline is
-//the grid itself
-.possible-area{ position: absolute; left: calc(var(--x) * var(--cell-size)); top: calc(var(--y) * var(--cell-size)); width: calc(var(--columns) * var(--cell-size)); height: calc(var(--rows) * var(--cell-size));
-    box-sizing: border-box; border: 1px solid $possible-area-border; border-radius: 6px; background: $possible-area-fill; pointer-events: none; }
-
-//a spot: a faint dot where empty; an ellipse ring where the bottom disc of a tower would sit when it can take one
+//a spot with something to show (BoardHandler.renderSpots draws no other): an ellipse ring where the bottom disc of a tower would sit
 .board-spot{ @include board-place();
     --spot-ring-width: calc(var(--cell-size) * #{$disc-width-ratio});
     --spot-ring-height: calc(var(--spot-ring-width) * #{$disc-face-ratio});
     --spot-ring-bottom: calc(var(--cell-size) * #{$tower-base-ratio});
-    &.empty-spot::after{ content: ""; position: absolute; left: 50%; bottom: calc(var(--spot-ring-bottom) + var(--spot-ring-height) / 2); width: 6px; height: 6px; margin: 0px 0px -3px -3px; border-radius: 50%; background: $spot-dot-color; }
-    &.clickable-spot{ cursor: pointer;
+    &.clickable-spot{ cursor: pointer; }
+    &.clickable-spot, &.legal-spot{
         &::before{ content: ""; position: absolute; box-sizing: border-box; left: calc((var(--cell-size) - var(--spot-ring-width)) / 2); bottom: var(--spot-ring-bottom); width: var(--spot-ring-width); height: var(--spot-ring-height); border-radius: 50%; transition: background-color 0.15s ease, box-shadow 0.15s ease; }
     }
-    &.legal-spot::before{ border: 2px dashed rgba($legal-spot-color, 0.7); background-color: rgba($legal-spot-color, 0.1); }
-    &.legal-spot:hover::before{ border: 2px solid $legal-spot-color; background-color: rgba($legal-spot-color, 0.24); box-shadow: 0 0 8px rgba($legal-spot-color, 0.5); }
-    &.legal-spot::after{ display: none; }
+    //a legal spot, shown only to the player drafting, in their own disc color (--legal-spot-*, below); dashed, solid on hover
+    &.legal-spot::before{ border: 2px dashed var(--legal-spot-border); background-color: var(--legal-spot-fill); }
+    &.legal-spot.clickable-spot:hover::before{ border-style: solid; background-color: var(--legal-spot-hover-fill); box-shadow: 0 0 8px var(--legal-spot-glow); }
     //an enemy tower that can be replaced: a wider orange ring around its base, pulsing, over which the tower stands
     &.replaceable-spot::before{ left: calc((var(--cell-size) - var(--spot-ring-width) * 1.2) / 2); bottom: calc(var(--spot-ring-bottom) - var(--spot-ring-height) * 0.1); width: calc(var(--spot-ring-width) * 1.2); height: calc(var(--spot-ring-height) * 1.2);
         border: 3px dashed $replaceable-spot-color; background-color: rgba($replaceable-spot-color, 0.15); animation: replaceable-spot-pulse 1.6s ease-in-out infinite; }
     &.replaceable-spot:hover::before{ border-style: solid; background-color: rgba($replaceable-spot-color, 0.35); }
     &.selected-spot::before{ border: 3px solid $selected-spot-color !important; background-color: rgba($selected-spot-color, 0.35) !important; box-shadow: 0 0 10px $selected-spot-color; animation: none; }
+}
+//the legal spots' color: the drafting player's disc color (BoardHandler.renderSpots)
+@each $name, $colors in $disc-colors {
+    #nexo-board[data-legal-spot-color="#{$name}"]{ --legal-spot-border: #{rgba(map.get($colors, face), 0.75)}; --legal-spot-fill: #{rgba(map.get($colors, face), 0.12)}; --legal-spot-hover-fill: #{rgba(map.get($colors, face), 0.26)}; --legal-spot-glow: #{rgba(map.get($colors, face), 0.5)}; }
 }
 @keyframes replaceable-spot-pulse{ 0%, 100%{ box-shadow: 0 0 0px rgba($replaceable-spot-color, 0); } 50%{ box-shadow: 0 0 10px rgba($replaceable-spot-color, 0.9); } }
 @media (prefers-reduced-motion: reduce){
@@ -255,23 +263,6 @@ body .sliding-clone{ position: fixed; left: 0px; top: 0px; z-index: 1000; margin
 .board-tower.largest-group-tower::before{ content: ""; position: absolute; left: calc((var(--cell-size) - var(--disc-width) * 1.15) / 2); bottom: calc(var(--tower-base) - var(--disc-face-height) * 0.1); width: calc(var(--disc-width) * 1.15); height: calc(var(--disc-face-height) * 1.2);
     border-radius: 50%; background: var(--group-glow); box-shadow: 0 0 10px 3px var(--group-glow); opacity: 0.9; }
 //end board
-
-//draft panel (PlaceTowers.renderDraftPanel), above the board, for the active player only. Hidden with visibility, never display,
-//so the board never moves when a turn starts or ends
-#draft-panel{ display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 22px; min-height: 34px; padding: 4px 14px; box-sizing: border-box; max-width: 100%;
-    border-radius: 10px; background: rgba(255, 255, 255, 0.85); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2); color: #27271c; visibility: hidden;
-    &.drafting{ visibility: visible; }
-    .draft-discs, .draft-reserve{ display: flex; align-items: center; gap: 6px; }
-    .draft-label{ font-size: 14px; }
-    .draft-count{ font-size: 17px; }
-    .draft-pips{ display: flex; align-items: center; }
-    .draft-pip{ margin: -4px -2px; transition: opacity 0.2s ease; }
-    .draft-pip.used-pip{ opacity: 0.25; }
-    .draft-pip.unavailable-pip{ opacity: 0.08; }
-    .draft-hint{ font-size: 13px; font-style: italic; opacity: 0.8;
-        &:empty{ display: none; }
-    }
-}
 
 //height menu (HeightMenu): the popup next to the selected spot, one button per legal height, each a tower of that height in the
 //player's color with its number on top. It is fixed in <body>, outside BGA's mobile scaling, so these are real screen px: the
@@ -338,10 +329,19 @@ $height-menu-z-index: 948;
     }
     &[data-empty-reserve="true"] .reserve-indicator{ opacity: 0.45; }
     //PASSED, like Riviera's round status stamp: only while data-passed is true
-    .passed-stamp{ display: flex; align-items: center; gap: 5px; padding: 1px 7px; border: 2px solid var(--stamp-color); border-radius: 4px; background-color: rgba(255, 255, 255, 0.7); color: var(--stamp-color);
-        --stamp-color: #5a5f6e; rotate: -6deg; font-size: 13px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; white-space: nowrap;
+    .passed-stamp{ @include passed-stamp-look(1); rotate: -6deg;
         opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s; }
     &[data-passed="true"] .passed-stamp{ opacity: 1; visibility: visible; }
+}
+
+//[BGA] a pass (PlayerHandler.animatePass): the PASSED stamp scaled up, centred on the screen with the player's name above
+//it, then flown onto the board's stamp by its transform (which holds the -6deg rotation too). Fixed in <body>, outside
+//BGA's mobile scaling; over the status bar, like the flying tower copies
+body .passed-banner{ position: fixed; inset: 0px; margin: auto; width: fit-content; height: fit-content; z-index: $passed-banner-z-index; pointer-events: none; transform-origin: 50% 50%; will-change: transform, opacity;
+    @include passed-stamp-look($passed-banner-scale); box-shadow: 0 6px 24px rgba($material-charcoal, 0.3);
+    .passed-banner-name{ position: absolute; left: 50%; bottom: 100%; translate: -50% 0; margin-bottom: 10px; padding: 3px 12px; border-radius: 4px; background-color: rgba(255, 255, 255, 0.9);
+        font-size: $passed-banner-name-size; letter-spacing: 0; text-transform: none; transition: opacity 0.2s ease; }
+    &.passed-banner-flying .passed-banner-name{ opacity: 0; }
 }
 
 //PlayerHandler's boardElement, BGA's whole .player-board: positioned for the bounce (which animates top)

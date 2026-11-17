@@ -79,6 +79,57 @@ export class PlayerHandler{
         this.playerBoardContainer.setAttribute('data-passed', show ? 'true' : 'false');
     }
 
+    //[BGA] a pass, seen by everyone: a big PASSED stamp with the player's name pops in at the centre of the screen, holds,
+    //then shrinks onto this board's PASSED stamp. The player is marked passed as it lands: the board's stamp fades in under
+    //it, or, when it doesn't show (both players passed: the game is over), the banner fades out where it landed.
+    //The banner is in <body>, outside BGA's mobile scaling: it converts screen px with its own measured zoom, like
+    //Game.getSlidingCloneTransform. Its transform holds its rotation (the stamp's rotate), so translate is never rotated
+    public async animatePass(): Promise<void> {
+        const passedStamp = this.playerBoardContainer.querySelector('.passed-stamp') as HTMLDivElement;
+        const rotation = getComputedStyle(passedStamp).rotate;
+        const rotate = (rotation && rotation !== 'none') ? rotation : '0deg';
+
+        const banner = document.createElement('div');
+        banner.classList.add('passed-banner');
+        banner.innerHTML = `<div class="passed-banner-name">${this.game.divColoredPlayer(this.playerID, {class: 'playername'})}</div><i class="fa6 fa-forward"></i>${_('Passed')}`;
+        banner.style.opacity = '0';
+        document.body.appendChild(banner);
+
+        const bannerRect = banner.getBoundingClientRect(); //unrotated: no transform yet
+        const cssWidth = parseFloat(getComputedStyle(banner).width);
+        const zoom = (cssWidth > 0) ? bannerRect.width / cssWidth : 1;
+        const transformTo = (dx: number, dy: number, scale: number): string => `translate(${dx / zoom}px, ${dy / zoom}px) scale(${scale}) rotate(${rotate})`;
+
+        banner.style.transform = transformTo(0, 0, 1.4);
+        await this.game.bga.gameui.wait(20); //let the start paint before the transition kicks in
+
+        banner.style.transition = `transform ${Game.PASS_BANNER_POP_DURATION}ms ease-out, opacity ${Game.PASS_BANNER_POP_DURATION}ms ease-out`;
+        banner.style.transform = transformTo(0, 0, 1);
+        banner.style.opacity = '1';
+        await this.game.bga.gameui.wait(Game.PASS_BANNER_POP_DURATION + Game.PASS_BANNER_HOLD);
+
+        //the board's stamp, measured unrotated now (the page may have scrolled during the hold); hidden, it keeps its place
+        passedStamp.style.rotate = '0deg';
+        const stampRect = passedStamp.getBoundingClientRect();
+        passedStamp.style.rotate = '';
+        const dx = (stampRect.left + stampRect.width / 2) - (bannerRect.left + bannerRect.width / 2);
+        const dy = (stampRect.top + stampRect.height / 2) - (bannerRect.top + bannerRect.height / 2);
+        const scale = (bannerRect.width > 0) ? stampRect.width / bannerRect.width : 1;
+
+        banner.classList.add('passed-banner-flying'); //the name fades out on the way
+        banner.style.transition = `transform ${Game.PASS_BANNER_FLIGHT_DURATION}ms ease-in-out`;
+        banner.style.transform = transformTo(dx, dy, scale);
+        await this.game.bga.gameui.wait(Game.PASS_BANNER_FLIGHT_DURATION);
+
+        this.setPassed(true);
+        if(this.playerBoardContainer.getAttribute('data-passed') !== 'true'){
+            banner.style.transition = `opacity ${Game.PASS_BANNER_SETTLE_DURATION}ms ease`;
+            banner.style.opacity = '0';
+        }
+        await this.game.bga.gameui.wait(Game.PASS_BANNER_SETTLE_DURATION);
+        banner.remove();
+    }
+
     //every live score change goes through here: BGA's score counter is the player's largest group
     public setScore(score: number): void {
         this.score = score;

@@ -33,8 +33,16 @@ export class Game {
     public static readonly TOWER_SLIDE_DURATION = 520; //ms of a tower flying between a player board's reserve and its spot
     public static readonly TOWER_SLIDE_STAGGER = 110; //ms between two new towers of the same turn leaving the reserve
     public static readonly TOWER_SLIDE_EASING = 'ease-in-out';
-    public static readonly BOARD_RECENTER_DURATION = 450; //ms of the board window sliding, only if the reachable area ever left it (BoardHandler.computeWindow: never under the rules)
+    public static readonly BOARD_RECENTER_DURATION = 400; //ms of the board's contents sliding to stay centred (BoardHandler.centerContents, Yaxha's 400ms)
     public static readonly BOARD_RECENTER_EASING = 'ease-in-out';
+    public static readonly BOARD_VIEWPORT_MARGIN = 10; //screen px from the board to the window's bottom (BoardHandler.fitToViewport); the status bar's gap is #nexo-board-container's padding
+    public static readonly MIN_BOARD_CELL_SIZE = 40; //px of a spot, however short the window
+    //[BGA] a pass (PlayerHandler.animatePass): the big PASSED stamp pops in at the centre, holds, flies onto the player
+    //board's stamp, then settles there (or fades out when both players have passed). About 1.5s in all
+    public static readonly PASS_BANNER_POP_DURATION = 150;
+    public static readonly PASS_BANNER_HOLD = 600;
+    public static readonly PASS_BANNER_FLIGHT_DURATION = 450;
+    public static readonly PASS_BANNER_SETTLE_DURATION = 300; //the board's stamp fades in under the banner (its own 0.3s transition)
 
     public bga: Bga<NexoPlayer, NexoGamedatas>;
     private gamedatas: NexoGamedatas;
@@ -78,10 +86,8 @@ export class Game {
     setup(gamedatas: NexoGamedatas) {
         this.gamedatas = gamedatas;
 
-        //the draft panel keeps its height when hidden, so the board never moves when a turn starts or ends
         this.bga.gameArea.getElement().insertAdjacentHTML('beforeend', `
             <div id="nexo-board-container">
-                <div id="draft-panel"></div>
                 <div id="nexo-board"></div>
             </div>
         `);
@@ -281,6 +287,7 @@ export class Game {
             .join(''); // Combine into a single string
     }
     public onScreenWidthChange(): void { //BGA's resize hook (window resize, including orientation changes, and BGA's own relayout); also fires once at load
+        this.boardHandler?.fitToViewport();
         this.heightMenu?.reposition();
     }
     public isDesktop(): boolean { return document.body.classList.contains('desktop_version'); }
@@ -357,10 +364,18 @@ export class Game {
         await this.boardHandler.recenter();
     }
 
-    //[BGA] the automatic pass: the log row and the player board's PASSED stamp, no animation
+    //[BGA] the automatic pass: the log row, the big PASSED banner flying onto the player board's stamp (the notification
+    //lasts as long as it does, so a second pass or the game end waits for it), and the stamp. No banner with animations off
+    //(instantaneous mode, fast replay, a hidden tab) or in a replay: the stamp just applies
     public async notif_playerPassed(args: PlayerPassedArgs) {
-        this.players[args.player_id]?.setPassed(true);
-        this.players[args.player_id]?.setReserve(args.reserve);
+        const player = this.players[args.player_id];
+        if(!player)
+            return;
+
+        player.setReserve(args.reserve);
+        if(this.bga.gameui.bgaAnimationsActive() && !this.isReplay())
+            await player.animatePass(); //marks the player passed as it lands
+        else player.setPassed(true);
     }
 
     private async notif_displayEndGameScoring(args: DisplayEndGameScoringArgs) {

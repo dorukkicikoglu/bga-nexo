@@ -31,21 +31,21 @@ Setup:
 - [ ] A 2-player game starts without errors. One player is red, the other black (try a table where your favorite color is black, too).
 - [ ] The red player is active first, whatever the seat order.
 - [ ] Each player board shows a red or black disc "× 25" and a score of 0. No PASSED stamp.
-- [ ] The board is a 9x9 area of faint dots with a dashed outline; only the centre spot has a legal-spot ring for red. Black sees "<name> must place towers" and no rings.
+- [ ] The board shows a single legal spot (a dashed ellipse) in its centre, red for the red player, black for the black player. Black sees "<name> must place towers" and can't click it.
 - [ ] `SELECT * FROM towers` is empty; `SELECT player_id, player_color, reserve, passed FROM player`: 25 and `no` each.
 
 Drafting (as the active player):
 - [ ] Click the centre spot: it gets a gold ring and the height menu opens next to it with towers 1 to 5 (details: After M1: height menu).
-- [ ] Pick 2: a semi-transparent 2-disc tower appears; the panel above the board reads 3 discs left and reserve 23; the title is unchanged; Confirm and Reset turn show. New legal-spot rings appear around it.
+- [ ] Pick 2: a semi-transparent 2-disc tower appears; the title is unchanged; Confirm and Reset turn show. New legal spots appear around it.
 - [ ] Place a 1 next to it, then a 1 next to that one (adjacent only to this turn's tower): allowed. With 1 disc left, a click places a 1 at once (no buttons).
 - [ ] With 0 discs left, no ring shows; the title stays "You must place 1 to 5 discs" and Confirm is there.
 - [ ] Hover a drafted tower: an × shows. Click the middle one of a line of three: it goes, and so does the far one (no longer connected). Reset turn clears everything.
-- [ ] Rings never go beyond 5 columns or 5 rows from the towers: build a row of 4 over two turns, then check that only one more column is offered at either end, and the dashed outline shrinks to 5 columns.
+- [ ] Legal spots never go beyond 5 columns or 5 rows: build a row of 4 over two turns, then check that only one more column is offered at either end.
 - [ ] Confirm: the drafted towers become solid; your reserve drops; your score becomes your largest group (towers, not discs).
 
 The other player's view of a turn (and a spectator's):
 - [ ] New towers fly one after another from the mover's reserve disc on their player board to their spots.
-- [ ] The board never moves, during a draft or after a turn (see After M1: material styling and anchored grid).
+- [ ] After each turn the board's contents slide smoothly to stay centred, never jump (see After M1: Yaxha grid).
 - [ ] The log row reads "name [tower][tower]...", each tower drawn with its height.
 
 Replacements:
@@ -75,7 +75,7 @@ Zombie:
 - [ ] Make a player quit: on their turns a single random legal tower is placed (log row as usual), and passes still happen on their own.
 
 Spectator and display:
-- [ ] A spectator sees the board, both reserves, PASSED stamps and the log, and no rings or draft panel.
+- [ ] A spectator sees the board, both reserves, PASSED stamps and the log, and no rings.
 - [ ] Mobile layout (or a narrow window): the board is large and fits the width; the action buttons wrap under the title; nothing overflows horizontally.
 - [ ] Statistics at the end (turns, passes, discs placed, towers placed and replaced, discs returned, largest area, towers at the end) look right.
 - [ ] No errors in the browser console on load or F5.
@@ -114,7 +114,7 @@ Deploy `nexo.css`; no schema change, an ongoing table is fine (F5). Check on des
 - [ ] Scroll the page: the background stays put (no tiling, no seam at the bottom of a long page).
 - [ ] Phone (portrait): the black disc stays in the bottom-left corner and leaves most of the screen white; landscape looks like desktop.
 - [ ] Nothing of BGA's default background shows anywhere (top, bottom, behind the side column).
-- [ ] Readable over the black: the status bar, the draft panel, the board, the log (on a phone it sits under the board), player boards, the end-of-game result box. Note anything that isn't.
+- [ ] Readable over the black: the status bar, the board, the log (on a phone it sits under the board), player boards, the end-of-game result box. Note anything that isn't.
 - [ ] No other page of BGA changes (the lobby, another game).
 
 ## After M1: material styling and anchored grid
@@ -123,17 +123,42 @@ Deploy `modules/` and `nexo.css`; no schema change, an ongoing table is fine (F5
 
 Board:
 - [ ] The board is a pale white marble slab (no beige) with small rounded corners and a soft shadow; it reads well where it crosses the black arc's edge.
-- [ ] Empty spots are small charcoal dots; the reachable area has a thin, quiet charcoal outline and a barely darker fill.
-- [ ] Legal spots: a red dashed ring with a faint red fill, solid and brighter on hover. Replaceable enemy towers: the pulsing orange ring. The selected spot: gold. All three are easy to tell apart, for both players.
+- [ ] (Superseded by After M1: Yaxha grid: no dots, no outline.)
+- [ ] Legal spots: see After M1: Yaxha grid. Replaceable enemy towers: the pulsing orange ring. The selected spot: gold. All three are easy to tell apart, for both players.
 - [ ] Discs look exactly as before.
 
-Anchored grid:
-- [ ] Play several turns that add columns or rows on one side only (for example, always to the right): the grid and every tower stay exactly where they are after each turn, for the mover, the opponent and a spectator. Only the dots outside the reachable area disappear.
-- [ ] F5 at any point: the board shows the same window as before the reload.
-- [ ] Once 5 columns are taken, the outline sits wherever those columns are (it may be off-centre in the board); every legal spot is still on the board.
+Anchored grid: superseded by After M1: Yaxha grid (the contents now re-centre).
 
 Player boards and log:
 - [ ] Player boards: the same white marble and a soft shadow, no beige.
 - [ ] Log rows: white marble, near-black text, a soft line under each, a red bar on the left of the red player's rows and a black bar on the black player's (pass rows too; the game end row in the winner's color, neutral on a shared victory). "You" stays red; other names in their color. No gold tones.
 - [ ] Timestamps, hovering a row and the replay links ("replay from this move") work as before, in the desktop log, the mobile log and a replay.
+
+## After M1: Yaxha grid
+
+Deploy `modules/` and `nexo.css`; no schema change, an ongoing table is fine (F5). Check as both players and as a spectator.
+
+Display:
+- [ ] Only towers and legal spots show: no grid dots, no frame, no empty space marked out. (Board size: see After M1: board size.)
+- [ ] Legal spots are dashed ellipses in your own color (red or black), only on your turn while you place (pointer, solid on hover); the selected spot's gold ring and the replaceable towers' orange ring are as before. The passive player, a spectator and a replay see no ellipses at all.
+- [ ] When the turn passes, the board doesn't slide on either screen: both players' boards sit in the same place.
+- [ ] Game start: red sees one legal spot in the middle of the board, black an empty board; after the first tower, the tower sits in the middle on both screens (with 4 legal spots around it on the placing player's).
+
+Re-centring (Yaxha's):
+- [ ] Draft a tower at an edge of the contents: everything slides smoothly (about 0.4s) to stay centred, nothing jumps. Taking it back slides back.
+- [ ] Confirm: on the other screen (and a spectator's) the towers fly to their spots first, then everything slides to the new centre. The mover's screen ends in the same place.
+- [ ] Build towards each edge and each corner of the 5x5 over several turns: every tower keeps its place relative to the others, the contents never leave the board or get clipped, and they always end centred.
+- [ ] F5 at any point: the same layout as before the reload, with no slide. A replay shows the same layout at each move.
+- [ ] Animations off (BGA's setting) or fast replay: the board just applies the new centre.
+- [ ] Once the game ends, legal spots go and the towers re-centre on their own; F5 after the end shows the same.
+
+## After M1: board size
+
+Deploy `modules/` and `nexo.css`; no schema change, an ongoing table is fine (F5).
+
+- [ ] No panel above the board (no discs-left panel), for anyone.
+- [ ] Desktop, page at its top, right after F5 and after waiting a moment: the board is square, about 10px under the status bar, its bottom about 10px above the window's bottom (Studio's debug buttons only appear after scrolling); towers and legal spots scale with it. Scroll down: BGA's settings and the rest of the page are still below it.
+- [ ] Resize the window taller, shorter, narrower: the board follows (never wider than the game area, never under the right column); the towers stay centred and in place relative to each other.
+- [ ] Mobile (portrait): the board fills the game area's width; nothing overflows horizontally. Rotate the phone: it resizes.
+- [ ] The height menu still opens next to its spot and its buttons keep their size; flights to and from the board land on the right spots.
 

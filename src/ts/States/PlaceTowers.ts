@@ -11,7 +11,6 @@
  */
 import { Game } from "../Game";
 import { BoardRules } from "../BoardRules";
-import { BoardHandler } from "../BoardHandler";
 
 /**
  * [BGA] The active player drafts their turn on the client, then confirms it: click a highlighted spot (an empty spot next to a
@@ -59,12 +58,10 @@ export class PlaceTowers {
         this.game.heightMenu.close();
         this.game.boardHandler.setSpotClickHandler(null);
         this.game.boardHandler.setDraft(null);
-        this.hideDraftPanel();
     }
 
     private getDiscsUsed(): number { return this.pending.reduce((sum, tower) => sum + tower.height, 0); }
     private getDiscsLeft(): number { return Math.max(0, (this.stateArgs?.discsThisTurn ?? 0) - this.getDiscsUsed()); }
-    private getReserve(): number { return this.stateArgs?.reserve ?? 0; }
 
     //the towers on the board plus the draft's new towers: what adjacency and the grid's bounds are checked against
     private getDraftOccupied(): Map<string, NexoSpot> {
@@ -169,7 +166,7 @@ export class PlaceTowers {
         this.bga.actions.performAction('actPlaceTowers', { placements: JSON.stringify(placements) });
     }
 
-    //redraws everything the draft shows: the board (drafted towers, legal spots, replaceable towers), the draft panel and the status bar
+    //redraws everything the draft shows: the board (drafted towers, legal spots, replaceable towers) and the status bar
     private update(): void {
         if(!this.drafting)
             return;
@@ -186,7 +183,6 @@ export class PlaceTowers {
             selectedSpot: this.selectedSpot,
             discColor: this.game.getDiscColor(this.game.getMyPlayerID()),
         });
-        this.renderDraftPanel();
         this.updateStatusBar();
         this.updateHeightMenu();
     }
@@ -225,42 +221,5 @@ export class PlaceTowers {
             this.selectedSpot = null;
             this.update();
         });
-    }
-
-    //above the board, for the active player only: the discs left this turn (one disc per disc of the turn: used, left, or not
-    //affordable with the reserve), the reserve left after this turn and, once a tower is drafted, how to take one back
-    private renderDraftPanel(): void {
-        const panel = document.getElementById('draft-panel');
-        if(!panel)
-            return;
-
-        const rules = this.game.getRules();
-        const discColor = this.game.getDiscColor(this.game.getMyPlayerID());
-        const discsUsed = this.getDiscsUsed();
-        const discsThisTurn = this.stateArgs?.discsThisTurn ?? 0;
-
-        let pipsHTML = '';
-        for(let discIndex = 0; discIndex < rules.maxDiscsPerTurn; discIndex++){
-            const pipClass = discIndex < discsUsed ? 'used-pip' : (discIndex < discsThisTurn ? 'available-pip' : 'unavailable-pip');
-            pipsHTML += BoardHandler.createTowerDiv(discColor, 1, 'mini-tower draft-pip ' + pipClass).outerHTML;
-        }
-
-        panel.innerHTML = `
-            <div class="draft-discs">
-                <span class="draft-label">${_('Discs left this turn')}</span>
-                <span class="draft-pips">${pipsHTML}</span>
-                <b class="draft-count">${this.getDiscsLeft()}</b>
-            </div>
-            <div class="draft-reserve">
-                <span class="draft-label">${_('Reserve')}</span>
-                <b class="draft-count">${this.getReserve() - discsUsed}</b>
-            </div>
-            <div class="draft-hint">${this.pending.length > 0 ? _('Click a tower of this turn to take it back') : ''}</div>
-        `;
-        panel.classList.add('drafting');
-    }
-
-    private hideDraftPanel(): void {
-        document.getElementById('draft-panel')?.classList.remove('drafting');
     }
 }

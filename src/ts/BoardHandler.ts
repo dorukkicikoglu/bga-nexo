@@ -10,7 +10,7 @@
  * BoardHandler.ts
  */
 import { Game } from "./Game";
-import { BoardRules, GridBounds } from "./BoardRules";
+import { BoardRules } from "./BoardRules";
 
 //what the turn being drafted shows on the board (PlaceTowers, for the active player only)
 export type DraftView = {
@@ -22,19 +22,24 @@ export type DraftView = {
 };
 
 /**
- * The board: a window of (2 * gridSize - 1) x (2 * gridSize - 1) spots (9 x 9), anchored on the first tower (0 0, the
- * window's centre) for the whole game, so the grid never shifts (computeWindow). Spots outside the reachable area
- * (getPossibleArea) are not shown: once 5 columns or 5 rows are taken, only those remain. Towers and spots sit in .board-layer
- * at their own board coordinates, and the layer's translate brings the window into view.
+ * The board, with Yaxha's grid logic (reference/yaxha/src/PyramidHandler.ts): towers and legal spots sit in .board-layer at
+ * their own board coordinates (--x, --y times --cell-size), in a frame anchored to the first tower (0 0) for the whole game, so
+ * a tower's grid position never changes. Only the layer moves: like Yaxha's centerCubesContainer(), its translate centres the
+ * bounding box of the towers plus the legal spots in the board (centerContents), sliding over BOARD_RECENTER_DURATION when
+ * that box changes, at once on load. The legal spots count in the box for everyone but only the player drafting sees them.
+ * Nothing else is drawn: no empty spots, no grid outline. The board is (gridSize + 2)
+ * spots across and down: the largest box is gridSize + 1 (4 columns of towers with a legal spot on each side; with 5, no
+ * spot beyond them is legal), plus half a spot on each side.
  */
 export class BoardHandler {
     private boardElement: HTMLDivElement;
     private layerElement: HTMLDivElement;
     private spotsLayer: HTMLDivElement;
     private towersLayer: HTMLDivElement;
-    private windowSize: number;
-    private windowLeft: number = 0;
-    private windowTop: number = 0;
+    private boardSize: number;
+    private contentsCenterX: number | null = null; //the middle of the towers' and legal spots' bounding box, in spots, once centred
+    private contentsCenterY: number | null = null;
+    private boxLegalSpots: NexoSpot[] = []; //the legal spots the box is centred on, shown or not (getBoxLegalSpots)
     private towers = new Map<string, NexoTower>();
     private towerElements = new Map<string, HTMLDivElement>();
     private pendingElements = new Map<string, HTMLDivElement>();
@@ -42,11 +47,10 @@ export class BoardHandler {
     private spotClickHandler: ((spot: NexoSpot) => void) | null = null;
 
     constructor(private game: Game, towers: NexoTower[]) {
-        this.windowSize = 2 * this.game.getRules().gridSize - 1;
-        this.windowLeft = this.windowTop = -(this.game.getRules().gridSize - 1); //the anchor: the first tower (0 0) in the centre
+        this.boardSize = this.game.getRules().gridSize + 2;
 
         this.boardElement = document.getElementById('nexo-board') as HTMLDivElement;
-        this.boardElement.style.setProperty('--board-window-size', this.windowSize.toString());
+        this.boardElement.style.setProperty('--board-window-size', this.boardSize.toString());
         this.boardElement.innerHTML = `
             <div class="board-layer">
                 <div class="spots-layer"></div>
@@ -60,15 +64,61 @@ export class BoardHandler {
         for(const tower of towers)
             this.addBoardTower(tower);
 
-        this.computeWindow();
-        this.applyWindow();
+        this.fitToViewport();
         this.renderSpots();
+        this.centerContents(false); //on load (F5, a replay's start): no slide
+
+        //BGA's onScreenWidthChange (Game) only follows the width, and the page above the board is still being laid out when
+        //setup measures it (a board measured too low stayed too small): fit again on every window resize and whenever the page's
+        //layout changes (body's size: BGA's bars, the status bar, the columns settling). Fitting again where nothing moved
+        //changes nothing, so this never loops
+        let fitFrame = 0;
+        const scheduleFit = () => {
+            cancelAnimationFrame(fitFrame);
+            fitFrame = requestAnimationFrame(() => this.fitToViewport());
+        };
+        window.addEventListener('resize', scheduleFit);
+        const layoutObserver = new ResizeObserver(scheduleFit);
+        layoutObserver.observe(document.body);
+        const statusBar = document.getElementById('page-title');
+        if(statusBar)
+            layoutObserver.observe(statusBar);
 
         this.layerElement.addEventListener('click', (event: MouseEvent) => this.onBoardClick(event));
     }
 
+    /**
+     * [BGA] The board as big as the window allows: square, from #nexo-board-container's padding under the status bar down to
+     * BOARD_VIEWPORT_MARGIN above the window's bottom when the page is at its top (so the page still scrolls down to BGA's
+     * settings below), never wider than the game area, nor smaller than MIN_BOARD_CELL_SIZE spots. Sized through --cell-size
+     * on #nexo-board, so the towers, spots and the layer's translate scale with it. Measured on screen, converted with the
+     * container's measured zoom (BGA scales the game area down on a phone)
+     */
+    public fitToViewport(): void {
+        const container = this.boardElement.parentElement;
+        if(!container)
+            return;
+
+        const containerRect = container.getBoundingClientRect();
+        const containerWidth = parseFloat(getComputedStyle(container).width); //unrounded, unlike offsetWidth
+        if(!(containerWidth > 0))
+            return;
+        const zoom = containerRect.width / containerWidth;
+
+        const boardTop = this.boardElement.getBoundingClientRect().top + window.scrollY; //on the page, in screen px
+        const borders = this.boardElement.offsetWidth - this.boardElement.clientWidth; //the board's own border, both sides
+        const maxHeight = (window.innerHeight - boardTop - Game.BOARD_VIEWPORT_MARGIN) / zoom - borders;
+        const maxWidth = containerWidth - borders;
+
+        const cellSize = Math.max(Game.MIN_BOARD_CELL_SIZE, Math.floor(Math.min(maxHeight, maxWidth) / this.boardSize)) + 'px';
+        if(this.boardElement.style.getPropertyValue('--cell-size') === cellSize)
+            return;
+        this.boardElement.style.setProperty('--cell-size', cellSize);
+        this.game.heightMenu?.reposition(); //an open height menu follows its spot
+    }
+
     //a tower of height discs in discColor: one .tower-disc per disc, bottom one first, and its height as a number on top. Also
-    //used for log rows, the player boards' reserve and the draft panel, each sized by its own --cell-size
+    //used for log rows, the player boards' reserve and the height menu, each sized by its own --cell-size
     public static createTowerDiv(discColor: DiscColor, height: number, extraClass: string = ''): HTMLDivElement {
         const tower = document.createElement('div');
         tower.className = 'nexo-tower' + (extraClass ? ' ' + extraClass : '');
@@ -109,92 +159,78 @@ export class BoardHandler {
         element.setAttribute('data-y', spot.y.toString());
     }
 
-    //the window's top-left spot. It stays on its anchor (the first tower, 0 0, in the centre: columns and rows -4 to 4) for the
-    //whole game: the reachable area (columns maxX - 4 to minX + 4) starts as exactly that window once the first tower is down,
-    //and every turn's towers land inside it, so it only ever shrinks and never leaves the window. Re-centring on the towers
-    //instead shifted the grid by a column or row after most turns. Only an area that left the window anyway (never under the
-    //rules) moves it, by the smallest shift that holds it again
-    private computeWindow(): boolean {
-        let left = this.windowLeft;
-        let top = this.windowTop;
-        const area = this.game.boardRules.getPossibleArea(this.towers);
-        if(area){
-            left = Math.min(Math.max(left, area.maxX - this.windowSize + 1), area.minX);
-            top = Math.min(Math.max(top, area.maxY - this.windowSize + 1), area.minY);
-        }
+    /**
+     * Yaxha's centerCubesContainer(): the layer's translate puts the middle of the bounding box of the towers, the draft's new
+     * towers and the legal spots (shown or not, getBoxLegalSpots) in the middle of the board. Computed from board coordinates rather than measured on the
+     * page (Yaxha measures its cubes), so every viewer, a reload and a replay get the very same layout. Slides when animate
+     * (BOARD_RECENTER_DURATION, Yaxha's 400ms) and animations are on, else applies at once (on load). Resolves once it has slid
+     */
+    private async centerContents(animate: boolean): Promise<void> {
+        const contents = new Map<string, NexoSpot>(this.towers);
+        for(const pendingTower of this.draft?.pending ?? [])
+            contents.set(BoardRules.key(pendingTower.x, pendingTower.y), pendingTower);
+        for(const spot of this.boxLegalSpots)
+            contents.set(BoardRules.key(spot.x, spot.y), spot);
 
-        const changed = left !== this.windowLeft || top !== this.windowTop;
-        this.windowLeft = left;
-        this.windowTop = top;
-        return changed;
+        const bounds = BoardRules.getBounds(contents);
+        const centerX = bounds ? (bounds.minX + bounds.maxX + 1) / 2 : 0.5; //spot x covers x to x + 1
+        const centerY = bounds ? (bounds.minY + bounds.maxY + 1) / 2 : 0.5;
+        if(centerX === this.contentsCenterX && centerY === this.contentsCenterY)
+            return;
+
+        const slide = animate && this.contentsCenterX !== null && this.game.bga.gameui.bgaAnimationsActive();
+        this.contentsCenterX = centerX;
+        this.contentsCenterY = centerY;
+
+        //a slide set while another runs carries on from where the layer is, so the layer never jumps
+        this.layerElement.style.transition = slide ? `translate ${Game.BOARD_RECENTER_DURATION}ms ${Game.BOARD_RECENTER_EASING}` : 'none';
+        this.layerElement.style.translate = `calc(${this.boardSize / 2 - centerX} * var(--cell-size)) calc(${this.boardSize / 2 - centerY} * var(--cell-size))`;
+        if(slide)
+            await this.game.bga.gameui.wait(Game.BOARD_RECENTER_DURATION);
+        this.game.heightMenu?.reposition(); //an open height menu follows its spot
     }
 
-    private applyWindow(): void {
-        this.layerElement.style.translate = `calc(${-this.windowLeft} * var(--cell-size)) calc(${-this.windowTop} * var(--cell-size))`;
-    }
-
-    //after a turn: redraws the spots for the new reachable area. The window itself stays on its anchor (computeWindow); the slide
-    //(the whole layer, towers and spots together, instant with animations off) is only a safety net that the rules never trigger
+    //after a turn (notif_towersPlaced, once the towers have landed): the spots for the new board, then the layer slides to
+    //centre the new bounding box
     public async recenter(): Promise<void> {
-        const changed = this.computeWindow();
         this.renderSpots();
-        if(!changed)
-            return;
-
-        if(!this.game.bga.gameui.bgaAnimationsActive()){
-            this.applyWindow();
-            this.game.heightMenu?.reposition();
-            return;
-        }
-
-        this.layerElement.style.transition = `translate ${Game.BOARD_RECENTER_DURATION}ms ${Game.BOARD_RECENTER_EASING}`;
-        this.applyWindow();
-        await this.game.bga.gameui.wait(Game.BOARD_RECENTER_DURATION);
-        this.layerElement.style.transition = '';
-        this.game.heightMenu?.reposition(); //an open height menu follows its spot (none is open after a turn, but nothing assumes it)
+        await this.centerContents(true);
     }
 
-    //every spot of the window the grid can still reach, from the towers on the board and the draft's new towers: a faint dot
-    //where empty, the draft's legal spots (new towers) and replaceable enemy towers highlighted, plus the reachable area's outline
+    //the legal spots the box is centred on (centerContents), for every viewer: the draft's while I draft, otherwise the empty
+    //spots where the active player could put a new tower, from the towers on the board alone (so the same for every viewer and
+    //the same as the draft's when a turn starts: the board doesn't slide when the turn passes), none once the game is over.
+    //Only the drafting player sees them (renderSpots)
+    private getBoxLegalSpots(): NexoSpot[] {
+        if(this.draft)
+            return this.draft.legalNewSpots;
+        if(this.game.isGameOver())
+            return [];
+        return this.game.boardRules.getLegalNewSpots(this.towers);
+    }
+
+    //the spots only the player drafting their turn sees (nobody else, spectators and replays included, so nothing looks
+    //clickable to them): the legal spots (an ellipse ring where the tower's bottom disc would go, in their own disc color),
+    //the replaceable enemy towers and the selected spot. Empty spots and the grid's outline are never drawn
     private renderSpots(): void {
         this.spotsLayer.innerHTML = '';
+        this.boxLegalSpots = this.getBoxLegalSpots();
 
-        const occupied = new Map<string, NexoSpot>(this.towers);
-        for(const pendingTower of this.draft?.pending ?? []){
-            if(pendingTower.kind === 'new')
-                occupied.set(BoardRules.key(pendingTower.x, pendingTower.y), pendingTower);
-        }
+        if(this.draft && !this.game.isReplay()){
+            const legalKeys = new Set(this.draft.legalNewSpots.map(spot => BoardRules.key(spot.x, spot.y)));
+            const replaceableKeys = new Set(this.draft.replaceableTowers.map(tower => BoardRules.key(tower.x, tower.y)));
+            const selectedSpot = this.draft.selectedSpot;
+            const selectedKey = selectedSpot ? BoardRules.key(selectedSpot.x, selectedSpot.y) : null;
 
-        const area = this.game.boardRules.getPossibleArea(occupied);
-        const windowArea: GridBounds = { minX: this.windowLeft, maxX: this.windowLeft + this.windowSize - 1, minY: this.windowTop, maxY: this.windowTop + this.windowSize - 1 };
-        const shownArea: GridBounds = area ? {
-            minX: Math.max(area.minX, windowArea.minX), maxX: Math.min(area.maxX, windowArea.maxX),
-            minY: Math.max(area.minY, windowArea.minY), maxY: Math.min(area.maxY, windowArea.maxY),
-        } : windowArea;
+            const shownSpots = new Map<string, NexoSpot>();
+            for(const spot of [...this.draft.legalNewSpots, ...this.draft.replaceableTowers, ...(selectedSpot ? [selectedSpot] : [])])
+                shownSpots.set(BoardRules.key(spot.x, spot.y), { x: spot.x, y: spot.y });
 
-        const legalKeys = new Set((this.draft?.legalNewSpots ?? []).map(spot => BoardRules.key(spot.x, spot.y)));
-        const replaceableKeys = new Set((this.draft?.replaceableTowers ?? []).map(tower => BoardRules.key(tower.x, tower.y)));
-        const selectedKey = this.draft?.selectedSpot ? BoardRules.key(this.draft.selectedSpot.x, this.draft.selectedSpot.y) : null;
-
-        if(area){
-            const areaOutline = document.createElement('div');
-            areaOutline.className = 'possible-area';
-            areaOutline.style.setProperty('--x', shownArea.minX.toString());
-            areaOutline.style.setProperty('--y', shownArea.minY.toString());
-            areaOutline.style.setProperty('--columns', (shownArea.maxX - shownArea.minX + 1).toString());
-            areaOutline.style.setProperty('--rows', (shownArea.maxY - shownArea.minY + 1).toString());
-            this.spotsLayer.appendChild(areaOutline);
-        }
-
-        for(let y = shownArea.minY; y <= shownArea.maxY; y++){
-            for(let x = shownArea.minX; x <= shownArea.maxX; x++){
-                const key = BoardRules.key(x, y);
+            shownSpots.forEach((shownSpot, key) => {
                 const spot = document.createElement('div');
                 spot.className = 'board-spot';
-                BoardHandler.placeOnBoard(spot, { x: x, y: y });
+                BoardHandler.placeOnBoard(spot, shownSpot);
 
-                if(!occupied.has(key))
-                    spot.classList.add('empty-spot');
                 if(legalKeys.has(key))
                     spot.classList.add('legal-spot', 'clickable-spot');
                 if(replaceableKeys.has(key))
@@ -203,12 +239,16 @@ export class BoardHandler {
                     spot.classList.add('selected-spot');
 
                 this.spotsLayer.appendChild(spot);
-            }
+            });
         }
 
-        if(this.draft)
+        if(this.draft){
+            this.boardElement.setAttribute('data-legal-spot-color', this.draft.discColor); //the drafting player's own disc color
             this.boardElement.setAttribute('data-draft-color', this.draft.discColor);
-        else this.boardElement.removeAttribute('data-draft-color');
+        } else {
+            this.boardElement.removeAttribute('data-legal-spot-color');
+            this.boardElement.removeAttribute('data-draft-color');
+        }
     }
 
     //the turn being drafted (PlaceTowers), or null once it is over: its towers shown semi-transparent on their spots (a replaced
@@ -218,6 +258,7 @@ export class BoardHandler {
         this.renderPending();
         this.updateTowerDraftClasses();
         this.renderSpots();
+        this.centerContents(true); //like Yaxha after each cube: the layer slides as drafted towers and legal spots change the box
     }
 
     public setSpotClickHandler(handler: ((spot: NexoSpot) => void) | null): void {

@@ -131,6 +131,210 @@ class BoardRules {
 }
 
 /**
+ * [BGA] The active player drafts their turn on the client, then confirms it: click a highlighted spot (an empty spot next to a
+ * tower, or an enemy tower they can out-height), then pick its height in the popup next to it (HeightMenu: only the heights that
+ * are legal and affordable; with a single one, it is placed at once). Clicking the same spot again, outside or Escape closes the
+ * popup; another highlighted spot moves it there. The status bar keeps one title for the whole draft. Each drafted tower shows semi-transparent on the board; clicking it
+ * takes it back (with any new tower that no longer reaches the board through the others), "Reset turn" takes them all back,
+ * "Confirm" sends the whole turn (actPlaceTowers), which the server checks again. Legal spots are recomputed after every
+ * change. Everyone else only sees the status text. The draft lives on this page only: a reload starts it again.
+ */
+class PlaceTowers {
+    constructor(game, bga) {
+        this.game = game;
+        this.bga = bga;
+        this.stateArgs = null;
+        this.pending = [];
+        this.selectedSpot = null;
+        this.drafting = false;
+    }
+    /**
+     * This method is called each time we are entering the game state. You can use this method to perform some user interface changes at this moment.
+     */
+    onEnteringState(args, isCurrentPlayerActive) {
+        this.stateArgs = args;
+        this.pending = [];
+        this.selectedSpot = null;
+        this.drafting = isCurrentPlayerActive;
+        if (!isCurrentPlayerActive) {
+            this.bga.statusBar.setTitle(_('${actplayer} must place towers'));
+            return;
+        }
+        this.game.boardHandler.setSpotClickHandler(spot => this.spotClicked(spot));
+        this.update();
+    }
+    /**
+     * This method is called each time we are leaving the game state. You can use this method to perform some user interface changes at this moment.
+     */
+    onLeavingState(args, isCurrentPlayerActive) {
+        this.drafting = false;
+        this.pending = [];
+        this.selectedSpot = null;
+        this.game.heightMenu.close();
+        this.game.boardHandler.setSpotClickHandler(null);
+        this.game.boardHandler.setDraft(null);
+    }
+    getDiscsUsed() { return this.pending.reduce((sum, tower) => sum + tower.height, 0); }
+    getDiscsLeft() { return Math.max(0, (this.stateArgs?.discsThisTurn ?? 0) - this.getDiscsUsed()); }
+    //the towers on the board plus the draft's new towers: what adjacency and the grid's bounds are checked against
+    getDraftOccupied() {
+        const occupied = new Map(this.game.boardHandler.getTowerMap());
+        for (const tower of this.pending) {
+            if (tower.kind === 'new')
+                occupied.set(BoardRules.key(tower.x, tower.y), tower);
+        }
+        return occupied;
+    }
+    getLegalNewSpots() {
+        if (this.getDiscsLeft() < this.game.getRules().minTowerHeight)
+            return [];
+        return this.game.boardRules.getLegalNewSpots(this.getDraftOccupied());
+    }
+    //enemy towers on the board, not already replaced in this draft, that the discs left can out-height
+    getReplaceableTowers() {
+        const maxHeight = Math.min(this.game.getRules().maxTowerHeight, this.getDiscsLeft());
+        const myPlayerID = this.game.getMyPlayerID();
+        return this.game.boardHandler.getTowers().filter(tower => tower.player_id !== myPlayerID && tower.height + 1 <= maxHeight && !this.getPendingAt(tower));
+    }
+    getPendingAt(spot) {
+        return this.pending.find(tower => tower.x === spot.x && tower.y === spot.y);
+    }
+    //the enemy tower a click on spot would replace (null for an empty spot), or undefined when the spot can't take a tower now
+    getSpotTarget(spot) {
+        if (this.getLegalNewSpots().some(legalSpot => legalSpot.x === spot.x && legalSpot.y === spot.y))
+            return null;
+        return this.getReplaceableTowers().find(tower => tower.x === spot.x && tower.y === spot.y);
+    }
+    getHeightOptions(spot) {
+        const target = this.getSpotTarget(spot);
+        if (target === undefined)
+            return [];
+        return this.game.boardRules.getHeightOptions(target ? target.height : null, this.getDiscsLeft());
+    }
+    //called by BoardHandler: a drafted tower is taken back, the selected spot is unselected, a highlighted spot is selected
+    spotClicked(spot) {
+        if (!this.drafting || this.game.isInterfaceLocked())
+            return;
+        if (this.getPendingAt(spot)) {
+            this.removePending(spot);
+            return;
+        }
+        if (this.selectedSpot && this.selectedSpot.x === spot.x && this.selectedSpot.y === spot.y) {
+            this.selectedSpot = null;
+            this.update();
+            return;
+        }
+        const heightOptions = this.getHeightOptions(spot);
+        if (heightOptions.length === 0)
+            return;
+        //[BGA] a single possible height needs no choice
+        if (heightOptions.length === 1) {
+            this.addPending(spot, heightOptions[0]);
+            return;
+        }
+        this.selectedSpot = { x: spot.x, y: spot.y };
+        this.update();
+    }
+    addPending(spot, height) {
+        const target = this.getSpotTarget(spot);
+        if (target === undefined || !this.getHeightOptions(spot).includes(height))
+            return;
+        this.pending.push({ x: spot.x, y: spot.y, height: height, kind: target ? 'replace' : 'new', replaced: target ?? null });
+        this.selectedSpot = null;
+        this.update();
+    }
+    //a new tower that no longer reaches the board through the turn's other new towers goes too (BoardRules.keepConnectedPending)
+    removePending(spot) {
+        const remaining = this.pending.filter(tower => tower.x !== spot.x || tower.y !== spot.y);
+        this.pending = BoardRules.keepConnectedPending(this.game.boardHandler.getTowerMap(), remaining);
+        this.selectedSpot = null;
+        this.update();
+    }
+    resetTurn() {
+        this.pending = [];
+        this.selectedSpot = null;
+        this.update();
+    }
+    confirmTurn() {
+        if (this.pending.length === 0)
+            return;
+        const placements = this.pending.map(tower => ({ x: tower.x, y: tower.y, height: tower.height }));
+        this.bga.actions.performAction('actPlaceTowers', { placements: JSON.stringify(placements) });
+    }
+    //redraws everything the draft shows: the board (drafted towers, legal spots, replaceable towers) and the status bar
+    update() {
+        if (!this.drafting)
+            return;
+        const legalNewSpots = this.getLegalNewSpots();
+        const replaceableTowers = this.getReplaceableTowers();
+        if (this.selectedSpot && this.getHeightOptions(this.selectedSpot).length === 0)
+            this.selectedSpot = null;
+        this.game.boardHandler.setDraft({
+            pending: this.pending,
+            legalNewSpots: legalNewSpots,
+            replaceableTowers: replaceableTowers,
+            selectedSpot: this.selectedSpot,
+            discColor: this.game.getDiscColor(this.game.getMyPlayerID()),
+        });
+        this.updateStatusBar();
+        this.updateHeightMenu();
+    }
+    //the same title for the whole draft (a selected spot doesn't change it: its heights are in the height menu), with Confirm and
+    //Reset turn once a tower is drafted
+    updateStatusBar() {
+        this.bga.statusBar.removeActionButtons();
+        const discsThisTurn = this.stateArgs?.discsThisTurn ?? 1;
+        const title = discsThisTurn > 1 ? _('${you} must place 1 to ${count} discs') : _('${you} must place 1 disc');
+        this.bga.statusBar.setTitle(title, { count: discsThisTurn });
+        if (this.pending.length === 0)
+            return;
+        this.bga.statusBar.addActionButton(_('Confirm'), () => this.confirmTurn(), { id: 'confirm-turn-button' });
+        this.bga.statusBar.addActionButton(_('Reset turn'), () => this.resetTurn(), { id: 'reset-turn-button', color: 'secondary' });
+    }
+    //[BGA] the selected spot's heights in a popup next to it (HeightMenu): a choice drafts the tower, a dismissal (a click outside,
+    //Escape) unselects the spot. Called after setDraft, so the spot it anchors to is on the page
+    updateHeightMenu() {
+        const selectedSpot = this.selectedSpot;
+        if (!selectedSpot) {
+            this.game.heightMenu.close();
+            return;
+        }
+        this.game.heightMenu.open({
+            spot: selectedSpot,
+            heights: this.getHeightOptions(selectedSpot),
+            discColor: this.game.getDiscColor(this.game.getMyPlayerID()),
+            replacedTower: this.getSpotTarget(selectedSpot) ?? null,
+        }, height => this.addPending(selectedSpot, height), () => {
+            this.selectedSpot = null;
+            this.update();
+        });
+    }
+}
+
+/**
+ * BGA's final state: the game is over, so the board takes no more clicks and shows no draft.
+ */
+class GameEnd {
+    constructor(game, bga) {
+        this.game = game;
+        this.bga = bga;
+    }
+    /**
+     * This method is called each time we are entering the game state. You can use this method to perform some user interface changes at this moment.
+     */
+    onEnteringState(args, isCurrentPlayerActive) {
+        this.game.boardHandler.setSpotClickHandler(null);
+        this.game.boardHandler.setDraft(null);
+        this.game.updatePassedStamps(); //the game is over: no PASSED stamp
+    }
+    /**
+     * This method is called each time we are leaving the game state. You can use this method to perform some user interface changes at this moment.
+     */
+    onLeavingState(args, isCurrentPlayerActive) {
+    }
+}
+
+/**
  *------
  * BGA framework: Gregory Isabelli & Emmanuel Colin & BoardGameArena
  * Nexo implementation : © Doruk Kicikoglu <doruk.kicikoglu@gmail.com>
@@ -142,25 +346,29 @@ class BoardRules {
  * BoardHandler.ts
  */
 /**
- * The board: a window of (2 * gridSize - 1) x (2 * gridSize - 1) spots (9 x 9), anchored on the first tower (0 0, the
- * window's centre) for the whole game, so the grid never shifts (computeWindow). Spots outside the reachable area
- * (getPossibleArea) are not shown: once 5 columns or 5 rows are taken, only those remain. Towers and spots sit in .board-layer
- * at their own board coordinates, and the layer's translate brings the window into view.
+ * The board, with Yaxha's grid logic (reference/yaxha/src/PyramidHandler.ts): towers and legal spots sit in .board-layer at
+ * their own board coordinates (--x, --y times --cell-size), in a frame anchored to the first tower (0 0) for the whole game, so
+ * a tower's grid position never changes. Only the layer moves: like Yaxha's centerCubesContainer(), its translate centres the
+ * bounding box of the towers plus the legal spots in the board (centerContents), sliding over BOARD_RECENTER_DURATION when
+ * that box changes, at once on load. The legal spots count in the box for everyone but only the player drafting sees them.
+ * Nothing else is drawn: no empty spots, no grid outline. The board is (gridSize + 2)
+ * spots across and down: the largest box is gridSize + 1 (4 columns of towers with a legal spot on each side; with 5, no
+ * spot beyond them is legal), plus half a spot on each side.
  */
 class BoardHandler {
     constructor(game, towers) {
         this.game = game;
-        this.windowLeft = 0;
-        this.windowTop = 0;
+        this.contentsCenterX = null; //the middle of the towers' and legal spots' bounding box, in spots, once centred
+        this.contentsCenterY = null;
+        this.boxLegalSpots = []; //the legal spots the box is centred on, shown or not (getBoxLegalSpots)
         this.towers = new Map();
         this.towerElements = new Map();
         this.pendingElements = new Map();
         this.draft = null;
         this.spotClickHandler = null;
-        this.windowSize = 2 * this.game.getRules().gridSize - 1;
-        this.windowLeft = this.windowTop = -(this.game.getRules().gridSize - 1); //the anchor: the first tower (0 0) in the centre
+        this.boardSize = this.game.getRules().gridSize + 2;
         this.boardElement = document.getElementById('nexo-board');
-        this.boardElement.style.setProperty('--board-window-size', this.windowSize.toString());
+        this.boardElement.style.setProperty('--board-window-size', this.boardSize.toString());
         this.boardElement.innerHTML = `
             <div class="board-layer">
                 <div class="spots-layer"></div>
@@ -172,13 +380,54 @@ class BoardHandler {
         this.towersLayer = this.boardElement.querySelector('.towers-layer');
         for (const tower of towers)
             this.addBoardTower(tower);
-        this.computeWindow();
-        this.applyWindow();
+        this.fitToViewport();
         this.renderSpots();
+        this.centerContents(false); //on load (F5, a replay's start): no slide
+        //BGA's onScreenWidthChange (Game) only follows the width, and the page above the board is still being laid out when
+        //setup measures it (a board measured too low stayed too small): fit again on every window resize and whenever the page's
+        //layout changes (body's size: BGA's bars, the status bar, the columns settling). Fitting again where nothing moved
+        //changes nothing, so this never loops
+        let fitFrame = 0;
+        const scheduleFit = () => {
+            cancelAnimationFrame(fitFrame);
+            fitFrame = requestAnimationFrame(() => this.fitToViewport());
+        };
+        window.addEventListener('resize', scheduleFit);
+        const layoutObserver = new ResizeObserver(scheduleFit);
+        layoutObserver.observe(document.body);
+        const statusBar = document.getElementById('page-title');
+        if (statusBar)
+            layoutObserver.observe(statusBar);
         this.layerElement.addEventListener('click', (event) => this.onBoardClick(event));
     }
+    /**
+     * [BGA] The board as big as the window allows: square, from #nexo-board-container's padding under the status bar down to
+     * BOARD_VIEWPORT_MARGIN above the window's bottom when the page is at its top (so the page still scrolls down to BGA's
+     * settings below), never wider than the game area, nor smaller than MIN_BOARD_CELL_SIZE spots. Sized through --cell-size
+     * on #nexo-board, so the towers, spots and the layer's translate scale with it. Measured on screen, converted with the
+     * container's measured zoom (BGA scales the game area down on a phone)
+     */
+    fitToViewport() {
+        const container = this.boardElement.parentElement;
+        if (!container)
+            return;
+        const containerRect = container.getBoundingClientRect();
+        const containerWidth = parseFloat(getComputedStyle(container).width); //unrounded, unlike offsetWidth
+        if (!(containerWidth > 0))
+            return;
+        const zoom = containerRect.width / containerWidth;
+        const boardTop = this.boardElement.getBoundingClientRect().top + window.scrollY; //on the page, in screen px
+        const borders = this.boardElement.offsetWidth - this.boardElement.clientWidth; //the board's own border, both sides
+        const maxHeight = (window.innerHeight - boardTop - Game.BOARD_VIEWPORT_MARGIN) / zoom - borders;
+        const maxWidth = containerWidth - borders;
+        const cellSize = Math.max(Game.MIN_BOARD_CELL_SIZE, Math.floor(Math.min(maxHeight, maxWidth) / this.boardSize)) + 'px';
+        if (this.boardElement.style.getPropertyValue('--cell-size') === cellSize)
+            return;
+        this.boardElement.style.setProperty('--cell-size', cellSize);
+        this.game.heightMenu?.reposition(); //an open height menu follows its spot
+    }
     //a tower of height discs in discColor: one .tower-disc per disc, bottom one first, and its height as a number on top. Also
-    //used for log rows, the player boards' reserve and the draft panel, each sized by its own --cell-size
+    //used for log rows, the player boards' reserve and the height menu, each sized by its own --cell-size
     static createTowerDiv(discColor, height, extraClass = '') {
         const tower = document.createElement('div');
         tower.className = 'nexo-tower' + (extraClass ? ' ' + extraClass : '');
@@ -212,80 +461,68 @@ class BoardHandler {
         element.setAttribute('data-x', spot.x.toString());
         element.setAttribute('data-y', spot.y.toString());
     }
-    //the window's top-left spot. It stays on its anchor (the first tower, 0 0, in the centre: columns and rows -4 to 4) for the
-    //whole game: the reachable area (columns maxX - 4 to minX + 4) starts as exactly that window once the first tower is down,
-    //and every turn's towers land inside it, so it only ever shrinks and never leaves the window. Re-centring on the towers
-    //instead shifted the grid by a column or row after most turns. Only an area that left the window anyway (never under the
-    //rules) moves it, by the smallest shift that holds it again
-    computeWindow() {
-        let left = this.windowLeft;
-        let top = this.windowTop;
-        const area = this.game.boardRules.getPossibleArea(this.towers);
-        if (area) {
-            left = Math.min(Math.max(left, area.maxX - this.windowSize + 1), area.minX);
-            top = Math.min(Math.max(top, area.maxY - this.windowSize + 1), area.minY);
-        }
-        const changed = left !== this.windowLeft || top !== this.windowTop;
-        this.windowLeft = left;
-        this.windowTop = top;
-        return changed;
+    /**
+     * Yaxha's centerCubesContainer(): the layer's translate puts the middle of the bounding box of the towers, the draft's new
+     * towers and the legal spots (shown or not, getBoxLegalSpots) in the middle of the board. Computed from board coordinates rather than measured on the
+     * page (Yaxha measures its cubes), so every viewer, a reload and a replay get the very same layout. Slides when animate
+     * (BOARD_RECENTER_DURATION, Yaxha's 400ms) and animations are on, else applies at once (on load). Resolves once it has slid
+     */
+    async centerContents(animate) {
+        const contents = new Map(this.towers);
+        for (const pendingTower of this.draft?.pending ?? [])
+            contents.set(BoardRules.key(pendingTower.x, pendingTower.y), pendingTower);
+        for (const spot of this.boxLegalSpots)
+            contents.set(BoardRules.key(spot.x, spot.y), spot);
+        const bounds = BoardRules.getBounds(contents);
+        const centerX = bounds ? (bounds.minX + bounds.maxX + 1) / 2 : 0.5; //spot x covers x to x + 1
+        const centerY = bounds ? (bounds.minY + bounds.maxY + 1) / 2 : 0.5;
+        if (centerX === this.contentsCenterX && centerY === this.contentsCenterY)
+            return;
+        const slide = animate && this.contentsCenterX !== null && this.game.bga.gameui.bgaAnimationsActive();
+        this.contentsCenterX = centerX;
+        this.contentsCenterY = centerY;
+        //a slide set while another runs carries on from where the layer is, so the layer never jumps
+        this.layerElement.style.transition = slide ? `translate ${Game.BOARD_RECENTER_DURATION}ms ${Game.BOARD_RECENTER_EASING}` : 'none';
+        this.layerElement.style.translate = `calc(${this.boardSize / 2 - centerX} * var(--cell-size)) calc(${this.boardSize / 2 - centerY} * var(--cell-size))`;
+        if (slide)
+            await this.game.bga.gameui.wait(Game.BOARD_RECENTER_DURATION);
+        this.game.heightMenu?.reposition(); //an open height menu follows its spot
     }
-    applyWindow() {
-        this.layerElement.style.translate = `calc(${-this.windowLeft} * var(--cell-size)) calc(${-this.windowTop} * var(--cell-size))`;
-    }
-    //after a turn: redraws the spots for the new reachable area. The window itself stays on its anchor (computeWindow); the slide
-    //(the whole layer, towers and spots together, instant with animations off) is only a safety net that the rules never trigger
+    //after a turn (notif_towersPlaced, once the towers have landed): the spots for the new board, then the layer slides to
+    //centre the new bounding box
     async recenter() {
-        const changed = this.computeWindow();
         this.renderSpots();
-        if (!changed)
-            return;
-        if (!this.game.bga.gameui.bgaAnimationsActive()) {
-            this.applyWindow();
-            this.game.heightMenu?.reposition();
-            return;
-        }
-        this.layerElement.style.transition = `translate ${Game.BOARD_RECENTER_DURATION}ms ${Game.BOARD_RECENTER_EASING}`;
-        this.applyWindow();
-        await this.game.bga.gameui.wait(Game.BOARD_RECENTER_DURATION);
-        this.layerElement.style.transition = '';
-        this.game.heightMenu?.reposition(); //an open height menu follows its spot (none is open after a turn, but nothing assumes it)
+        await this.centerContents(true);
     }
-    //every spot of the window the grid can still reach, from the towers on the board and the draft's new towers: a faint dot
-    //where empty, the draft's legal spots (new towers) and replaceable enemy towers highlighted, plus the reachable area's outline
+    //the legal spots the box is centred on (centerContents), for every viewer: the draft's while I draft, otherwise the empty
+    //spots where the active player could put a new tower, from the towers on the board alone (so the same for every viewer and
+    //the same as the draft's when a turn starts: the board doesn't slide when the turn passes), none once the game is over.
+    //Only the drafting player sees them (renderSpots)
+    getBoxLegalSpots() {
+        if (this.draft)
+            return this.draft.legalNewSpots;
+        if (this.game.isGameOver())
+            return [];
+        return this.game.boardRules.getLegalNewSpots(this.towers);
+    }
+    //the spots only the player drafting their turn sees (nobody else, spectators and replays included, so nothing looks
+    //clickable to them): the legal spots (an ellipse ring where the tower's bottom disc would go, in their own disc color),
+    //the replaceable enemy towers and the selected spot. Empty spots and the grid's outline are never drawn
     renderSpots() {
         this.spotsLayer.innerHTML = '';
-        const occupied = new Map(this.towers);
-        for (const pendingTower of this.draft?.pending ?? []) {
-            if (pendingTower.kind === 'new')
-                occupied.set(BoardRules.key(pendingTower.x, pendingTower.y), pendingTower);
-        }
-        const area = this.game.boardRules.getPossibleArea(occupied);
-        const windowArea = { minX: this.windowLeft, maxX: this.windowLeft + this.windowSize - 1, minY: this.windowTop, maxY: this.windowTop + this.windowSize - 1 };
-        const shownArea = area ? {
-            minX: Math.max(area.minX, windowArea.minX), maxX: Math.min(area.maxX, windowArea.maxX),
-            minY: Math.max(area.minY, windowArea.minY), maxY: Math.min(area.maxY, windowArea.maxY),
-        } : windowArea;
-        const legalKeys = new Set((this.draft?.legalNewSpots ?? []).map(spot => BoardRules.key(spot.x, spot.y)));
-        const replaceableKeys = new Set((this.draft?.replaceableTowers ?? []).map(tower => BoardRules.key(tower.x, tower.y)));
-        const selectedKey = this.draft?.selectedSpot ? BoardRules.key(this.draft.selectedSpot.x, this.draft.selectedSpot.y) : null;
-        if (area) {
-            const areaOutline = document.createElement('div');
-            areaOutline.className = 'possible-area';
-            areaOutline.style.setProperty('--x', shownArea.minX.toString());
-            areaOutline.style.setProperty('--y', shownArea.minY.toString());
-            areaOutline.style.setProperty('--columns', (shownArea.maxX - shownArea.minX + 1).toString());
-            areaOutline.style.setProperty('--rows', (shownArea.maxY - shownArea.minY + 1).toString());
-            this.spotsLayer.appendChild(areaOutline);
-        }
-        for (let y = shownArea.minY; y <= shownArea.maxY; y++) {
-            for (let x = shownArea.minX; x <= shownArea.maxX; x++) {
-                const key = BoardRules.key(x, y);
+        this.boxLegalSpots = this.getBoxLegalSpots();
+        if (this.draft && !this.game.isReplay()) {
+            const legalKeys = new Set(this.draft.legalNewSpots.map(spot => BoardRules.key(spot.x, spot.y)));
+            const replaceableKeys = new Set(this.draft.replaceableTowers.map(tower => BoardRules.key(tower.x, tower.y)));
+            const selectedSpot = this.draft.selectedSpot;
+            const selectedKey = selectedSpot ? BoardRules.key(selectedSpot.x, selectedSpot.y) : null;
+            const shownSpots = new Map();
+            for (const spot of [...this.draft.legalNewSpots, ...this.draft.replaceableTowers, ...(selectedSpot ? [selectedSpot] : [])])
+                shownSpots.set(BoardRules.key(spot.x, spot.y), { x: spot.x, y: spot.y });
+            shownSpots.forEach((shownSpot, key) => {
                 const spot = document.createElement('div');
                 spot.className = 'board-spot';
-                BoardHandler.placeOnBoard(spot, { x: x, y: y });
-                if (!occupied.has(key))
-                    spot.classList.add('empty-spot');
+                BoardHandler.placeOnBoard(spot, shownSpot);
                 if (legalKeys.has(key))
                     spot.classList.add('legal-spot', 'clickable-spot');
                 if (replaceableKeys.has(key))
@@ -293,12 +530,16 @@ class BoardHandler {
                 if (key === selectedKey)
                     spot.classList.add('selected-spot');
                 this.spotsLayer.appendChild(spot);
-            }
+            });
         }
-        if (this.draft)
+        if (this.draft) {
+            this.boardElement.setAttribute('data-legal-spot-color', this.draft.discColor); //the drafting player's own disc color
             this.boardElement.setAttribute('data-draft-color', this.draft.discColor);
-        else
+        }
+        else {
+            this.boardElement.removeAttribute('data-legal-spot-color');
             this.boardElement.removeAttribute('data-draft-color');
+        }
     }
     //the turn being drafted (PlaceTowers), or null once it is over: its towers shown semi-transparent on their spots (a replaced
     //enemy tower fades under its replacement), legal spots and replaceable towers highlighted
@@ -307,6 +548,7 @@ class BoardHandler {
         this.renderPending();
         this.updateTowerDraftClasses();
         this.renderSpots();
+        this.centerContents(true); //like Yaxha after each cube: the layer slides as drafted towers and legal spots change the box
     }
     setSpotClickHandler(handler) {
         this.spotClickHandler = handler;
@@ -395,244 +637,16 @@ class BoardHandler {
 }
 
 /**
- * [BGA] The active player drafts their turn on the client, then confirms it: click a highlighted spot (an empty spot next to a
- * tower, or an enemy tower they can out-height), then pick its height in the popup next to it (HeightMenu: only the heights that
- * are legal and affordable; with a single one, it is placed at once). Clicking the same spot again, outside or Escape closes the
- * popup; another highlighted spot moves it there. The status bar keeps one title for the whole draft. Each drafted tower shows semi-transparent on the board; clicking it
- * takes it back (with any new tower that no longer reaches the board through the others), "Reset turn" takes them all back,
- * "Confirm" sends the whole turn (actPlaceTowers), which the server checks again. Legal spots are recomputed after every
- * change. Everyone else only sees the status text. The draft lives on this page only: a reload starts it again.
+ *------
+ * BGA framework: Gregory Isabelli & Emmanuel Colin & BoardGameArena
+ * Nexo implementation : © Doruk Kicikoglu <doruk.kicikoglu@gmail.com>
+ *
+ * This code has been produced on the BGA studio platform for use on http://boardgamearena.com.
+ * See http://en.boardgamearena.com/#!doc/Studio for more information.
+ * -----
+ *
+ * PlayerHandler.ts
  */
-class PlaceTowers {
-    constructor(game, bga) {
-        this.game = game;
-        this.bga = bga;
-        this.stateArgs = null;
-        this.pending = [];
-        this.selectedSpot = null;
-        this.drafting = false;
-    }
-    /**
-     * This method is called each time we are entering the game state. You can use this method to perform some user interface changes at this moment.
-     */
-    onEnteringState(args, isCurrentPlayerActive) {
-        this.stateArgs = args;
-        this.pending = [];
-        this.selectedSpot = null;
-        this.drafting = isCurrentPlayerActive;
-        if (!isCurrentPlayerActive) {
-            this.bga.statusBar.setTitle(_('${actplayer} must place towers'));
-            return;
-        }
-        this.game.boardHandler.setSpotClickHandler(spot => this.spotClicked(spot));
-        this.update();
-    }
-    /**
-     * This method is called each time we are leaving the game state. You can use this method to perform some user interface changes at this moment.
-     */
-    onLeavingState(args, isCurrentPlayerActive) {
-        this.drafting = false;
-        this.pending = [];
-        this.selectedSpot = null;
-        this.game.heightMenu.close();
-        this.game.boardHandler.setSpotClickHandler(null);
-        this.game.boardHandler.setDraft(null);
-        this.hideDraftPanel();
-    }
-    getDiscsUsed() { return this.pending.reduce((sum, tower) => sum + tower.height, 0); }
-    getDiscsLeft() { return Math.max(0, (this.stateArgs?.discsThisTurn ?? 0) - this.getDiscsUsed()); }
-    getReserve() { return this.stateArgs?.reserve ?? 0; }
-    //the towers on the board plus the draft's new towers: what adjacency and the grid's bounds are checked against
-    getDraftOccupied() {
-        const occupied = new Map(this.game.boardHandler.getTowerMap());
-        for (const tower of this.pending) {
-            if (tower.kind === 'new')
-                occupied.set(BoardRules.key(tower.x, tower.y), tower);
-        }
-        return occupied;
-    }
-    getLegalNewSpots() {
-        if (this.getDiscsLeft() < this.game.getRules().minTowerHeight)
-            return [];
-        return this.game.boardRules.getLegalNewSpots(this.getDraftOccupied());
-    }
-    //enemy towers on the board, not already replaced in this draft, that the discs left can out-height
-    getReplaceableTowers() {
-        const maxHeight = Math.min(this.game.getRules().maxTowerHeight, this.getDiscsLeft());
-        const myPlayerID = this.game.getMyPlayerID();
-        return this.game.boardHandler.getTowers().filter(tower => tower.player_id !== myPlayerID && tower.height + 1 <= maxHeight && !this.getPendingAt(tower));
-    }
-    getPendingAt(spot) {
-        return this.pending.find(tower => tower.x === spot.x && tower.y === spot.y);
-    }
-    //the enemy tower a click on spot would replace (null for an empty spot), or undefined when the spot can't take a tower now
-    getSpotTarget(spot) {
-        if (this.getLegalNewSpots().some(legalSpot => legalSpot.x === spot.x && legalSpot.y === spot.y))
-            return null;
-        return this.getReplaceableTowers().find(tower => tower.x === spot.x && tower.y === spot.y);
-    }
-    getHeightOptions(spot) {
-        const target = this.getSpotTarget(spot);
-        if (target === undefined)
-            return [];
-        return this.game.boardRules.getHeightOptions(target ? target.height : null, this.getDiscsLeft());
-    }
-    //called by BoardHandler: a drafted tower is taken back, the selected spot is unselected, a highlighted spot is selected
-    spotClicked(spot) {
-        if (!this.drafting || this.game.isInterfaceLocked())
-            return;
-        if (this.getPendingAt(spot)) {
-            this.removePending(spot);
-            return;
-        }
-        if (this.selectedSpot && this.selectedSpot.x === spot.x && this.selectedSpot.y === spot.y) {
-            this.selectedSpot = null;
-            this.update();
-            return;
-        }
-        const heightOptions = this.getHeightOptions(spot);
-        if (heightOptions.length === 0)
-            return;
-        //[BGA] a single possible height needs no choice
-        if (heightOptions.length === 1) {
-            this.addPending(spot, heightOptions[0]);
-            return;
-        }
-        this.selectedSpot = { x: spot.x, y: spot.y };
-        this.update();
-    }
-    addPending(spot, height) {
-        const target = this.getSpotTarget(spot);
-        if (target === undefined || !this.getHeightOptions(spot).includes(height))
-            return;
-        this.pending.push({ x: spot.x, y: spot.y, height: height, kind: target ? 'replace' : 'new', replaced: target ?? null });
-        this.selectedSpot = null;
-        this.update();
-    }
-    //a new tower that no longer reaches the board through the turn's other new towers goes too (BoardRules.keepConnectedPending)
-    removePending(spot) {
-        const remaining = this.pending.filter(tower => tower.x !== spot.x || tower.y !== spot.y);
-        this.pending = BoardRules.keepConnectedPending(this.game.boardHandler.getTowerMap(), remaining);
-        this.selectedSpot = null;
-        this.update();
-    }
-    resetTurn() {
-        this.pending = [];
-        this.selectedSpot = null;
-        this.update();
-    }
-    confirmTurn() {
-        if (this.pending.length === 0)
-            return;
-        const placements = this.pending.map(tower => ({ x: tower.x, y: tower.y, height: tower.height }));
-        this.bga.actions.performAction('actPlaceTowers', { placements: JSON.stringify(placements) });
-    }
-    //redraws everything the draft shows: the board (drafted towers, legal spots, replaceable towers), the draft panel and the status bar
-    update() {
-        if (!this.drafting)
-            return;
-        const legalNewSpots = this.getLegalNewSpots();
-        const replaceableTowers = this.getReplaceableTowers();
-        if (this.selectedSpot && this.getHeightOptions(this.selectedSpot).length === 0)
-            this.selectedSpot = null;
-        this.game.boardHandler.setDraft({
-            pending: this.pending,
-            legalNewSpots: legalNewSpots,
-            replaceableTowers: replaceableTowers,
-            selectedSpot: this.selectedSpot,
-            discColor: this.game.getDiscColor(this.game.getMyPlayerID()),
-        });
-        this.renderDraftPanel();
-        this.updateStatusBar();
-        this.updateHeightMenu();
-    }
-    //the same title for the whole draft (a selected spot doesn't change it: its heights are in the height menu), with Confirm and
-    //Reset turn once a tower is drafted
-    updateStatusBar() {
-        this.bga.statusBar.removeActionButtons();
-        const discsThisTurn = this.stateArgs?.discsThisTurn ?? 1;
-        const title = discsThisTurn > 1 ? _('${you} must place 1 to ${count} discs') : _('${you} must place 1 disc');
-        this.bga.statusBar.setTitle(title, { count: discsThisTurn });
-        if (this.pending.length === 0)
-            return;
-        this.bga.statusBar.addActionButton(_('Confirm'), () => this.confirmTurn(), { id: 'confirm-turn-button' });
-        this.bga.statusBar.addActionButton(_('Reset turn'), () => this.resetTurn(), { id: 'reset-turn-button', color: 'secondary' });
-    }
-    //[BGA] the selected spot's heights in a popup next to it (HeightMenu): a choice drafts the tower, a dismissal (a click outside,
-    //Escape) unselects the spot. Called after setDraft, so the spot it anchors to is on the page
-    updateHeightMenu() {
-        const selectedSpot = this.selectedSpot;
-        if (!selectedSpot) {
-            this.game.heightMenu.close();
-            return;
-        }
-        this.game.heightMenu.open({
-            spot: selectedSpot,
-            heights: this.getHeightOptions(selectedSpot),
-            discColor: this.game.getDiscColor(this.game.getMyPlayerID()),
-            replacedTower: this.getSpotTarget(selectedSpot) ?? null,
-        }, height => this.addPending(selectedSpot, height), () => {
-            this.selectedSpot = null;
-            this.update();
-        });
-    }
-    //above the board, for the active player only: the discs left this turn (one disc per disc of the turn: used, left, or not
-    //affordable with the reserve), the reserve left after this turn and, once a tower is drafted, how to take one back
-    renderDraftPanel() {
-        const panel = document.getElementById('draft-panel');
-        if (!panel)
-            return;
-        const rules = this.game.getRules();
-        const discColor = this.game.getDiscColor(this.game.getMyPlayerID());
-        const discsUsed = this.getDiscsUsed();
-        const discsThisTurn = this.stateArgs?.discsThisTurn ?? 0;
-        let pipsHTML = '';
-        for (let discIndex = 0; discIndex < rules.maxDiscsPerTurn; discIndex++) {
-            const pipClass = discIndex < discsUsed ? 'used-pip' : (discIndex < discsThisTurn ? 'available-pip' : 'unavailable-pip');
-            pipsHTML += BoardHandler.createTowerDiv(discColor, 1, 'mini-tower draft-pip ' + pipClass).outerHTML;
-        }
-        panel.innerHTML = `
-            <div class="draft-discs">
-                <span class="draft-label">${_('Discs left this turn')}</span>
-                <span class="draft-pips">${pipsHTML}</span>
-                <b class="draft-count">${this.getDiscsLeft()}</b>
-            </div>
-            <div class="draft-reserve">
-                <span class="draft-label">${_('Reserve')}</span>
-                <b class="draft-count">${this.getReserve() - discsUsed}</b>
-            </div>
-            <div class="draft-hint">${this.pending.length > 0 ? _('Click a tower of this turn to take it back') : ''}</div>
-        `;
-        panel.classList.add('drafting');
-    }
-    hideDraftPanel() {
-        document.getElementById('draft-panel')?.classList.remove('drafting');
-    }
-}
-
-/**
- * BGA's final state: the game is over, so the board takes no more clicks and shows no draft.
- */
-class GameEnd {
-    constructor(game, bga) {
-        this.game = game;
-        this.bga = bga;
-    }
-    /**
-     * This method is called each time we are entering the game state. You can use this method to perform some user interface changes at this moment.
-     */
-    onEnteringState(args, isCurrentPlayerActive) {
-        this.game.boardHandler.setSpotClickHandler(null);
-        this.game.boardHandler.setDraft(null);
-        this.game.updatePassedStamps(); //the game is over: no PASSED stamp
-    }
-    /**
-     * This method is called each time we are leaving the game state. You can use this method to perform some user interface changes at this moment.
-     */
-    onLeavingState(args, isCurrentPlayerActive) {
-    }
-}
-
 class PlayerHandler {
     constructor(game, playerID, playerName, playerColor, playerNo, reserve, passed, score) {
         this.game = game;
@@ -690,6 +704,49 @@ class PlayerHandler {
     }
     showPassedStamp(show) {
         this.playerBoardContainer.setAttribute('data-passed', show ? 'true' : 'false');
+    }
+    //[BGA] a pass, seen by everyone: a big PASSED stamp with the player's name pops in at the centre of the screen, holds,
+    //then shrinks onto this board's PASSED stamp. The player is marked passed as it lands: the board's stamp fades in under
+    //it, or, when it doesn't show (both players passed: the game is over), the banner fades out where it landed.
+    //The banner is in <body>, outside BGA's mobile scaling: it converts screen px with its own measured zoom, like
+    //Game.getSlidingCloneTransform. Its transform holds its rotation (the stamp's rotate), so translate is never rotated
+    async animatePass() {
+        const passedStamp = this.playerBoardContainer.querySelector('.passed-stamp');
+        const rotation = getComputedStyle(passedStamp).rotate;
+        const rotate = (rotation && rotation !== 'none') ? rotation : '0deg';
+        const banner = document.createElement('div');
+        banner.classList.add('passed-banner');
+        banner.innerHTML = `<div class="passed-banner-name">${this.game.divColoredPlayer(this.playerID, { class: 'playername' })}</div><i class="fa6 fa-forward"></i>${_('Passed')}`;
+        banner.style.opacity = '0';
+        document.body.appendChild(banner);
+        const bannerRect = banner.getBoundingClientRect(); //unrotated: no transform yet
+        const cssWidth = parseFloat(getComputedStyle(banner).width);
+        const zoom = (cssWidth > 0) ? bannerRect.width / cssWidth : 1;
+        const transformTo = (dx, dy, scale) => `translate(${dx / zoom}px, ${dy / zoom}px) scale(${scale}) rotate(${rotate})`;
+        banner.style.transform = transformTo(0, 0, 1.4);
+        await this.game.bga.gameui.wait(20); //let the start paint before the transition kicks in
+        banner.style.transition = `transform ${Game.PASS_BANNER_POP_DURATION}ms ease-out, opacity ${Game.PASS_BANNER_POP_DURATION}ms ease-out`;
+        banner.style.transform = transformTo(0, 0, 1);
+        banner.style.opacity = '1';
+        await this.game.bga.gameui.wait(Game.PASS_BANNER_POP_DURATION + Game.PASS_BANNER_HOLD);
+        //the board's stamp, measured unrotated now (the page may have scrolled during the hold); hidden, it keeps its place
+        passedStamp.style.rotate = '0deg';
+        const stampRect = passedStamp.getBoundingClientRect();
+        passedStamp.style.rotate = '';
+        const dx = (stampRect.left + stampRect.width / 2) - (bannerRect.left + bannerRect.width / 2);
+        const dy = (stampRect.top + stampRect.height / 2) - (bannerRect.top + bannerRect.height / 2);
+        const scale = (bannerRect.width > 0) ? stampRect.width / bannerRect.width : 1;
+        banner.classList.add('passed-banner-flying'); //the name fades out on the way
+        banner.style.transition = `transform ${Game.PASS_BANNER_FLIGHT_DURATION}ms ease-in-out`;
+        banner.style.transform = transformTo(dx, dy, scale);
+        await this.game.bga.gameui.wait(Game.PASS_BANNER_FLIGHT_DURATION);
+        this.setPassed(true);
+        if (this.playerBoardContainer.getAttribute('data-passed') !== 'true') {
+            banner.style.transition = `opacity ${Game.PASS_BANNER_SETTLE_DURATION}ms ease`;
+            banner.style.opacity = '0';
+        }
+        await this.game.bga.gameui.wait(Game.PASS_BANNER_SETTLE_DURATION);
+        banner.remove();
     }
     //every live score change goes through here: BGA's score counter is the player's largest group
     setScore(score) {
@@ -1115,10 +1172,8 @@ class Game {
     */
     setup(gamedatas) {
         this.gamedatas = gamedatas;
-        //the draft panel keeps its height when hidden, so the board never moves when a turn starts or ends
         this.bga.gameArea.getElement().insertAdjacentHTML('beforeend', `
             <div id="nexo-board-container">
-                <div id="draft-panel"></div>
                 <div id="nexo-board"></div>
             </div>
         `);
@@ -1289,6 +1344,7 @@ class Game {
             .join(''); // Combine into a single string
     }
     onScreenWidthChange() {
+        this.boardHandler?.fitToViewport();
         this.heightMenu?.reposition();
     }
     isDesktop() { return document.body.classList.contains('desktop_version'); }
@@ -1354,10 +1410,18 @@ class Game {
             this.players[player_id]?.setScore(args.scores[player_id]);
         await this.boardHandler.recenter();
     }
-    //[BGA] the automatic pass: the log row and the player board's PASSED stamp, no animation
+    //[BGA] the automatic pass: the log row, the big PASSED banner flying onto the player board's stamp (the notification
+    //lasts as long as it does, so a second pass or the game end waits for it), and the stamp. No banner with animations off
+    //(instantaneous mode, fast replay, a hidden tab) or in a replay: the stamp just applies
     async notif_playerPassed(args) {
-        this.players[args.player_id]?.setPassed(true);
-        this.players[args.player_id]?.setReserve(args.reserve);
+        const player = this.players[args.player_id];
+        if (!player)
+            return;
+        player.setReserve(args.reserve);
+        if (this.bga.gameui.bgaAnimationsActive() && !this.isReplay())
+            await player.animatePass(); //marks the player passed as it lands
+        else
+            player.setPassed(true);
     }
     async notif_displayEndGameScoring(args) {
         this.endGameScoringHandler.displayEndGameScore(args.endGameScoring);
@@ -1367,7 +1431,15 @@ class Game {
 Game.TOWER_SLIDE_DURATION = 520; //ms of a tower flying between a player board's reserve and its spot
 Game.TOWER_SLIDE_STAGGER = 110; //ms between two new towers of the same turn leaving the reserve
 Game.TOWER_SLIDE_EASING = 'ease-in-out';
-Game.BOARD_RECENTER_DURATION = 450; //ms of the board window sliding, only if the reachable area ever left it (BoardHandler.computeWindow: never under the rules)
+Game.BOARD_RECENTER_DURATION = 400; //ms of the board's contents sliding to stay centred (BoardHandler.centerContents, Yaxha's 400ms)
 Game.BOARD_RECENTER_EASING = 'ease-in-out';
+Game.BOARD_VIEWPORT_MARGIN = 10; //screen px from the board to the window's bottom (BoardHandler.fitToViewport); the status bar's gap is #nexo-board-container's padding
+Game.MIN_BOARD_CELL_SIZE = 40; //px of a spot, however short the window
+//[BGA] a pass (PlayerHandler.animatePass): the big PASSED stamp pops in at the centre, holds, flies onto the player
+//board's stamp, then settles there (or fades out when both players have passed). About 1.5s in all
+Game.PASS_BANNER_POP_DURATION = 150;
+Game.PASS_BANNER_HOLD = 600;
+Game.PASS_BANNER_FLIGHT_DURATION = 450;
+Game.PASS_BANNER_SETTLE_DURATION = 300; //the board's stamp fades in under the banner (its own 0.3s transition)
 
 export { Game };
