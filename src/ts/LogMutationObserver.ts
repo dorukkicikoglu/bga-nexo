@@ -11,6 +11,7 @@
  */
 import { Game } from "./Game";
 import { BoardHandler } from "./BoardHandler";
+import { BoardRules } from "./BoardRules";
 
 interface LogRowData { //this is used to return strings containing log-class-tag divs
     log_html: string;
@@ -118,23 +119,13 @@ export class LogMutationObserver{
     }
 
     //create specific log types
-    //"name [tower] [tower] [enemy tower → tower]": every tower of the turn as a mini tower in the player's color, in the order
-    //they were drafted; a replacement shows the enemy tower it replaced, faded and crossed, then the new one
-    public createLogTowersPlaced(player_id: number, placements: NexoPlacement[]): LogRowData {
-        const discColor = this.game.getDiscColor(player_id);
-        const towersHTML = placements.map(placement => {
-            const towerHTML = this.getMiniTowerHTML(discColor, placement.height);
-            if(placement.kind !== 'replace' || placement.replaced_player_id === null)
-                return towerHTML;
-
-            const replacedHTML = this.getMiniTowerHTML(this.game.getDiscColor(placement.replaced_player_id), placement.replaced_height ?? 1, 'replaced-log-tower');
-            return `<span class="log-replacement">${replacedHTML}<i class="fa6 fa-arrow-right log-replacement-arrow" aria-hidden="true"></i>${towerHTML}</span>`;
-        }).join('');
-
+    //"name [board]": the board as it stood at the end of the turn (board_snapshot), cropped to its towers, every spot the turn
+    //touched ringed in gold (the placements: a new tower or a replacement)
+    public createLogTowersPlaced(player_id: number, placements: NexoPlacement[], boardSnapshot?: string): LogRowData {
         let logHTML = `
             <div class="towers-placed-row">
                 ${this.getCutPlayerNameHTML(player_id)}
-                <span class="log-towers">${towersHTML}</span>
+                ${this.getBoardSnapshotHTML(player_id, placements, boardSnapshot)}
             </div>` + this.getDiscColorTag(player_id) + ' &nbsp;';
 
         return this.addLogClassTag(logHTML, 'towers-placed-log');
@@ -181,9 +172,48 @@ export class LogMutationObserver{
         return this.addLogClassTag(logHTML, 'game-end-log');
     }
 
-    //a tower drawn at log size (.log-tower sets its own --cell-size)
-    private getMiniTowerHTML(discColor: DiscColor, height: number, extraClass: string = ''): string {
-        return BoardHandler.createTowerDiv(discColor, height, 'log-tower' + (extraClass ? ' ' + extraClass : '')).outerHTML;
+    /**
+     * [BGA] A turn's board snapshot: one .snapshot-cell per spot of the bounding box of the towers (BoardRules.getBounds, the
+     * main board's own coordinates, so negative ones too), row by row, each holding its tower (createTowerDiv, sized by the
+     * snapshot's --cell-size) or a faint dot. The turn's spots (placements) get .changed-snapshot-cell; one with no tower would
+     * get a dashed ring (never in Nexo: a spot never empties). Built from the notification's args alone, so a reload and a
+     * replay draw the same. A turn logged before board_snapshot existed shows its own towers only
+     */
+    private getBoardSnapshotHTML(player_id: number, placements: NexoPlacement[], boardSnapshot?: string): string {
+        const towers = new Map<string, { discColor: DiscColor, height: number }>();
+        if(typeof boardSnapshot === 'string'){
+            for(const cellText of boardSnapshot.split(' ')){
+                const cell = cellText.match(/^(-?\d+),(-?\d+)([rb])(\d+)$/);
+                if(cell)
+                    towers.set(BoardRules.key(parseInt(cell[1]), parseInt(cell[2])), { discColor: cell[3] === 'b' ? 'black' : 'red', height: parseInt(cell[4]) });
+            }
+        } else {
+            for(const placement of placements)
+                towers.set(BoardRules.key(placement.x, placement.y), { discColor: this.game.getDiscColor(player_id), height: placement.height });
+        }
+
+        const changedKeys = new Set(placements.map(placement => BoardRules.key(placement.x, placement.y)));
+        const spots = new Map<string, NexoSpot>();
+        for(const key of [...towers.keys(), ...changedKeys]){
+            const [x, y] = key.split(',').map(Number);
+            spots.set(key, { x, y });
+        }
+        const bounds = BoardRules.getBounds(spots);
+        if(!bounds)
+            return '';
+
+        let cellsHTML = '';
+        for(let y = bounds.minY; y <= bounds.maxY; y++){
+            for(let x = bounds.minX; x <= bounds.maxX; x++){
+                const key = BoardRules.key(x, y);
+                const tower = towers.get(key);
+                const cellClass = 'snapshot-cell' + (tower ? '' : ' empty-snapshot-cell') + (changedKeys.has(key) ? ' changed-snapshot-cell' : '');
+                const towerHTML = tower ? BoardHandler.createTowerDiv(tower.discColor, tower.height, 'snapshot-tower').outerHTML : '';
+                cellsHTML += `<div class="${cellClass}">${towerHTML}</div>`;
+            }
+        }
+
+        return `<div class="log-board-snapshot" style="--snapshot-columns: ${bounds.maxX - bounds.minX + 1}; --snapshot-rows: ${bounds.maxY - bounds.minY + 1}">${cellsHTML}</div>`;
     }
 
     //a player name the row's CSS cuts with an ellipsis (max-width), so its title shows it whole

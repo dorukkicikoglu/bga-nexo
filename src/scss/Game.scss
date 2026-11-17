@@ -17,7 +17,7 @@
 //(a disc sprite would go in .tower-disc's background, see "towers")
 $cell-size: min(5.6vw, 72px); //one spot of the grid on desktop; the board is (2 * GRID_SIZE - 1) spots wide and tall
 $mobile-cell-size: 76px; //BGA lays the game out at 740px or more and scales it down on a phone (gameinfos game_interface_width)
-$log-cell-size: 30px; //towers in log rows
+$log-snapshot-cell-size: 24px; //one spot of a log row's board snapshot (a 5x5 board: 5 of them across), scaled down only in a row too narrow for it
 $mini-cell-size: 26px; //the reserve disc on player boards
 
 //a tower's discs, as shares of --cell-size: each disc's width, its top face's height (a share of the disc's width: the
@@ -99,6 +99,14 @@ $log-divider-color: rgba($material-charcoal, 0.08); //the soft line under each r
 $log-accent-width: 3px; //the bar on each row's left edge, in its player's color
 $log-accent-colors: ("red": $material-red, "black": $material-charcoal);
 $log-accent-neutral: rgba($material-charcoal, 0.18); //a row of no single player (a shared victory)
+//a turn's board snapshot in its log row (LogMutationObserver.getBoardSnapshotHTML)
+$log-snapshot-name-min-width: 56px; //what the row keeps for the player name when it scales the snapshot down
+$log-snapshot-padding: 2px;
+$log-snapshot-background: rgba($material-charcoal, 0.035);
+$log-snapshot-border-color: rgba($material-charcoal, 0.12);
+$log-snapshot-dot-color: rgba($material-charcoal, 0.22); //an empty spot inside the snapshot
+$log-snapshot-changed-color: #e0a400; //a spot the turn touched: gold, never a player color
+$log-snapshot-changed-fill: rgba($selected-spot-color, 0.22);
 
 :root{
     --cell-size: #{$cell-size};
@@ -392,16 +400,26 @@ $log-types: "towers-placed", "player-passed", "game-end";
         &.#{$log-type}-log .roundedbox, &.#{$log-type}-log.roundedbox, &.gamelogreview.#{$log-type}-log{ background: var(--bg-log-#{$log-type}); }
     }
 
-    //"name [tower] [tower] [enemy tower → tower]"
-    .towers-placed-row{ display: flex; align-items: center; flex-wrap: wrap; gap: 2px 6px; color: $log-text-color;
+    //"name [board snapshot]": the name on the left, the board as it stood after the turn on its right. The row is a size
+    //container, so the snapshot's spots (its --cell-size) shrink below $log-snapshot-cell-size only when the row can't fit
+    //the snapshot plus $log-snapshot-name-min-width: the whole snapshot scales, it never overflows the log
+    .towers-placed-row{ display: flex; align-items: center; gap: 6px; color: $log-text-color; container-type: inline-size;
         .playername{ display: block; min-width: 0; max-width: $log-name-max-width; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .log-towers{ display: flex; align-items: center; flex-wrap: wrap; gap: 0px 2px; }
-        .log-replacement{ display: inline-flex; align-items: center; gap: 1px; padding: 0px 3px; border-radius: 8px; background: rgba(255, 145, 0, 0.18); }
-        .log-replacement-arrow{ font-size: 12px; color: rgba($material-charcoal, 0.6); }
     }
-    .log-tower{ --cell-size: #{$log-cell-size}; }
-    .log-tower.replaced-log-tower{ opacity: 0.55;
-        &::after{ content: ""; position: absolute; left: 10%; right: 10%; top: 50%; height: 2px; background: #c62828; rotate: -30deg; }
+    .log-board-snapshot{ flex: none; display: grid; grid-template-columns: repeat(var(--snapshot-columns), var(--cell-size)); grid-auto-rows: var(--cell-size);
+        padding: $log-snapshot-padding; border: 1px solid $log-snapshot-border-color; border-radius: 4px; background: $log-snapshot-background;
+        --cell-size: min(#{$log-snapshot-cell-size}, calc((100cqw - #{$log-snapshot-name-min-width} - 6px - #{2 * $log-snapshot-padding + 2px}) / var(--snapshot-columns)));
+
+        .snapshot-cell{ position: relative; border-radius: 3px; }
+        //an empty spot: a faint dot where a tower's bottom disc would sit
+        .empty-snapshot-cell::before{ content: ""; position: absolute; left: 50%; bottom: calc(var(--cell-size) * #{$tower-base-ratio + math.div($disc-width-ratio * $disc-face-ratio, 2)}); width: 3px; height: 3px;
+            translate: -50% 50%; border-radius: 50%; background: $log-snapshot-dot-color; }
+        //a spot the turn touched (a new tower or a replacement): a gold ring and a soft gold glow. With no tower left on it,
+        //a dashed ring instead (where a tower came from; never in base Nexo, where a spot never empties)
+        .changed-snapshot-cell{ background: $log-snapshot-changed-fill; box-shadow: inset 0 0 0 1.5px $log-snapshot-changed-color, 0 0 4px rgba($log-snapshot-changed-color, 0.55); }
+        .changed-snapshot-cell.empty-snapshot-cell{ background: none; box-shadow: none; outline: 1.5px dashed $log-snapshot-changed-color; outline-offset: -1.5px; }
+        //the board's towers at snapshot size: a larger number, readable on a small face
+        .snapshot-tower .tower-height-number{ font-size: calc(var(--cell-size) * 0.36); }
     }
     .player-passed-row{ display: flex; align-items: center; gap: 6px; color: $log-text-color;
         .player-passed-icon{ color: #5a5f6e; }

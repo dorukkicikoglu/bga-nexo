@@ -73,9 +73,10 @@ class PlaceTowers extends GameState
 
         $heightsLog = array_map(fn(array $placement) => $placement['kind'] === PLACEMENT_REPLACE ? $placement['height'].' (replacing '.$placement['replaced_height'].')' : (string) $placement['height'], $validatedPlacements);
         $this->bga->notify->all('towersPlaced', '${TOWERS_PLACED_LOG_STR}', [
-            'preserve' => ['player_id', 'placements'],
+            'preserve' => ['player_id', 'placements', 'board_snapshot'],
             'player_id' => $activePlayerId,
             'placements' => $validatedPlacements,
+            'board_snapshot' => $this->game->tableManager->getBoardSnapshot(), //the board after the turn, for the log row
             'reserves' => $this->game->tableManager->getReserves(),
             'scores' => $scores,
             'TOWERS_PLACED_LOG_STR' => $this->game->getPlayerNameById($activePlayerId).' places towers: '.implode(', ', $heightsLog), //plain fallback: the client builds the row from placements

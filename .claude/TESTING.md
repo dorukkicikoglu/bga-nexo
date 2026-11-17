@@ -200,3 +200,16 @@ Deploy `modules/`; no schema change, an ongoing table is fine (F5).
 - [ ] The same as the black player: the red player's first move is still in the log when the replay ends.
 - [ ] The same as a spectator, if BGA lets a spectator start the replay (see the note on spectators): every row remains.
 - [ ] If a row is missing anyway: in the console, `document.querySelectorAll('#logs .log:not(.a-game-log), [id^="replaylogs"] .gamelogreview:not(.a-game-log)')` lists the rows the log CSS hides; paste the text of the "places towers" one.
+
+## After M1: board snapshot in the log
+
+Deploy `modules/` and `nexo.css`; no schema change. Start a fresh table: turns logged before this deploy have no snapshot and show only their own towers.
+
+- [ ] First turn (red, one tower): the row reads "name [1 x 1 snapshot]", the tower ringed in gold. Name on the left, snapshot on its right, the red bar on the row's left edge.
+- [ ] A few turns in: each row's snapshot is the board's bounding box at that moment (a 2 x 3 board gives a 2 x 3 snapshot), with a faint dot on the empty spots inside it. Earlier rows keep their own smaller snapshots.
+- [ ] Grow the board left and up of the first tower (negative coordinates): the snapshot matches the main board's layout, nothing shifted or missing.
+- [ ] A turn with a replacement: the spot shows the new tower (the mover's color, its new height) ringed in gold, like a new tower. Every spot of a several-tower turn is ringed; untouched towers are not.
+- [ ] `debug_fillBoard()` then a turn: a 5 x 5 snapshot, as wide as it gets, still inside the desktop log column with the name readable (cut with an ellipsis if long). Narrow the window until the right column is at its narrowest: the snapshot shrinks as a whole, never overflows.
+- [ ] Mobile layout (or a phone): the table log shows the same rows, snapshots inside the log's width.
+- [ ] F5: every row rebuilds with the same snapshots and gold rings. Replay from a log row and an archived replay: the same rows.
+- [ ] "Show stack heights" off: no numbers on the snapshot towers; on: numbers readable on the towers' faces.

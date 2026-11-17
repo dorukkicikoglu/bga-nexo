@@ -94,6 +94,7 @@ interface PlaceTowersArgs {
 interface TowersPlacedArgs {
     player_id: number;
     placements: NexoPlacement[];
+    board_snapshot?: string; //the board after the turn, for its log row (NEXOTableManager::getBoardSnapshot): "x,y" + r/b + height per tower, space separated. Missing in turns logged before it existed
     reserves: Record<number, number>;
     scores: Record<number, number>;
 }

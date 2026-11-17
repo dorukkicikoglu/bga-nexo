@@ -140,7 +140,7 @@ export class Game {
                 for(let key of keys) {
                     if(key in args) {
                         if(key == 'TOWERS_PLACED_LOG_STR')
-                            log = this.logMutationObserver.createLogTowersPlaced(args['player_id'], args['placements']).log_html;
+                            log = this.logMutationObserver.createLogTowersPlaced(args['player_id'], args['placements'], args['board_snapshot']).log_html;
                         else if(key == 'PASS_LOG_STR')
                             log = this.logMutationObserver.createLogPlayerPassed(args['player_id']).log_html;
                         else if(key == 'GAME_END_LOG_STR')
