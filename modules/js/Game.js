@@ -583,9 +583,12 @@ class BoardHandler {
         this.spotClickHandler({ x: parseInt(clicked.getAttribute('data-x')), y: parseInt(clicked.getAttribute('data-y')) });
     }
     /**
-     * A confirmed turn: each replaced enemy tower flies back to its owner's reserve on their player board, and each new tower
-     * flies from the player's reserve to its spot, one after the other (TOWER_SLIDE_STAGGER). A tower I drafted is already in
-     * place: it just becomes solid. Nothing flies with animations off. Resolves once every tower has landed.
+     * A confirmed turn, played one spot at a time in the order the turn was drafted (the payload's order): on each spot, the
+     * replaced enemy tower (if any) flies back to its owner's reserve on their player board, top disc first, while the new
+     * tower flies from the player's reserve onto it, bottom disc first (discs TOWER_DISC_STAGGER apart); once every disc has
+     * landed, the next spot starts. A tower I
+     * drafted is already in place: it stays drafted until its spot comes, then just becomes solid. With animations off nothing
+     * flies and nothing is awaited: every spot applies at once. Resolves once every tower has landed.
      */
     async applyPlacements(playerID, placements) {
         //the turn is over: no more clicks while it animates (the next PlaceTowers sets a handler again)
@@ -594,35 +597,43 @@ class BoardHandler {
         this.pendingElements.clear();
         this.draft = null;
         this.updateTowerDraftClasses();
+        draftedElements.forEach((draftedElement, key) => {
+            draftedElement.classList.add('confirmed-tower'); //no more hover or click while it waits for its spot's turn
+            this.towerElements.get(key)?.classList.add('being-replaced'); //the enemy tower it replaces stays faded until then
+        });
         const animate = this.game.bga.gameui.bgaAnimationsActive();
-        const mover = this.game.players[playerID];
-        const slides = [];
-        let flightIndex = 0;
         for (const placement of placements) {
-            const key = BoardRules.key(placement.x, placement.y);
-            const replacedElement = this.towerElements.get(key);
-            if (replacedElement) {
-                this.towerElements.delete(key);
-                const owner = this.game.players[placement.replaced_player_id ?? 0];
-                if (animate && owner)
-                    slides.push(this.game.animateSlideAway(replacedElement, owner.getReserveIconElement().getBoundingClientRect(), Game.TOWER_SLIDE_DURATION, { easing: Game.TOWER_SLIDE_EASING }));
-                replacedElement.remove();
-            }
-            const towerElement = this.addBoardTower({ x: placement.x, y: placement.y, player_id: playerID, height: placement.height });
-            const draftedElement = draftedElements.get(key);
-            if (draftedElement) {
-                draftedElement.remove();
-                draftedElements.delete(key);
-                continue;
-            }
-            if (animate && mover) {
-                slides.push(this.game.animateSlide(towerElement, mover.getReserveIconElement(), null, Game.TOWER_SLIDE_DURATION, { easing: Game.TOWER_SLIDE_EASING, delayMs: flightIndex * Game.TOWER_SLIDE_STAGGER }));
-                flightIndex++;
-            }
+            const flights = this.applyPlacement(playerID, placement, draftedElements, animate);
+            if (flights.length > 0)
+                await Promise.all(flights);
         }
         draftedElements.forEach(element => element.remove()); //never expected: the server keeps every drafted tower
         this.renderSpots();
-        await Promise.all(slides);
+    }
+    //one spot of a confirmed turn: swaps its towers on the board and returns the flights to await (none with animations off,
+    //or for a tower I drafted that replaces nothing)
+    applyPlacement(playerID, placement, draftedElements, animate) {
+        const key = BoardRules.key(placement.x, placement.y);
+        const flights = [];
+        const replacedElement = this.towerElements.get(key);
+        if (replacedElement) {
+            this.towerElements.delete(key);
+            const owner = this.game.players[placement.replaced_player_id ?? 0];
+            if (animate && owner)
+                flights.push(this.game.animateTowerSlideAway(replacedElement, owner.getReserveIconElement().getBoundingClientRect(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }));
+            replacedElement.remove();
+        }
+        const towerElement = this.addBoardTower({ x: placement.x, y: placement.y, player_id: playerID, height: placement.height });
+        const draftedElement = draftedElements.get(key);
+        if (draftedElement) {
+            draftedElement.remove();
+            draftedElements.delete(key);
+            return flights;
+        }
+        const mover = this.game.players[playerID];
+        if (animate && mover)
+            flights.push(this.game.animateTowerSlide(towerElement, mover.getReserveIconElement(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }));
+        return flights;
     }
     //end of the game: each player's largest group(s) glow in their color, every other tower dims
     highlightLargestGroups(groups) {
@@ -1139,7 +1150,7 @@ class HeightMenu {
 class PrefHandler {
     constructor(game, prefNameToIndex) {
         this.game = game;
-        this.prefNameToIndex = prefNameToIndex;
+        this.prefNameToIndex = { ...PrefHandler.DEFAULT_PREF_NAMES, ...prefNameToIndex };
         this.game.bga.userPreferences.onChange = (prefIndex, prefValue) => this.onGameUserPreferenceChanged(prefIndex, prefValue);
         for (const prefName in this.prefNameToIndex) {
             const prefIndex = this.prefNameToIndex[prefName];
@@ -1164,6 +1175,11 @@ class PrefHandler {
 }
 //"Show stack heights" (gamepreferences.jsonc, pref 100): the height number on top of every tower, 1 Enabled, 2 Disabled
 PrefHandler.STACK_HEIGHTS_DISABLED = 2;
+//Game.php $userPrefs, for gamedatas without pref_names: a replay starts from the gamedatas saved when its game began, so a
+//game begun before a preference existed has no pref_names (or lacks the newer ones). Keep in sync with Game.php
+PrefHandler.DEFAULT_PREF_NAMES = {
+    show_stack_heights: 100,
+};
 
 /**
  *------
@@ -1237,8 +1253,10 @@ class Game {
     bgaFormatText(log, args) {
         try {
             log = _(log);
-            if (log && args && !args.processed) {
-                args.processed = true;
+            //no args.processed guard (Riviera's): when BGA formats the same args object a second time, a guarded pass returns the
+            //plain *_LOG_STR fallback, a row with no log-class-tag that the log CSS hides (black replaying from the first move lost
+            //red's first row). Each row is built from args alone, so building it again is harmless
+            if (log && args) {
                 // list of special keys we want to replace with images
                 const keys = ['TOWERS_PLACED_LOG_STR', 'PASS_LOG_STR', 'GAME_END_LOG_STR'];
                 for (let key of keys) {
@@ -1307,6 +1325,48 @@ class Game {
             slidingClone.style.opacity = shownOpacity.toString();
         const endRect = options.keepSize ? Game.getCenteredRect(toRect, fromRect.width, fromRect.height) : toRect;
         await this.moveSlidingClone(slidingClone, fromRect, endRect, durationMs, options);
+    }
+    //animateSlide for a tower already on its spot (BoardHandler.createTowerDiv), one disc at a time: each disc flies from
+    //`from` on its own, bottom disc first and staggerMs apart, as a copy of the whole tower with every other disc hidden, so
+    //it starts and lands exactly where it sits in the tower. Each disc shows in the tower as it lands, the height number with
+    //the top one. Resolves once the top disc has landed. Everything before the first await runs synchronously
+    async animateTowerSlide(towerElement, from, durationMs, staggerMs = Game.TOWER_DISC_STAGGER, options = {}) {
+        const fromRect = from.getBoundingClientRect();
+        const toRect = towerElement.getBoundingClientRect();
+        const startRect = options.keepSize ? Game.getCenteredRect(fromRect, toRect.width, toRect.height) : fromRect;
+        const discParts = Game.getTowerDiscParts(towerElement);
+        const slidingClones = discParts.map((_, discIndex) => this.createDiscSlidingClone(towerElement, discIndex)); //before the tower's own discs are hidden
+        discParts.forEach(part => part.forEach(element => element.style.visibility = 'hidden'));
+        await Promise.all(slidingClones.map(async (slidingClone, discIndex) => {
+            await this.moveSlidingClone(slidingClone, startRect, toRect, durationMs, { ...options, delayMs: (options.delayMs ?? 0) + discIndex * staggerMs });
+            discParts[discIndex].forEach(element => element.style.visibility = null);
+        }));
+    }
+    //animateSlideAway for a tower, one disc at a time: top disc first, staggerMs apart, each a copy of the whole tower with
+    //every other disc hidden (the height number leaves with the top one). The tower can be removed as soon as this is called
+    async animateTowerSlideAway(towerElement, toRect, durationMs, staggerMs = Game.TOWER_DISC_STAGGER, options = {}) {
+        const fromRect = towerElement.getBoundingClientRect();
+        const shownOpacity = Game.getShownOpacity(towerElement);
+        const endRect = options.keepSize ? Game.getCenteredRect(toRect, fromRect.width, fromRect.height) : toRect;
+        const discCount = Game.getTowerDiscParts(towerElement).length;
+        await Promise.all(Array.from({ length: discCount }, (_, discIndex) => {
+            const slidingClone = this.createDiscSlidingClone(towerElement, discIndex);
+            if (shownOpacity < 1)
+                slidingClone.style.opacity = shownOpacity.toString();
+            return this.moveSlidingClone(slidingClone, fromRect, endRect, durationMs, { ...options, delayMs: (options.delayMs ?? 0) + (discCount - 1 - discIndex) * staggerMs });
+        }));
+    }
+    //a tower's discs, bottom first, each with what shows and goes with it: the top disc carries the height number
+    static getTowerDiscParts(towerElement) {
+        const discs = Array.from(towerElement.querySelectorAll(':scope > .tower-disc'));
+        const heightNumber = towerElement.querySelector(':scope > .tower-height-number');
+        return discs.map((disc, discIndex) => (discIndex === discs.length - 1 && heightNumber) ? [disc, heightNumber] : [disc]);
+    }
+    //a sliding copy of the whole tower showing only one of its discs (and the height number if it is the top one)
+    createDiscSlidingClone(towerElement, discIndex) {
+        const slidingClone = this.createSlidingClone(towerElement);
+        Game.getTowerDiscParts(slidingClone).forEach((part, partIndex) => part.forEach(element => element.style.visibility = (partIndex === discIndex) ? null : 'hidden'));
+        return slidingClone;
     }
     //a width x height rect on screen, centered on rect
     static getCenteredRect(rect, width, height) {
@@ -1458,8 +1518,8 @@ class Game {
     }
 }
 //every board animation's timing, in one place to tune them together (BoardHandler reads them too)
-Game.TOWER_SLIDE_DURATION = 520; //ms of a tower flying between a player board's reserve and its spot
-Game.TOWER_SLIDE_STAGGER = 110; //ms between two new towers of the same turn leaving the reserve
+Game.TOWER_SLIDE_DURATION = 520; //ms of a disc flying between a player board's reserve and its spot; a turn plays its spots one after the other
+Game.TOWER_DISC_STAGGER = 50; //ms between two discs of the same tower leaving (bottom disc first onto the board, top disc first off it); a spot takes TOWER_SLIDE_DURATION plus this much per disc above the first
 Game.TOWER_SLIDE_EASING = 'ease-in-out';
 Game.BOARD_RECENTER_DURATION = 400; //ms of the board's contents sliding to stay centred (BoardHandler.centerContents, Yaxha's 400ms)
 Game.BOARD_RECENTER_EASING = 'ease-in-out';

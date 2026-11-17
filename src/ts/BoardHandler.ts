@@ -301,9 +301,12 @@ export class BoardHandler {
     }
 
     /**
-     * A confirmed turn: each replaced enemy tower flies back to its owner's reserve on their player board, and each new tower
-     * flies from the player's reserve to its spot, one after the other (TOWER_SLIDE_STAGGER). A tower I drafted is already in
-     * place: it just becomes solid. Nothing flies with animations off. Resolves once every tower has landed.
+     * A confirmed turn, played one spot at a time in the order the turn was drafted (the payload's order): on each spot, the
+     * replaced enemy tower (if any) flies back to its owner's reserve on their player board, top disc first, while the new
+     * tower flies from the player's reserve onto it, bottom disc first (discs TOWER_DISC_STAGGER apart); once every disc has
+     * landed, the next spot starts. A tower I
+     * drafted is already in place: it stays drafted until its spot comes, then just becomes solid. With animations off nothing
+     * flies and nothing is awaited: every spot applies at once. Resolves once every tower has landed.
      */
     public async applyPlacements(playerID: number, placements: NexoPlacement[]): Promise<void> {
         //the turn is over: no more clicks while it animates (the next PlaceTowers sets a handler again)
@@ -312,43 +315,50 @@ export class BoardHandler {
         this.pendingElements.clear();
         this.draft = null;
         this.updateTowerDraftClasses();
+        draftedElements.forEach((draftedElement, key) => {
+            draftedElement.classList.add('confirmed-tower'); //no more hover or click while it waits for its spot's turn
+            this.towerElements.get(key)?.classList.add('being-replaced'); //the enemy tower it replaces stays faded until then
+        });
 
         const animate = this.game.bga.gameui.bgaAnimationsActive();
-        const mover = this.game.players[playerID];
-        const slides: Promise<void>[] = [];
-        let flightIndex = 0;
-
         for(const placement of placements){
-            const key = BoardRules.key(placement.x, placement.y);
-
-            const replacedElement = this.towerElements.get(key);
-            if(replacedElement){
-                this.towerElements.delete(key);
-                const owner = this.game.players[placement.replaced_player_id ?? 0];
-                if(animate && owner)
-                    slides.push(this.game.animateSlideAway(replacedElement, owner.getReserveIconElement().getBoundingClientRect(), Game.TOWER_SLIDE_DURATION, { easing: Game.TOWER_SLIDE_EASING }));
-                replacedElement.remove();
-            }
-
-            const towerElement = this.addBoardTower({ x: placement.x, y: placement.y, player_id: playerID, height: placement.height });
-
-            const draftedElement = draftedElements.get(key);
-            if(draftedElement){
-                draftedElement.remove();
-                draftedElements.delete(key);
-                continue;
-            }
-
-            if(animate && mover){
-                slides.push(this.game.animateSlide(towerElement, mover.getReserveIconElement(), null, Game.TOWER_SLIDE_DURATION, { easing: Game.TOWER_SLIDE_EASING, delayMs: flightIndex * Game.TOWER_SLIDE_STAGGER }));
-                flightIndex++;
-            }
+            const flights = this.applyPlacement(playerID, placement, draftedElements, animate);
+            if(flights.length > 0)
+                await Promise.all(flights);
         }
 
         draftedElements.forEach(element => element.remove()); //never expected: the server keeps every drafted tower
         this.renderSpots();
+    }
 
-        await Promise.all(slides);
+    //one spot of a confirmed turn: swaps its towers on the board and returns the flights to await (none with animations off,
+    //or for a tower I drafted that replaces nothing)
+    private applyPlacement(playerID: number, placement: NexoPlacement, draftedElements: Map<string, HTMLDivElement>, animate: boolean): Promise<void>[] {
+        const key = BoardRules.key(placement.x, placement.y);
+        const flights: Promise<void>[] = [];
+
+        const replacedElement = this.towerElements.get(key);
+        if(replacedElement){
+            this.towerElements.delete(key);
+            const owner = this.game.players[placement.replaced_player_id ?? 0];
+            if(animate && owner)
+                flights.push(this.game.animateTowerSlideAway(replacedElement, owner.getReserveIconElement().getBoundingClientRect(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }));
+            replacedElement.remove();
+        }
+
+        const towerElement = this.addBoardTower({ x: placement.x, y: placement.y, player_id: playerID, height: placement.height });
+
+        const draftedElement = draftedElements.get(key);
+        if(draftedElement){
+            draftedElement.remove();
+            draftedElements.delete(key);
+            return flights;
+        }
+
+        const mover = this.game.players[playerID];
+        if(animate && mover)
+            flights.push(this.game.animateTowerSlide(towerElement, mover.getReserveIconElement(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }));
+        return flights;
     }
 
     //end of the game: each player's largest group(s) glow in their color, every other tower dims

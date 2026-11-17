@@ -180,3 +180,23 @@ Deploy `nexo.css`; no schema change, an ongoing table is fine (F5).
 - [ ] Hover a ringed tower: its ring turns solid, like an empty spot's. Click it: the gold selected ring and the height menu, as before.
 - [ ] The passive player, a spectator and a replay see no rings at all.
 
+## After M1: turn animation one spot at a time
+
+Deploy `modules/` and `nexo.css`; no schema change, an ongoing table is fine (F5).
+
+- [ ] Opponent's turn with several towers (as the passive player and as a spectator): the towers fly in one at a time, each landing before the next leaves the reserve, in the order they were drafted.
+- [ ] A turn with a replacement: on that spot, the enemy tower flies back to its owner's reserve at the same time as the new tower flies in; the next spot waits for both.
+- [ ] Your own turn with replacements: after Confirm, each replaced tower flies away in turn and your drafted tower on that spot becomes solid then; the drafted towers still waiting show no × on hover and don't react to clicks.
+- [ ] The next notification (a pass banner, the end of the game) and the board's re-centring wait until the last spot has landed.
+- [ ] Replay from a log row: the same one-spot-at-a-time sequence. Fast replay, instantaneous mode or F5: everything applies at once, no flight.
+- [ ] Replay (`replayFrom`) of a game begun before "Show stack heights" existed: it loads (no `show_stack_heights` error in the console), and the towers show or hide their numbers according to your preference; switching it during the replay applies at once.
+- [ ] Discs of a tower leave one after the other (50ms apart): a new tower's bottom disc first, each disc appearing in the tower as it lands, the height number with the top one; a replaced tower's top disc first. The next spot starts only after the last disc has landed.
+
+## After M1: replay keeps every log row
+
+Deploy `modules/`; no schema change, an ongoing table is fine (F5).
+
+- [ ] With at least 3 turns played: "Replay from this move" on the game's first move, as the red player. When the replay ends, every log row is there (the first move included).
+- [ ] The same as the black player: the red player's first move is still in the log when the replay ends.
+- [ ] The same as a spectator, if BGA lets a spectator start the replay (see the note on spectators): every row remains.
+- [ ] If a row is missing anyway: in the console, `document.querySelectorAll('#logs .log:not(.a-game-log), [id^="replaylogs"] .gamelogreview:not(.a-game-log)')` lists the rows the log CSS hides; paste the text of the "places towers" one.

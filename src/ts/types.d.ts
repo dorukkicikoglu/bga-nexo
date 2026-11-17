@@ -20,7 +20,7 @@ interface NexoGamedatas extends Gamedatas<NexoPlayer> {
     towers: NexoTower[];
     rules: NexoRulesData;
     discColorByPlayerColor: Record<string, DiscColor>;
-    pref_names: GamePrefs;
+    pref_names?: GamePrefs; //missing in a replay of a game begun before preferences existed (PrefHandler.DEFAULT_PREF_NAMES)
     endGameScoring?: EndGameScoreData;
 }
 

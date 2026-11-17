@@ -311,6 +311,11 @@ html.hide-stack-heights .tower-height-number {
   opacity: 1;
 }
 
+.towers-layer .pending-tower.confirmed-tower {
+  pointer-events: none;
+  cursor: default;
+}
+
 .towers-layer .board-tower.being-replaced {
   opacity: 0.18;
 }

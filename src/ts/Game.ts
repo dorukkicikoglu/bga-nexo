@@ -20,7 +20,7 @@ import { EndGameScoringHandler } from "./EndGameScoringHandler";
 import { HeightMenu } from "./HeightMenu";
 import { PrefHandler } from "./PrefHandler";
 
-//optional settings of Game.animateSlide / animateSlideAway
+//optional settings of Game.animateSlide / animateSlideAway and their per-disc tower versions animateTowerSlide / animateTowerSlideAway
 export type SlideOptions = {
     easing?: string; //CSS timing function, Game.TOWER_SLIDE_EASING by default
     keepSize?: boolean; //the copy keeps the element's size, centered on the other end, instead of changing size on the way
@@ -31,8 +31,8 @@ export type SlideOptions = {
 
 export class Game {
     //every board animation's timing, in one place to tune them together (BoardHandler reads them too)
-    public static readonly TOWER_SLIDE_DURATION = 520; //ms of a tower flying between a player board's reserve and its spot
-    public static readonly TOWER_SLIDE_STAGGER = 110; //ms between two new towers of the same turn leaving the reserve
+    public static readonly TOWER_SLIDE_DURATION = 520; //ms of a disc flying between a player board's reserve and its spot; a turn plays its spots one after the other
+    public static readonly TOWER_DISC_STAGGER = 50; //ms between two discs of the same tower leaving (bottom disc first onto the board, top disc first off it); a spot takes TOWER_SLIDE_DURATION plus this much per disc above the first
     public static readonly TOWER_SLIDE_EASING = 'ease-in-out';
     public static readonly BOARD_RECENTER_DURATION = 400; //ms of the board's contents sliding to stay centred (BoardHandler.centerContents, Yaxha's 400ms)
     public static readonly BOARD_RECENTER_EASING = 'ease-in-out';
@@ -131,9 +131,10 @@ export class Game {
     private bgaFormatText(log, args) {
         try {
             log = _(log);
-            if (log && args && !args.processed) {
-                args.processed = true;
-
+            //no args.processed guard (Riviera's): when BGA formats the same args object a second time, a guarded pass returns the
+            //plain *_LOG_STR fallback, a row with no log-class-tag that the log CSS hides (black replaying from the first move lost
+            //red's first row). Each row is built from args alone, so building it again is harmless
+            if (log && args) {
                 // list of special keys we want to replace with images
                 const keys = ['TOWERS_PLACED_LOG_STR', 'PASS_LOG_STR', 'GAME_END_LOG_STR'];
                 for(let key of keys) {
@@ -209,6 +210,55 @@ export class Game {
         const endRect = options.keepSize ? Game.getCenteredRect(toRect, fromRect.width, fromRect.height) : toRect;
 
         await this.moveSlidingClone(slidingClone, fromRect, endRect, durationMs, options);
+    }
+
+    //animateSlide for a tower already on its spot (BoardHandler.createTowerDiv), one disc at a time: each disc flies from
+    //`from` on its own, bottom disc first and staggerMs apart, as a copy of the whole tower with every other disc hidden, so
+    //it starts and lands exactly where it sits in the tower. Each disc shows in the tower as it lands, the height number with
+    //the top one. Resolves once the top disc has landed. Everything before the first await runs synchronously
+    public async animateTowerSlide(towerElement: HTMLDivElement, from: HTMLDivElement, durationMs: number, staggerMs: number = Game.TOWER_DISC_STAGGER, options: SlideOptions = {}): Promise<void> {
+        const fromRect = from.getBoundingClientRect();
+        const toRect = towerElement.getBoundingClientRect();
+        const startRect = options.keepSize ? Game.getCenteredRect(fromRect, toRect.width, toRect.height) : fromRect;
+        const discParts = Game.getTowerDiscParts(towerElement);
+        const slidingClones = discParts.map((_, discIndex) => this.createDiscSlidingClone(towerElement, discIndex)); //before the tower's own discs are hidden
+
+        discParts.forEach(part => part.forEach(element => element.style.visibility = 'hidden'));
+
+        await Promise.all(slidingClones.map(async (slidingClone, discIndex) => {
+            await this.moveSlidingClone(slidingClone, startRect, toRect, durationMs, { ...options, delayMs: (options.delayMs ?? 0) + discIndex * staggerMs });
+            discParts[discIndex].forEach(element => element.style.visibility = null);
+        }));
+    }
+
+    //animateSlideAway for a tower, one disc at a time: top disc first, staggerMs apart, each a copy of the whole tower with
+    //every other disc hidden (the height number leaves with the top one). The tower can be removed as soon as this is called
+    public async animateTowerSlideAway(towerElement: HTMLDivElement, toRect: DOMRect, durationMs: number, staggerMs: number = Game.TOWER_DISC_STAGGER, options: SlideOptions = {}): Promise<void> {
+        const fromRect = towerElement.getBoundingClientRect();
+        const shownOpacity = Game.getShownOpacity(towerElement);
+        const endRect = options.keepSize ? Game.getCenteredRect(toRect, fromRect.width, fromRect.height) : toRect;
+        const discCount = Game.getTowerDiscParts(towerElement).length;
+
+        await Promise.all(Array.from({ length: discCount }, (_, discIndex) => {
+            const slidingClone = this.createDiscSlidingClone(towerElement, discIndex);
+            if(shownOpacity < 1)
+                slidingClone.style.opacity = shownOpacity.toString();
+            return this.moveSlidingClone(slidingClone, fromRect, endRect, durationMs, { ...options, delayMs: (options.delayMs ?? 0) + (discCount - 1 - discIndex) * staggerMs });
+        }));
+    }
+
+    //a tower's discs, bottom first, each with what shows and goes with it: the top disc carries the height number
+    private static getTowerDiscParts(towerElement: HTMLDivElement): HTMLElement[][] {
+        const discs = Array.from(towerElement.querySelectorAll<HTMLElement>(':scope > .tower-disc'));
+        const heightNumber = towerElement.querySelector<HTMLElement>(':scope > .tower-height-number');
+        return discs.map((disc, discIndex) => (discIndex === discs.length - 1 && heightNumber) ? [disc, heightNumber] : [disc]);
+    }
+
+    //a sliding copy of the whole tower showing only one of its discs (and the height number if it is the top one)
+    private createDiscSlidingClone(towerElement: HTMLDivElement, discIndex: number): HTMLDivElement {
+        const slidingClone = this.createSlidingClone(towerElement);
+        Game.getTowerDiscParts(slidingClone).forEach((part, partIndex) => part.forEach(element => element.style.visibility = (partIndex === discIndex) ? null : 'hidden'));
+        return slidingClone;
     }
 
     //a width x height rect on screen, centered on rect

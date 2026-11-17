@@ -25,6 +25,7 @@ use Bga\GameFramework\Actions\Debug;
 class Game extends \Bga\GameFramework\Table
 {
     public NEXOTableManager $tableManager;
+    //gamepreferences.jsonc's ids by name, sent as gamedatas.pref_names; PrefHandler.DEFAULT_PREF_NAMES repeats them for replays of older games
     public array $userPrefs = array(
         'show_stack_heights' => 100,
     );
