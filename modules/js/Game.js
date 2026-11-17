@@ -98,13 +98,15 @@ class BoardRules {
 }
 
 /**
- * [BGA] The active player drafts their turn on the client, then confirms it: click a highlighted spot (an empty spot next to a
- * tower, or an enemy tower they can out-height), then pick its height in the popup next to it (HeightMenu: only the heights that
- * are legal and affordable; with a single one, it is placed at once). Clicking the same spot again, outside or Escape closes the
- * popup; another highlighted spot moves it there. The status bar keeps one title for the whole draft. Each drafted tower shows semi-transparent on the board; clicking it
- * takes it back (with any new tower that no longer reaches the board through the others), "Reset turn" takes them all back,
- * "Confirm" sends the whole turn (actPlaceTowers), which the server checks again. Legal spots are recomputed after every
- * change. Everyone else only sees the status text. The draft lives on this page only: a reload starts it again.
+ * [BGA] The active player drafts their turn on the client, then confirms it. A click on a highlighted spot (an empty spot next to
+ * a tower, or an enemy tower they can out-height) drafts a tower there at the lowest legal height (1, or the enemy tower's
+ * height + 1); each click on that drafted tower adds one disc, and a click when it is already at the most it may take (5, or
+ * every disc left this turn) takes it back, so the next click starts again at the lowest. A turn may hold several towers, so
+ * another highlighted spot starts a tower of its own and the others stay. The tower clicked last keeps the gold ring. Each
+ * drafted tower shows semi-transparent with a count badge and an undo button under it that takes it back (with any new tower
+ * that no longer reaches the board through the others). "Reset turn" takes them all back, "Confirm" sends the whole turn
+ * (actPlaceTowers), which the server checks again. Legal spots are recomputed after every change. The status bar keeps one
+ * title for the whole draft. Everyone else only sees the status text. The draft lives on this page only: a reload starts it again.
  */
 class PlaceTowers {
     constructor(game, bga) {
@@ -112,7 +114,7 @@ class PlaceTowers {
         this.bga = bga;
         this.stateArgs = null;
         this.pending = [];
-        this.selectedSpot = null;
+        this.selectedSpot = null; //the drafted tower clicked last (gold ring), null once it is taken back
         this.drafting = false;
     }
     /**
@@ -127,7 +129,10 @@ class PlaceTowers {
             this.bga.statusBar.setTitle(_('${actplayer} must place towers'));
             return;
         }
-        this.game.boardHandler.setSpotClickHandler(spot => this.spotClicked(spot));
+        this.game.boardHandler.setDraftClickHandlers({
+            spotClicked: spot => this.spotClicked(spot),
+            undoClicked: spot => this.undoClicked(spot),
+        });
         this.update();
     }
     /**
@@ -137,10 +142,10 @@ class PlaceTowers {
         this.drafting = false;
         this.pending = [];
         this.selectedSpot = null;
-        this.game.heightMenu.close();
-        this.game.boardHandler.setSpotClickHandler(null);
+        this.game.boardHandler.setDraftClickHandlers(null);
         this.game.boardHandler.setDraft(null);
     }
+    canDraft() { return this.drafting && !this.game.isInterfaceLocked(); }
     getDiscsUsed() { return this.pending.reduce((sum, tower) => sum + tower.height, 0); }
     getDiscsLeft() { return Math.max(0, (this.stateArgs?.discsThisTurn ?? 0) - this.getDiscsUsed()); }
     //the towers on the board plus the draft's new towers: what adjacency and the grid's bounds are checked against
@@ -172,49 +177,55 @@ class PlaceTowers {
             return null;
         return this.getReplaceableTowers().find(tower => tower.x === spot.x && tower.y === spot.y);
     }
+    //the heights a tower may have on a spot with no drafted tower: from 1 (or the enemy tower's height + 1) up to the discs left
     getHeightOptions(spot) {
         const target = this.getSpotTarget(spot);
         if (target === undefined)
             return [];
         return this.game.boardRules.getHeightOptions(target ? target.height : null, this.getDiscsLeft());
     }
-    //called by BoardHandler: a drafted tower is taken back, the selected spot is unselected, a highlighted spot is selected
+    //the heights a drafted tower cycles through: the same rule, with its own discs back among the discs left
+    getCycleHeights(tower) {
+        return this.game.boardRules.getHeightOptions(tower.replaced ? tower.replaced.height : null, this.getDiscsLeft() + tower.height);
+    }
+    //called by BoardHandler, on a highlighted spot or a drafted tower: a new tower at its lowest height, one more disc, or, past
+    //the highest height, the tower taken back
     spotClicked(spot) {
-        if (!this.drafting || this.game.isInterfaceLocked())
+        if (!this.canDraft())
             return;
-        if (this.getPendingAt(spot)) {
-            this.removePending(spot);
-            return;
-        }
-        if (this.selectedSpot && this.selectedSpot.x === spot.x && this.selectedSpot.y === spot.y) {
-            this.selectedSpot = null;
+        const pendingTower = this.getPendingAt(spot);
+        if (pendingTower) {
+            const nextHeight = pendingTower.height + 1;
+            if (!this.getCycleHeights(pendingTower).includes(nextHeight)) {
+                this.removePending(spot);
+                return;
+            }
+            this.pending = this.pending.map(tower => tower === pendingTower ? { ...tower, height: nextHeight } : tower);
+            this.selectedSpot = { x: spot.x, y: spot.y };
             this.update();
             return;
         }
         const heightOptions = this.getHeightOptions(spot);
-        if (heightOptions.length === 0)
-            return;
-        //[BGA] a single possible height needs no choice
-        if (heightOptions.length === 1) {
+        if (heightOptions.length > 0)
             this.addPending(spot, heightOptions[0]);
-            return;
-        }
-        this.selectedSpot = { x: spot.x, y: spot.y };
-        this.update();
+    }
+    //called by BoardHandler: a drafted tower's undo button (never also a click on its spot)
+    undoClicked(spot) {
+        if (this.canDraft() && this.getPendingAt(spot))
+            this.removePending(spot);
     }
     addPending(spot, height) {
         const target = this.getSpotTarget(spot);
         if (target === undefined || !this.getHeightOptions(spot).includes(height))
             return;
         this.pending.push({ x: spot.x, y: spot.y, height: height, kind: target ? 'replace' : 'new', replaced: target ?? null });
-        this.selectedSpot = null;
+        this.selectedSpot = { x: spot.x, y: spot.y };
         this.update();
     }
     //a new tower that no longer reaches the board through the turn's other new towers goes too (BoardRules.keepConnectedPending)
     removePending(spot) {
         const remaining = this.pending.filter(tower => tower.x !== spot.x || tower.y !== spot.y);
         this.pending = BoardRules.keepConnectedPending(this.game.boardHandler.getTowerMap(), remaining);
-        this.selectedSpot = null;
         this.update();
     }
     resetTurn() {
@@ -228,53 +239,37 @@ class PlaceTowers {
         const placements = this.pending.map(tower => ({ x: tower.x, y: tower.y, height: tower.height }));
         this.bga.actions.performAction('actPlaceTowers', { placements: JSON.stringify(placements) });
     }
-    //redraws everything the draft shows: the board (drafted towers, legal spots, replaceable towers) and the status bar
+    //redraws everything the draft shows: the board (drafted towers with their badges and undo buttons, legal spots, replaceable
+    //towers, the gold ring) and the status bar
     update() {
         if (!this.drafting)
             return;
-        const legalNewSpots = this.getLegalNewSpots();
-        const replaceableTowers = this.getReplaceableTowers();
-        if (this.selectedSpot && this.getHeightOptions(this.selectedSpot).length === 0)
+        if (this.selectedSpot && !this.getPendingAt(this.selectedSpot))
             this.selectedSpot = null;
         this.game.boardHandler.setDraft({
             pending: this.pending,
-            legalNewSpots: legalNewSpots,
-            replaceableTowers: replaceableTowers,
+            legalNewSpots: this.getLegalNewSpots(),
+            replaceableTowers: this.getReplaceableTowers(),
             selectedSpot: this.selectedSpot,
             discColor: this.game.getDiscColor(this.game.getMyPlayerID()),
         });
         this.updateStatusBar();
-        this.updateHeightMenu();
     }
-    //the same title for the whole draft (a selected spot doesn't change it: its heights are in the height menu), with Confirm and
-    //Reset turn once a tower is drafted
+    //the same title for the whole draft, with Confirm and Reset turn once a tower is drafted
     updateStatusBar() {
         this.bga.statusBar.removeActionButtons();
         const discsThisTurn = this.stateArgs?.discsThisTurn ?? 1;
         const title = discsThisTurn > 1 ? _('${you} must place 1 to ${count} discs') : _('${you} must place 1 disc');
         this.bga.statusBar.setTitle(title, { count: discsThisTurn });
+        //a real BGA button, invisible and zero wide (.action-row-strut), for the whole draft: the action buttons' line is always
+        //one button tall, so the status bar keeps its height when Confirm and Reset turn come and go. Without it, on mobile
+        //(where #generalactions::before gives the buttons a line of their own) that line grew a few px with them and pushed
+        //the board down. The label is a zero-width space, so the button has a line of text like a real one
+        this.bga.statusBar.addActionButton('​', () => { }, { id: 'action-row-strut', classes: 'action-row-strut', color: 'secondary' });
         if (this.pending.length === 0)
             return;
         this.bga.statusBar.addActionButton(_('Confirm'), () => this.confirmTurn(), { id: 'confirm-turn-button' });
         this.bga.statusBar.addActionButton(_('Reset turn'), () => this.resetTurn(), { id: 'reset-turn-button', color: 'secondary' });
-    }
-    //[BGA] the selected spot's heights in a popup next to it (HeightMenu): a choice drafts the tower, a dismissal (a click outside,
-    //Escape) unselects the spot. Called after setDraft, so the spot it anchors to is on the page
-    updateHeightMenu() {
-        const selectedSpot = this.selectedSpot;
-        if (!selectedSpot) {
-            this.game.heightMenu.close();
-            return;
-        }
-        this.game.heightMenu.open({
-            spot: selectedSpot,
-            heights: this.getHeightOptions(selectedSpot),
-            discColor: this.game.getDiscColor(this.game.getMyPlayerID()),
-            replacedTower: this.getSpotTarget(selectedSpot) ?? null,
-        }, height => this.addPending(selectedSpot, height), () => {
-            this.selectedSpot = null;
-            this.update();
-        });
     }
 }
 
@@ -290,7 +285,7 @@ class GameEnd {
      * This method is called each time we are entering the game state. You can use this method to perform some user interface changes at this moment.
      */
     onEnteringState(args, isCurrentPlayerActive) {
-        this.game.boardHandler.setSpotClickHandler(null);
+        this.game.boardHandler.setDraftClickHandlers(null);
         this.game.boardHandler.setDraft(null);
         this.game.updatePassedStamps(); //the game is over: no PASSED stamp
     }
@@ -528,7 +523,7 @@ class BoardHandler {
         this.towerElements = new Map();
         this.pendingElements = new Map();
         this.draft = null;
-        this.spotClickHandler = null;
+        this.draftClickHandlers = null;
         this.boardSize = this.game.getRules().gridSize + 2;
         this.boardElement = document.getElementById('nexo-board');
         this.boardElement.style.setProperty('--board-size', this.boardSize.toString());
@@ -536,11 +531,13 @@ class BoardHandler {
             <div class="board-layer">
                 <div class="spots-layer"></div>
                 <div class="towers-layer"></div>
+                <div class="draft-controls-layer"></div>
             </div>
         `;
         this.layerElement = this.boardElement.querySelector('.board-layer');
         this.spotsLayer = this.boardElement.querySelector('.spots-layer');
         this.towersLayer = this.boardElement.querySelector('.towers-layer');
+        this.controlsLayer = this.boardElement.querySelector('.draft-controls-layer');
         for (const tower of towers)
             this.addBoardTower(tower);
         this.fitToViewport();
@@ -584,10 +581,12 @@ class BoardHandler {
         const maxHeight = (window.innerHeight - boardTop - Game.BOARD_VIEWPORT_MARGIN) / zoom - borders;
         const maxWidth = containerWidth - borders;
         const cellSize = Math.max(Game.MIN_BOARD_CELL_SIZE, Math.floor(Math.min(maxHeight, maxWidth) / this.boardSize));
-        if (this.boardElement.style.getPropertyValue('--cell-size') !== cellSize + 'px') {
+        if (this.boardElement.style.getPropertyValue('--cell-size') !== cellSize + 'px')
             this.boardElement.style.setProperty('--cell-size', cellSize + 'px');
-            this.game.heightMenu?.reposition(); //an open height menu follows its spot
-        }
+        //the draft's controls keep a minimum size on screen (Game.scss: $pending-undo-min-size), whatever BGA's scaling
+        const boardZoom = zoom.toFixed(4);
+        if (zoom > 0 && this.boardElement.style.getPropertyValue('--board-zoom') !== boardZoom)
+            this.boardElement.style.setProperty('--board-zoom', boardZoom);
         this.measureForBackgroundDisc(cellSize * zoom);
     }
     /**
@@ -615,7 +614,7 @@ class BoardHandler {
         }
     }
     //a tower of height discs in discColor: one .tower-disc per disc, bottom one first, and its height as a number on top. Also
-    //used for log rows, the player boards' reserve and the height menu, each sized by its own --cell-size
+    //used for log rows and the player boards' reserve, each sized by its own --cell-size
     static createTowerDiv(discColor, height, extraClass = '') {
         const tower = document.createElement('div');
         tower.className = 'nexo-tower' + (extraClass ? ' ' + extraClass : '');
@@ -674,7 +673,6 @@ class BoardHandler {
         this.layerElement.style.translate = `calc(${this.boardSize / 2 - centerX} * var(--cell-size)) calc(${this.boardSize / 2 - centerY} * var(--cell-size))`;
         if (slide)
             await this.game.bga.gameui.wait(Game.BOARD_RECENTER_DURATION);
-        this.game.heightMenu?.reposition(); //an open height menu follows its spot
     }
     //after a turn (notif_towersPlaced, once the towers have landed): the spots for the new board, then the layer slides to
     //centre the new bounding box
@@ -695,7 +693,7 @@ class BoardHandler {
     }
     //the spots only the player drafting their turn sees (nobody else, spectators and replays included, so nothing looks
     //clickable to them): the legal spots (an ellipse ring where the tower's bottom disc would go, in their own disc color),
-    //the replaceable enemy towers and the selected spot. Empty spots and the grid's outline are never drawn
+    //the replaceable enemy towers and the gold ring under the drafted tower clicked last. Empty spots and the grid's outline are never drawn
     renderSpots() {
         this.spotsLayer.innerHTML = '';
         this.boxLegalSpots = this.getBoxLegalSpots();
@@ -726,16 +724,17 @@ class BoardHandler {
             this.boardElement.removeAttribute('data-legal-spot-color');
     }
     //the turn being drafted (PlaceTowers), or null once it is over: its towers shown semi-transparent on their spots (a replaced
-    //enemy tower fades under its replacement), legal spots and replaceable towers highlighted
+    //enemy tower fades under its replacement) with their count badges and undo buttons, legal spots and replaceable towers highlighted
     setDraft(draft) {
         this.draft = draft;
         this.renderPending();
+        this.renderPendingControls();
         this.updateTowerDraftClasses();
         this.renderSpots();
         this.centerContents(true); //like Yaxha after each cube: the layer slides as drafted towers and legal spots change the box
     }
-    setSpotClickHandler(handler) {
-        this.spotClickHandler = handler;
+    setDraftClickHandlers(handlers) {
+        this.draftClickHandlers = handlers;
     }
     renderPending() {
         this.pendingElements.forEach(element => element.remove());
@@ -747,20 +746,46 @@ class BoardHandler {
             this.pendingElements.set(BoardRules.key(pendingTower.x, pendingTower.y), pendingElement);
         }
     }
+    //on each drafted tower, in a layer over every tower: a badge with its height (the discs it adds) on its top right corner and,
+    //just under it, a round undo button that takes it back. The button's click never reaches the spot underneath
+    renderPendingControls() {
+        this.controlsLayer.innerHTML = '';
+        for (const pendingTower of this.draft?.pending ?? []) {
+            const spot = { x: pendingTower.x, y: pendingTower.y };
+            const controls = document.createElement('div');
+            controls.className = 'pending-controls';
+            BoardHandler.placeOnBoard(controls, spot);
+            const badge = document.createElement('div');
+            badge.className = 'pending-count-badge';
+            badge.textContent = pendingTower.height.toString();
+            const undoButton = document.createElement('button');
+            undoButton.type = 'button';
+            undoButton.className = 'pending-undo-button';
+            undoButton.title = _('Take this tower back');
+            undoButton.setAttribute('aria-label', undoButton.title);
+            undoButton.innerHTML = BoardHandler.UNDO_ICON_SVG;
+            undoButton.addEventListener('click', (event) => {
+                event.stopPropagation(); //not a click on the drafted tower under it, which would add a disc
+                this.draftClickHandlers?.undoClicked(spot);
+            });
+            controls.append(badge, undoButton);
+            this.controlsLayer.appendChild(controls);
+        }
+    }
     //an enemy tower under a drafted replacement fades (being-replaced)
     updateTowerDraftClasses() {
         const replacedKeys = new Set((this.draft?.pending ?? []).filter(tower => tower.kind === 'replace').map(tower => BoardRules.key(tower.x, tower.y)));
         this.towerElements.forEach((element, key) => element.classList.toggle('being-replaced', replacedKeys.has(key)));
     }
-    //a click on a tower of the draft takes it back; a click on a highlighted spot (empty or an enemy tower) selects it
+    //a click on a highlighted spot (empty or an enemy tower) or on a tower of the draft: PlaceTowers drafts or cycles its height
     onBoardClick(event) {
-        if (!this.spotClickHandler)
+        if (!this.draftClickHandlers)
             return;
         const target = event.target;
         const clicked = (target.closest('.pending-tower') ?? target.closest('.board-spot.clickable-spot'));
         if (!clicked)
             return;
-        this.spotClickHandler({ x: parseInt(clicked.getAttribute('data-x')), y: parseInt(clicked.getAttribute('data-y')) });
+        this.draftClickHandlers.spotClicked({ x: parseInt(clicked.getAttribute('data-x')), y: parseInt(clicked.getAttribute('data-y')) });
     }
     /**
      * A confirmed turn, played one spot at a time in the order the turn was drafted (the payload's order): on each spot, the
@@ -772,12 +797,14 @@ class BoardHandler {
      * included. Resolves once every tower has landed.
      */
     async applyPlacements(playerID, placements) {
-        //the turn is over: no more clicks while it animates (the next PlaceTowers sets a handler again)
-        this.setSpotClickHandler(null);
+        //the turn is over: no more clicks while it animates (the next PlaceTowers sets its handlers again), no more badges or
+        //undo buttons
+        this.setDraftClickHandlers(null);
         const draftedElements = new Map(this.pendingElements);
         this.pendingElements.clear();
         this.draft = null;
         this.updateTowerDraftClasses();
+        this.renderPendingControls();
         draftedElements.forEach((draftedElement, key) => {
             draftedElement.classList.add('confirmed-tower'); //no more hover or click while it waits for its spot's turn
             this.towerElements.get(key)?.classList.add('being-replaced'); //the enemy tower it replaces stays faded until then
@@ -834,6 +861,8 @@ class BoardHandler {
         }
     }
 }
+//the undo button's icon: a curved arrow turning back counter-clockwise, drawn with currentColor
+BoardHandler.UNDO_ICON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12a7 7 0 1 0 2.05-4.95"/><path d="M11 7.05H7.05V3.1"/></svg>';
 
 class LogMutationObserver {
     constructor(game) {
@@ -1037,185 +1066,6 @@ class EndGameScoringHandler {
     isDisplayed() { return this.displayed; }
 }
 
-/**
- * [BGA] The height picker of the draft (PlaceTowers): a small popup next to the selected spot, one button per legal height,
- * each a tower of that height in the player's color with its number on top. For a replacement, a caption shows the enemy
- * tower and "at least N discs". It lives in <body>, position fixed, outside BGA's mobile scaling of the game area, so its
- * buttons keep their real size (at least $height-menu-option-size) at any zoom. Its place is measured on screen from the
- * spot (found again by its board coordinates, since the board redraws its spots on every draft change): above the spot,
- * else below, else to the right, else to the left, always clamped inside the viewport, and measured again on scroll,
- * resize and board recentring. A pointer down outside the menu and the board's clickable spots, or Escape, dismisses it;
- * digits pick a height. The anchor gap and the viewport margin come from Game.scss (--height-menu-anchor-gap,
- * --height-menu-edge-margin), like every other size of the menu.
- */
-class HeightMenu {
-    constructor(game) {
-        this.game = game;
-        this.menuElement = null;
-        this.request = null;
-        this.onChoose = null;
-        this.onDismiss = null;
-        this.repositionFrame = 0;
-        this.pointerDownListener = (event) => this.onDocumentPointerDown(event);
-        this.keyDownListener = (event) => this.onDocumentKeyDown(event);
-        this.viewportChangeListener = () => this.scheduleReposition();
-    }
-    //opens the menu at request.spot, or moves it there (a new menu is built: the heights may differ)
-    open(request, onChoose, onDismiss) {
-        this.removeMenuElement();
-        this.request = request;
-        this.onChoose = onChoose;
-        this.onDismiss = onDismiss;
-        this.menuElement = this.createMenuElement(request);
-        document.body.appendChild(this.menuElement);
-        this.addListeners();
-        this.reposition();
-    }
-    //closes without choosing (the owner has already updated its own state)
-    close() {
-        this.removeMenuElement();
-        this.removeListeners();
-        this.request = null;
-        this.onChoose = null;
-        this.onDismiss = null;
-    }
-    removeMenuElement() {
-        if (this.repositionFrame) {
-            cancelAnimationFrame(this.repositionFrame);
-            this.repositionFrame = 0;
-        }
-        this.menuElement?.remove();
-        this.menuElement = null;
-    }
-    createMenuElement(request) {
-        const menu = document.createElement('div');
-        menu.className = 'height-menu';
-        menu.setAttribute('role', 'menu');
-        menu.setAttribute('data-disc-color', request.discColor);
-        let captionHTML = `<span class="height-menu-caption-text">${_('Tower height')}</span>`;
-        if (request.replacedTower) {
-            const replacedTowerHTML = BoardHandler.createTowerDiv(this.game.getDiscColor(request.replacedTower.player_id), request.replacedTower.height, 'height-menu-replaced-tower').outerHTML;
-            const minimumText = _('Replace: at least ${count} discs').replace('${count}', `<b>${request.replacedTower.height + 1}</b>`);
-            captionHTML = `${replacedTowerHTML}<span class="height-menu-caption-text">${minimumText}</span>`;
-        }
-        const optionsHTML = request.heights.map(height => {
-            const label = (height === 1 ? _('1 disc') : _('${count} discs').replace('${count}', height.toString())).replace(/"/g, '&quot;');
-            const towerHTML = BoardHandler.createTowerDiv(request.discColor, height, 'height-menu-tower').outerHTML;
-            return `<button type="button" class="height-menu-option" role="menuitem" data-height="${height}" aria-label="${label}" title="${label}">${towerHTML}</button>`;
-        }).join('');
-        menu.innerHTML = `
-            <div class="height-menu-caption">${captionHTML}</div>
-            <div class="height-menu-options">${optionsHTML}</div>
-            <div class="height-menu-arrow" aria-hidden="true"></div>
-        `;
-        menu.addEventListener('click', (event) => {
-            const option = event.target.closest('.height-menu-option');
-            if (option)
-                this.choose(parseInt(option.getAttribute('data-height')));
-        });
-        return menu;
-    }
-    choose(height) {
-        if (!this.request?.heights.includes(height) || !this.onChoose)
-            return;
-        this.onChoose(height); //the owner places the tower and closes the menu
-    }
-    dismiss() {
-        const onDismiss = this.onDismiss;
-        this.close();
-        onDismiss?.();
-    }
-    addListeners() {
-        document.addEventListener('pointerdown', this.pointerDownListener, true);
-        document.addEventListener('keydown', this.keyDownListener);
-        window.addEventListener('scroll', this.viewportChangeListener, true); //capture: any scrolling ancestor, not only the page
-        window.addEventListener('resize', this.viewportChangeListener);
-    }
-    removeListeners() {
-        document.removeEventListener('pointerdown', this.pointerDownListener, true);
-        document.removeEventListener('keydown', this.keyDownListener);
-        window.removeEventListener('scroll', this.viewportChangeListener, true);
-        window.removeEventListener('resize', this.viewportChangeListener);
-    }
-    //outside the menu: dismissed. Not on the board's clickable spots or drafted towers: those clicks go to PlaceTowers, which
-    //moves the menu to another spot, closes it on the same spot, or takes a drafted tower back
-    onDocumentPointerDown(event) {
-        const target = event.target;
-        if (!this.menuElement || this.menuElement.contains(target))
-            return;
-        if (target.closest?.('#nexo-board .clickable-spot, #nexo-board .pending-tower'))
-            return;
-        this.dismiss();
-    }
-    //never while typing (BGA's chat): digits there are text
-    onDocumentKeyDown(event) {
-        const target = event.target;
-        if (target?.closest?.('input, textarea, select, [contenteditable="true"]'))
-            return;
-        if (event.key === 'Escape') {
-            this.dismiss();
-            return;
-        }
-        const height = parseInt(event.key);
-        if (!isNaN(height) && this.request?.heights.includes(height)) {
-            event.preventDefault();
-            this.choose(height);
-        }
-    }
-    scheduleReposition() {
-        if (!this.menuElement || this.repositionFrame)
-            return;
-        this.repositionFrame = requestAnimationFrame(() => {
-            this.repositionFrame = 0;
-            this.reposition();
-        });
-    }
-    //places the menu next to its spot on screen: the first side where it fits whole (above, below, right, left), else above;
-    //then clamped inside the viewport (below a fixed BGA top bar). The arrow keeps pointing at the spot's centre
-    reposition() {
-        if (!this.menuElement || !this.request)
-            return;
-        const anchor = this.game.boardHandler.getSpotElement(this.request.spot);
-        if (!anchor) {
-            this.dismiss(); //the spot is gone (never expected while the menu is open)
-            return;
-        }
-        const menuStyle = getComputedStyle(this.menuElement);
-        const gap = parseFloat(menuStyle.getPropertyValue('--height-menu-anchor-gap')) || 0;
-        const margin = parseFloat(menuStyle.getPropertyValue('--height-menu-edge-margin')) || 0;
-        const anchorRect = anchor.getBoundingClientRect();
-        const menuWidth = this.menuElement.offsetWidth;
-        const menuHeight = this.menuElement.offsetHeight;
-        const viewportWidth = document.documentElement.clientWidth; //leaves out a vertical scrollbar, which innerWidth counts
-        const viewportHeight = window.innerHeight;
-        const minTop = this.getMinTop(margin);
-        const centerX = anchorRect.left + anchorRect.width / 2;
-        const centerY = anchorRect.top + anchorRect.height / 2;
-        const candidates = [
-            { placement: 'above', left: centerX - menuWidth / 2, top: anchorRect.top - gap - menuHeight, fits: anchorRect.top - gap - menuHeight >= minTop },
-            { placement: 'below', left: centerX - menuWidth / 2, top: anchorRect.bottom + gap, fits: anchorRect.bottom + gap + menuHeight <= viewportHeight - margin },
-            { placement: 'right', left: anchorRect.right + gap, top: centerY - menuHeight / 2, fits: anchorRect.right + gap + menuWidth <= viewportWidth - margin },
-            { placement: 'left', left: anchorRect.left - gap - menuWidth, top: centerY - menuHeight / 2, fits: anchorRect.left - gap - menuWidth >= margin },
-        ];
-        const chosen = candidates.find(candidate => candidate.fits) ?? candidates[0];
-        const left = Math.max(margin, Math.min(chosen.left, viewportWidth - margin - menuWidth));
-        const top = Math.max(minTop, Math.min(chosen.top, viewportHeight - margin - menuHeight));
-        this.menuElement.style.left = `${left}px`;
-        this.menuElement.style.top = `${top}px`;
-        this.menuElement.setAttribute('data-placement', chosen.placement);
-        const arrowOffset = (chosen.placement === 'above' || chosen.placement === 'below') ? centerX - left : centerY - top;
-        const arrowLength = (chosen.placement === 'above' || chosen.placement === 'below') ? menuWidth : menuHeight;
-        this.menuElement.style.setProperty('--height-menu-arrow-offset', `${Math.max(14, Math.min(arrowLength - 14, arrowOffset))}px`);
-    }
-    //the menu never goes under BGA's top bar when it is fixed (it paints over everything on mobile)
-    getMinTop(margin) {
-        const topBar = document.getElementById('topbar');
-        if (!topBar || getComputedStyle(topBar).position !== 'fixed')
-            return margin;
-        return Math.max(margin, topBar.getBoundingClientRect().bottom + margin);
-    }
-}
-
 class PrefHandler {
     constructor(game, prefNameToIndex) {
         this.game = game;
@@ -1235,9 +1085,8 @@ class PrefHandler {
         }
     }
     //game specific functions
-    //one class on <html>, so it reaches every tower: the board, the flying copies and the height menu (both in <body>) and
-    //the log rows. Any value other than Disabled is Enabled (the default; also a missing value, as for a spectator with no
-    //saved preference)
+    //one class on <html>, so it reaches every tower: the board, the flying copies (in <body>) and the log rows. Any value other
+    //than Disabled is Enabled (the default; also a missing value, as for a spectator with no saved preference)
     applyStackHeights(prefValue) {
         document.documentElement.classList.toggle('hide-stack-heights', prefValue == PrefHandler.STACK_HEIGHTS_DISABLED);
     }
@@ -1301,7 +1150,6 @@ class Game {
         }
         this.updatePassedStamps();
         this.boardHandler = new BoardHandler(this, gamedatas.towers);
-        this.heightMenu = new HeightMenu(this);
         this.logMutationObserver = new LogMutationObserver(this);
         this.tooltipHandler = new TooltipHandler(this);
         this.prefHandler = new PrefHandler(this, gamedatas.pref_names);
@@ -1459,7 +1307,6 @@ class Game {
     }
     onScreenWidthChange() {
         this.boardHandler?.fitToViewport();
-        this.heightMenu?.reposition();
     }
     isReplay() { return typeof g_replayFrom != 'undefined' || g_archive_mode; } //"replay from this move" in an ongoing game, or an archived game
     isInterfaceLocked() { return document.body.classList.contains('lockedInterface'); } //gameui.isInterfaceLocked() is not in this framework version

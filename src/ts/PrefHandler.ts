@@ -43,9 +43,8 @@ export class PrefHandler{
 
     //game specific functions
 
-    //one class on <html>, so it reaches every tower: the board, the flying copies and the height menu (both in <body>) and
-    //the log rows. Any value other than Disabled is Enabled (the default; also a missing value, as for a spectator with no
-    //saved preference)
+    //one class on <html>, so it reaches every tower: the board, the flying copies (in <body>) and the log rows. Any value other
+    //than Disabled is Enabled (the default; also a missing value, as for a spectator with no saved preference)
     private applyStackHeights(prefValue: number): void{
         document.documentElement.classList.toggle('hide-stack-heights', prefValue == PrefHandler.STACK_HEIGHTS_DISABLED);
     }

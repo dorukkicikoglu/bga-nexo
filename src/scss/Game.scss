@@ -30,7 +30,7 @@ $tower-base-ratio: 0.08;
 //seam between two stacked discs, like the real game's thin dark gaps: seam-above, a 1px line along the upper disc's lower edge,
 //and seam-below, a 1px line just under it, along the lower disc's rim. Red: a lighter edge over a maroon line. Black: a dark
 //line would not show on black, so a dark gap over a grey highlight on the lower disc's rim. The same seams on the board, the
-//log, the height menu and the player boards' reserve stacks
+//log and the player boards' reserve stacks
 $disc-colors: (
     "red": (face: #d42a20, face-light: #ff6a5c, side: #a8150e, side-dark: #6a0905, number: #ffffff, seam-above: rgba(255, 150, 135, 0.75), seam-below: #240100),
     "black": (face: #2b2c31, face-light: #63656e, side: #17181b, side-dark: #050506, number: #ffffff, seam-above: #000000, seam-below: rgba(178, 181, 192, 0.8)),
@@ -103,7 +103,18 @@ $board-background: radial-gradient(ellipse 70% 55% at 30% 20%, #ffffff 0%, trans
     linear-gradient(111deg, transparent 67%, rgba($marble-vein-color, 0.035) 67.6%, transparent 68.5%),
     linear-gradient(160deg, $marble-white 0%, $marble-white-shade 100%);
 $board-border-color: rgba($material-charcoal, 0.1);
-$selected-spot-color: #ffc400; //the spot waiting for its height
+$selected-spot-color: #ffc400; //the gold ring under the drafted tower clicked last
+//the draft's controls on each drafted tower (BoardHandler.renderPendingControls): a count badge on its top right corner and a
+//round undo button just under it. Shares of --cell-size, so they scale with the board, but never smaller on screen than the
+//minimums, which are screen px (divided by --board-zoom: BGA scales the game area down on a phone)
+$pending-badge-size-ratio: 0.26;
+$pending-badge-min-size: 18px;
+$pending-undo-size-ratio: 0.38;
+$pending-undo-min-size: 32px; //a comfortable tap target
+$pending-undo-icon-ratio: 0.6; //the arrow, a share of the button
+$pending-undo-background: linear-gradient(160deg, #ffffff 0%, $marble-white-shade 100%);
+$pending-undo-shadow: 0 1px 2px rgba($slab-shadow-color, 0.25), 0 3px 8px -2px rgba($slab-shadow-color, 0.35);
+$draft-controls-z-index: 2000; //over every tower (1000 + its row)
 
 //player boards (BGA's .player-board) and log rows
 $panel-background: linear-gradient(160deg, $marble-white 0%, $marble-white-shade 100%);
@@ -228,6 +239,11 @@ $passed-banner-z-index: 1000;
 //mobile: a line break right before the action buttons, like a <br>, so they and BGA's arrow button start a second line
 //under the status bar title (the hourglass stays inline with it). Desktop keeps them next to the title
 .mobile_version #generalactions::before{ content: ""; display: block; }
+//the draft's invisible button (PlaceTowers.updateStatusBar): BGA's own height (its vertical padding, border, margin and font
+//stay), nothing across, never seen nor clicked, so the buttons' line is as tall with or without Confirm and Reset turn. No
+//overflow: hidden: it would move the inline-block's baseline and change the line's height
+#generalactions .bgabutton.action-row-strut{ visibility: hidden; width: 0px; min-width: 0px; margin-left: 0px; margin-right: 0px; padding-left: 0px; padding-right: 0px;
+    border-left-width: 0px; border-right-width: 0px; pointer-events: none; }
 
 //towers (BoardHandler.createTowerDiv): one .tower-disc per disc, bottom one first, each drawn as a cylinder: its top face is the
 //element's background (an ellipse in the top --disc-face-height of the box), its side a rectangle (::before) and its bottom
@@ -262,7 +278,7 @@ $passed-banner-z-index: 1000;
     }
 }
 //the "Show stack heights" preference off (PrefHandler.applyStackHeights, a class on <html>): no number on any tower, on the
-//board, the flying copies, the height menu or the log rows. The numbers stay in the page, only hidden
+//board, the flying copies or the log rows (a drafted tower's count badge stays). The numbers stay in the page, only hidden
 html.hide-stack-heights .tower-height-number{ display: none; }
 //end towers
 
@@ -274,7 +290,7 @@ html.hide-stack-heights .tower-height-number{ display: none; }
     border: 1px solid $board-border-color; border-radius: $board-radius; background: $board-background; box-shadow: $slab-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.9); @include non-selectable();
 }
 .board-layer{ position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
-.spots-layer, .towers-layer{ position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
+.spots-layer, .towers-layer, .draft-controls-layer{ position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
 
 //one spot's box, from its board coordinates
 @mixin board-place(){ position: absolute; left: calc(var(--x) * var(--cell-size)); top: calc(var(--y) * var(--cell-size)); width: var(--cell-size); height: var(--cell-size); }
@@ -285,7 +301,7 @@ html.hide-stack-heights .tower-height-number{ display: none; }
     --spot-ring-height: calc(var(--spot-ring-width) * #{$disc-face-ratio});
     --spot-ring-bottom: calc(var(--cell-size) * #{$tower-base-ratio});
     &.clickable-spot{ cursor: pointer; }
-    &.clickable-spot, &.legal-spot{
+    &.clickable-spot, &.legal-spot, &.selected-spot{
         &::before{ content: ""; position: absolute; box-sizing: border-box; left: calc((var(--cell-size) - var(--spot-ring-width)) / 2); bottom: var(--spot-ring-bottom); width: var(--spot-ring-width); height: var(--spot-ring-height); border-radius: 50%; transition: background-color 0.15s ease, box-shadow 0.15s ease; }
     }
     //a legal spot, and an enemy tower that can be replaced (a legal spot too): shown only to the player drafting, in their own
@@ -304,13 +320,37 @@ html.hide-stack-heights .tower-height-number{ display: none; }
 //towers on the board: later rows over earlier ones (a tall tower never leaves its spot, but its glow can). Clicks go to the spot
 //underneath, except on a drafted tower, which a click takes back
 .towers-layer .board-tower{ @include board-place(); z-index: calc(var(--y) + 1000); }
+//a drafted tower: semi-transparent, a click adds a disc (or, at its highest, takes it back)
 .towers-layer .pending-tower{ opacity: $pending-tower-opacity; pointer-events: auto; cursor: pointer; transition: opacity 0.15s ease;
-    &::after{ content: "×"; position: absolute; top: 2px; right: 4px; width: 18px; height: 18px; border-radius: 50%; background: #ffffff; color: #333333; font-size: 15px; line-height: 17px; text-align: center; font-weight: bold; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); opacity: 0; transition: opacity 0.15s ease; }
     &:hover{ opacity: 0.85; }
-    &:hover::after{ opacity: 1; }
 }
 .towers-layer .pending-tower.confirmed-tower{ pointer-events: none; cursor: default; } //confirmed, waiting for its spot's turn in the turn animation
 .towers-layer .board-tower.being-replaced{ opacity: $replaced-tower-opacity; }
+
+//each drafted tower's count badge and undo button (BoardHandler.renderPendingControls), in their own layer over every tower so
+//the button, which hangs into the row below, is never under a tower. Only the button takes clicks: a click on the badge goes
+//to the drafted tower under it
+.draft-controls-layer{ z-index: $draft-controls-z-index; }
+.pending-controls{ @include board-place(); pointer-events: none;
+    --pending-badge-size: max(calc(#{$pending-badge-min-size} / var(--board-zoom, 1)), calc(var(--cell-size) * #{$pending-badge-size-ratio}));
+    --pending-undo-size: max(calc(#{$pending-undo-min-size} / var(--board-zoom, 1)), calc(var(--cell-size) * #{$pending-undo-size-ratio}));
+
+    .pending-count-badge{ position: absolute; top: 0px; right: 0px; box-sizing: border-box; min-width: var(--pending-badge-size); height: var(--pending-badge-size); padding: 0px 3px;
+        display: flex; align-items: center; justify-content: center; border: 2px solid var(--legal-spot-border); border-radius: calc(var(--pending-badge-size) / 2);
+        background: $marble-white; color: $material-charcoal; font-size: calc(var(--pending-badge-size) * 0.58); font-weight: bold; line-height: 1; box-shadow: 0 1px 3px rgba($slab-shadow-color, 0.35); }
+
+    //just under the tower's bottom disc, centred on the spot
+    .pending-undo-button{ position: absolute; left: 50%; top: calc(100% - var(--cell-size) * #{$tower-base-ratio} + 6px); translate: -50% 0px; box-sizing: border-box;
+        width: var(--pending-undo-size); height: var(--pending-undo-size); padding: 0px; margin: 0px; display: flex; align-items: center; justify-content: center;
+        border: 1px solid $board-border-color; border-radius: 50%; background: $pending-undo-background; color: $material-charcoal; box-shadow: $pending-undo-shadow;
+        pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        svg{ width: calc(var(--pending-undo-size) * #{$pending-undo-icon-ratio}); height: calc(var(--pending-undo-size) * #{$pending-undo-icon-ratio}); fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+        //like a legal spot's hover: the drafting player's disc color, solid, with its glow
+        &:hover, &:focus-visible{ border-color: var(--legal-spot-border); box-shadow: $pending-undo-shadow, 0 0 8px var(--legal-spot-glow); outline: none; }
+    }
+}
+//confirmed, waiting for the server (BGA locks the interface): no more undo
+body.lockedInterface .pending-undo-button{ visibility: hidden; }
 
 //end of the game (BoardHandler.highlightLargestGroups): each player's largest group glows under its base, every other tower dims
 #nexo-board.showing-largest-groups .board-tower:not(.largest-group-tower){ opacity: 0.4; }
@@ -320,60 +360,6 @@ html.hide-stack-heights .tower-height-number{ display: none; }
 .board-tower.largest-group-tower::before{ content: ""; position: absolute; left: calc((var(--cell-size) - var(--disc-width) * 1.15) / 2); bottom: calc(var(--tower-base) - var(--disc-face-height) * 0.1); width: calc(var(--disc-width) * 1.15); height: calc(var(--disc-face-height) * 1.2);
     border-radius: 50%; background: var(--group-glow); box-shadow: 0 0 10px 3px var(--group-glow); opacity: 0.9; }
 //end board
-
-//height menu (HeightMenu): the popup next to the selected spot, one button per legal height, each a tower of that height in the
-//player's color with its number on top. It is fixed in <body>, outside BGA's mobile scaling, so these are real screen px: the
-//buttons stay a comfortable tap target at any zoom. HeightMenu reads the anchor gap and the edge margin from the custom
-//properties below, so every size lives here. z-index 948 and later in <body>: over BGA's status bar, under its popins (949)
-$height-menu-option-size: 48px; //each height button, square (a phone tap target is about 40px or more)
-$mobile-height-menu-option-size: 52px;
-$height-menu-tower-size: 44px; //the tower inside a button (its --cell-size: a 5-disc tower fits)
-$height-menu-replaced-tower-size: 30px; //the enemy tower in a replacement's caption
-$height-menu-gap: 6px; //between two buttons
-$height-menu-padding: 8px;
-$height-menu-radius: 12px;
-$height-menu-option-radius: 10px;
-$height-menu-anchor-gap: 12px; //from the spot to the menu, room for the arrow
-$height-menu-edge-margin: 8px; //the menu never comes closer than this to the viewport's edges
-$height-menu-arrow-size: 12px; //the arrow pointing at the spot: a square turned 45 degrees, half of it out of the menu
-$height-menu-caption-font-size: 13px;
-$height-menu-background: #fffdf7;
-$height-menu-border-color: #cdbf9f;
-$height-menu-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
-$height-menu-caption-color: #27271c;
-$height-menu-option-background: #f3ecdc;
-$height-menu-option-border-color: #d9cba8;
-$height-menu-option-hover-background: #ffe7a0;
-$height-menu-option-hover-border-color: $selected-spot-color;
-$height-menu-z-index: 948;
-
-.height-menu{ position: fixed; left: 0px; top: 0px; z-index: $height-menu-z-index; box-sizing: border-box; max-width: calc(100vw - #{2 * $height-menu-edge-margin}); padding: $height-menu-padding;
-    border: 1px solid $height-menu-border-color; border-radius: $height-menu-radius; background: $height-menu-background; box-shadow: $height-menu-shadow; color: $height-menu-caption-color;
-    --height-menu-anchor-gap: #{$height-menu-anchor-gap}; --height-menu-edge-margin: #{$height-menu-edge-margin}; --height-menu-option-size: #{$height-menu-option-size};
-    animation: height-menu-in 0.12s ease-out; @include non-selectable();
-
-    .height-menu-caption{ display: flex; align-items: center; justify-content: center; gap: 4px; margin-bottom: 6px; font-size: $height-menu-caption-font-size; line-height: 1.2; text-align: center; }
-    .height-menu-replaced-tower{ --cell-size: #{$height-menu-replaced-tower-size}; margin: -4px 0px; }
-    .height-menu-options{ display: flex; flex-wrap: wrap; justify-content: center; gap: $height-menu-gap; }
-    .height-menu-option{ display: flex; align-items: center; justify-content: center; box-sizing: border-box; width: var(--height-menu-option-size); height: var(--height-menu-option-size); padding: 0px; margin: 0px;
-        border: 2px solid $height-menu-option-border-color; border-radius: $height-menu-option-radius; background: $height-menu-option-background; cursor: pointer; -webkit-tap-highlight-color: transparent;
-        transition: background-color 0.12s ease, border-color 0.12s ease;
-        &:hover, &:focus-visible{ background: $height-menu-option-hover-background; border-color: $height-menu-option-hover-border-color; outline: none; }
-    }
-    .height-menu-tower{ --cell-size: #{$height-menu-tower-size}; }
-
-    //the arrow on the side facing the spot, at --height-menu-arrow-offset along it (HeightMenu.reposition)
-    .height-menu-arrow{ position: absolute; width: $height-menu-arrow-size; height: $height-menu-arrow-size; box-sizing: border-box; background: $height-menu-background; rotate: 45deg; translate: -50% -50%; pointer-events: none; }
-    &[data-placement="above"] .height-menu-arrow{ left: var(--height-menu-arrow-offset, 50%); top: 100%; border-right: 1px solid $height-menu-border-color; border-bottom: 1px solid $height-menu-border-color; }
-    &[data-placement="below"] .height-menu-arrow{ left: var(--height-menu-arrow-offset, 50%); top: 0%; border-left: 1px solid $height-menu-border-color; border-top: 1px solid $height-menu-border-color; }
-    &[data-placement="right"] .height-menu-arrow{ left: 0%; top: var(--height-menu-arrow-offset, 50%); border-left: 1px solid $height-menu-border-color; border-bottom: 1px solid $height-menu-border-color; }
-    &[data-placement="left"] .height-menu-arrow{ left: 100%; top: var(--height-menu-arrow-offset, 50%); border-right: 1px solid $height-menu-border-color; border-top: 1px solid $height-menu-border-color; }
-}
-.mobile_version .height-menu{ --height-menu-option-size: #{$mobile-height-menu-option-size}; }
-@keyframes height-menu-in{ from{ opacity: 0; scale: 0.92; } }
-@media (prefers-reduced-motion: reduce){
-    .height-menu{ animation: none; }
-}
 
 //player board
 //BGA's own player boards, in the board's marble with a lighter slab shadow (#player_boards: beats BGA's .player-board)

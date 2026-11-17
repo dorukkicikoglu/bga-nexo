@@ -17,7 +17,6 @@ import { BoardRules } from "./BoardRules";
 import { LogMutationObserver } from "./LogMutationObserver";
 import { TooltipHandler } from "./TooltipHandler";
 import { EndGameScoringHandler } from "./EndGameScoringHandler";
-import { HeightMenu } from "./HeightMenu";
 import { PrefHandler } from "./PrefHandler";
 
 //optional settings of Game.animateTowerSlide / animateTowerSlideAway
@@ -51,7 +50,6 @@ export class Game {
 
     public boardRules: BoardRules;
     public boardHandler: BoardHandler;
-    public heightMenu: HeightMenu;
     public logMutationObserver: LogMutationObserver;
     public tooltipHandler: TooltipHandler;
     public prefHandler: PrefHandler;
@@ -103,7 +101,6 @@ export class Game {
         this.updatePassedStamps();
 
         this.boardHandler = new BoardHandler(this, gamedatas.towers);
-        this.heightMenu = new HeightMenu(this);
         this.logMutationObserver = new LogMutationObserver(this);
         this.tooltipHandler = new TooltipHandler(this);
         this.prefHandler = new PrefHandler(this, gamedatas.pref_names);
@@ -284,7 +281,6 @@ export class Game {
     }
     public onScreenWidthChange(): void { //BGA's resize hook (window resize, including orientation changes, and BGA's own relayout); also fires once at load
         this.boardHandler?.fitToViewport();
-        this.heightMenu?.reposition();
     }
     public isReplay(): boolean { return typeof g_replayFrom != 'undefined' || g_archive_mode; } //"replay from this move" in an ongoing game, or an archived game
     public isInterfaceLocked(): boolean { return document.body.classList.contains('lockedInterface'); } //gameui.isInterfaceLocked() is not in this framework version

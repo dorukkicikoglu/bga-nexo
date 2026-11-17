@@ -22,7 +22,7 @@ export class GameEnd {
      * This method is called each time we are entering the game state. You can use this method to perform some user interface changes at this moment.
      */
     onEnteringState(args: any, isCurrentPlayerActive: boolean) {
-        this.game.boardHandler.setSpotClickHandler(null);
+        this.game.boardHandler.setDraftClickHandlers(null);
         this.game.boardHandler.setDraft(null);
         this.game.updatePassedStamps(); //the game is over: no PASSED stamp
     }

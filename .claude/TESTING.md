@@ -275,3 +275,29 @@ Deploy `modules/` only; an ongoing table is fine (F5).
 - [ ] F5 mid-game (also during the other player's turn): the stacks match the tooltip count, the board matches; no flight on load.
 - [ ] Replay from a log row: the same flights. Fast replay or instantaneous mode: nothing flies, stacks and board just match after each turn.
 - [ ] No errors in the browser console.
+
+## After M1: height by clicks
+
+Deploy `modules/` and `nexo.css`; no server change, an ongoing table is fine (F5). After the deploy, delete the remote `src/ts/HeightMenu.ts` if it is still on Studio (harmless, never loaded).
+
+- [ ] Your turn, 5 discs: click a legal empty spot: a 1-disc tower appears semi-transparent with a gold ring under it, a badge "1" on its top right corner and a round undo button just under it. No popup anywhere.
+- [ ] Click that tower again and again: 2, 3, 4, 5 (badge and tower follow), then the next click removes it (no tower, no badge, no button, the spot is a dashed legal ring again); the next click starts at 1.
+- [ ] A replacement: click an enemy 2 tower: your tower starts at 3 ("3" on the badge), the enemy tower fades under it; clicks go 4, 5, then back to the enemy tower alone.
+- [ ] Discs left: with 3 discs this turn, a tower cycles 1, 2, 3, then none. With a 2-tower drafted elsewhere, a new spot cycles 1, 2, 3, then none (5 minus the other tower's 2).
+- [ ] Several towers: draft a 2 on one spot, then click another legal spot: the first tower stays (still 2, its badge and button too), the new one starts at its lowest and takes the gold ring. Click the first tower again: it becomes 3 and the gold ring moves back to it.
+- [ ] Undo: click a tower's undo button: only that tower goes (and any new tower that only reached the board through it); the tower under the button never gets a disc added. With no tower left, Confirm and Reset turn go away.
+- [ ] Undo button: round, at least 32px on screen on desktop and on a phone (also at a small BGA zoom), a soft shadow, a hover ring and glow in your disc color; a tap on it on a phone works the first time. It sits over the row below, never under a tower there.
+- [ ] "Show stack heights" Disabled: the towers lose their numbers, the badges keep theirs.
+- [ ] Confirm: the undo buttons disappear at once; the towers then fly in as before and the badges go. Reset turn: everything drafted goes. F5 mid-draft: no draft, no badge, no button.
+- [ ] The opponent and spectators never see badges or undo buttons.
+- [ ] Zombie (kick a player): it still plays a single random tower of a random legal height.
+- [ ] No errors in the browser console.
+
+## After M1: steady status bar while drafting
+
+Deploy `modules/` and `nexo.css`; an ongoing table is fine (F5).
+
+- [ ] Phone (or the browser's device mode at 375px wide), your turn: note where the board's top edge sits. Draft a tower, cycle it up, take it back with the undo button, cycle it past its highest, draft a second one, Reset turn: the board's top edge and size never change (Confirm and Reset turn come and go on the second line of the status bar without changing its height).
+- [ ] The same on desktop, with the window narrow enough that the title and buttons share one line, and wide.
+- [ ] Nothing visible or clickable where the invisible button sits (no gap before Confirm, no focus ring when tabbing through the status bar).
+- [ ] Confirm still works; the opponent's turn and the game end look as before.

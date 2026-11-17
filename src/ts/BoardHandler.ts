@@ -21,6 +21,12 @@ export type DraftView = {
     discColor: DiscColor;
 };
 
+//what the draft's clicks on the board do (PlaceTowers): a highlighted spot or a drafted tower, and a drafted tower's undo button
+export type DraftClickHandlers = {
+    spotClicked: (spot: NexoSpot) => void;
+    undoClicked: (spot: NexoSpot) => void;
+};
+
 /**
  * The board, with Yaxha's grid logic (reference/yaxha/src/PyramidHandler.ts): towers and legal spots sit in .board-layer at
  * their own board coordinates (--x, --y times --cell-size), in a frame anchored to the first tower (0 0) for the whole game, so
@@ -36,6 +42,7 @@ export class BoardHandler {
     private layerElement: HTMLDivElement;
     private spotsLayer: HTMLDivElement;
     private towersLayer: HTMLDivElement;
+    private controlsLayer: HTMLDivElement;
     private boardSize: number;
     private contentsCenterX: number | null = null; //the middle of the towers' and legal spots' bounding box, in spots, once centred
     private contentsCenterY: number | null = null;
@@ -44,7 +51,10 @@ export class BoardHandler {
     private towerElements = new Map<string, HTMLDivElement>();
     private pendingElements = new Map<string, HTMLDivElement>();
     private draft: DraftView | null = null;
-    private spotClickHandler: ((spot: NexoSpot) => void) | null = null;
+    private draftClickHandlers: DraftClickHandlers | null = null;
+
+    //the undo button's icon: a curved arrow turning back counter-clockwise, drawn with currentColor
+    private static readonly UNDO_ICON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12a7 7 0 1 0 2.05-4.95"/><path d="M11 7.05H7.05V3.1"/></svg>';
 
     constructor(private game: Game, towers: NexoTower[]) {
         this.boardSize = this.game.getRules().gridSize + 2;
@@ -55,11 +65,13 @@ export class BoardHandler {
             <div class="board-layer">
                 <div class="spots-layer"></div>
                 <div class="towers-layer"></div>
+                <div class="draft-controls-layer"></div>
             </div>
         `;
         this.layerElement = this.boardElement.querySelector('.board-layer');
         this.spotsLayer = this.boardElement.querySelector('.spots-layer');
         this.towersLayer = this.boardElement.querySelector('.towers-layer');
+        this.controlsLayer = this.boardElement.querySelector('.draft-controls-layer');
 
         for(const tower of towers)
             this.addBoardTower(tower);
@@ -111,10 +123,12 @@ export class BoardHandler {
         const maxWidth = containerWidth - borders;
 
         const cellSize = Math.max(Game.MIN_BOARD_CELL_SIZE, Math.floor(Math.min(maxHeight, maxWidth) / this.boardSize));
-        if(this.boardElement.style.getPropertyValue('--cell-size') !== cellSize + 'px'){
+        if(this.boardElement.style.getPropertyValue('--cell-size') !== cellSize + 'px')
             this.boardElement.style.setProperty('--cell-size', cellSize + 'px');
-            this.game.heightMenu?.reposition(); //an open height menu follows its spot
-        }
+        //the draft's controls keep a minimum size on screen (Game.scss: $pending-undo-min-size), whatever BGA's scaling
+        const boardZoom = zoom.toFixed(4);
+        if(zoom > 0 && this.boardElement.style.getPropertyValue('--board-zoom') !== boardZoom)
+            this.boardElement.style.setProperty('--board-zoom', boardZoom);
         this.measureForBackgroundDisc(cellSize * zoom);
     }
 
@@ -145,7 +159,7 @@ export class BoardHandler {
     }
 
     //a tower of height discs in discColor: one .tower-disc per disc, bottom one first, and its height as a number on top. Also
-    //used for log rows, the player boards' reserve and the height menu, each sized by its own --cell-size
+    //used for log rows and the player boards' reserve, each sized by its own --cell-size
     public static createTowerDiv(discColor: DiscColor, height: number, extraClass: string = ''): HTMLDivElement {
         const tower = document.createElement('div');
         tower.className = 'nexo-tower' + (extraClass ? ' ' + extraClass : '');
@@ -214,7 +228,6 @@ export class BoardHandler {
         this.layerElement.style.translate = `calc(${this.boardSize / 2 - centerX} * var(--cell-size)) calc(${this.boardSize / 2 - centerY} * var(--cell-size))`;
         if(slide)
             await this.game.bga.gameui.wait(Game.BOARD_RECENTER_DURATION);
-        this.game.heightMenu?.reposition(); //an open height menu follows its spot
     }
 
     //after a turn (notif_towersPlaced, once the towers have landed): the spots for the new board, then the layer slides to
@@ -238,7 +251,7 @@ export class BoardHandler {
 
     //the spots only the player drafting their turn sees (nobody else, spectators and replays included, so nothing looks
     //clickable to them): the legal spots (an ellipse ring where the tower's bottom disc would go, in their own disc color),
-    //the replaceable enemy towers and the selected spot. Empty spots and the grid's outline are never drawn
+    //the replaceable enemy towers and the gold ring under the drafted tower clicked last. Empty spots and the grid's outline are never drawn
     private renderSpots(): void {
         this.spotsLayer.innerHTML = '';
         this.boxLegalSpots = this.getBoxLegalSpots();
@@ -275,17 +288,18 @@ export class BoardHandler {
     }
 
     //the turn being drafted (PlaceTowers), or null once it is over: its towers shown semi-transparent on their spots (a replaced
-    //enemy tower fades under its replacement), legal spots and replaceable towers highlighted
+    //enemy tower fades under its replacement) with their count badges and undo buttons, legal spots and replaceable towers highlighted
     public setDraft(draft: DraftView | null): void {
         this.draft = draft;
         this.renderPending();
+        this.renderPendingControls();
         this.updateTowerDraftClasses();
         this.renderSpots();
         this.centerContents(true); //like Yaxha after each cube: the layer slides as drafted towers and legal spots change the box
     }
 
-    public setSpotClickHandler(handler: ((spot: NexoSpot) => void) | null): void {
-        this.spotClickHandler = handler;
+    public setDraftClickHandlers(handlers: DraftClickHandlers | null): void {
+        this.draftClickHandlers = handlers;
     }
 
     private renderPending(): void {
@@ -300,15 +314,46 @@ export class BoardHandler {
         }
     }
 
+    //on each drafted tower, in a layer over every tower: a badge with its height (the discs it adds) on its top right corner and,
+    //just under it, a round undo button that takes it back. The button's click never reaches the spot underneath
+    private renderPendingControls(): void {
+        this.controlsLayer.innerHTML = '';
+
+        for(const pendingTower of this.draft?.pending ?? []){
+            const spot: NexoSpot = { x: pendingTower.x, y: pendingTower.y };
+            const controls = document.createElement('div');
+            controls.className = 'pending-controls';
+            BoardHandler.placeOnBoard(controls, spot);
+
+            const badge = document.createElement('div');
+            badge.className = 'pending-count-badge';
+            badge.textContent = pendingTower.height.toString();
+
+            const undoButton = document.createElement('button');
+            undoButton.type = 'button';
+            undoButton.className = 'pending-undo-button';
+            undoButton.title = _('Take this tower back');
+            undoButton.setAttribute('aria-label', undoButton.title);
+            undoButton.innerHTML = BoardHandler.UNDO_ICON_SVG;
+            undoButton.addEventListener('click', (event: MouseEvent) => {
+                event.stopPropagation(); //not a click on the drafted tower under it, which would add a disc
+                this.draftClickHandlers?.undoClicked(spot);
+            });
+
+            controls.append(badge, undoButton);
+            this.controlsLayer.appendChild(controls);
+        }
+    }
+
     //an enemy tower under a drafted replacement fades (being-replaced)
     private updateTowerDraftClasses(): void {
         const replacedKeys = new Set((this.draft?.pending ?? []).filter(tower => tower.kind === 'replace').map(tower => BoardRules.key(tower.x, tower.y)));
         this.towerElements.forEach((element, key) => element.classList.toggle('being-replaced', replacedKeys.has(key)));
     }
 
-    //a click on a tower of the draft takes it back; a click on a highlighted spot (empty or an enemy tower) selects it
+    //a click on a highlighted spot (empty or an enemy tower) or on a tower of the draft: PlaceTowers drafts or cycles its height
     private onBoardClick(event: MouseEvent): void {
-        if(!this.spotClickHandler)
+        if(!this.draftClickHandlers)
             return;
 
         const target = event.target as HTMLElement;
@@ -316,7 +361,7 @@ export class BoardHandler {
         if(!clicked)
             return;
 
-        this.spotClickHandler({ x: parseInt(clicked.getAttribute('data-x')), y: parseInt(clicked.getAttribute('data-y')) });
+        this.draftClickHandlers.spotClicked({ x: parseInt(clicked.getAttribute('data-x')), y: parseInt(clicked.getAttribute('data-y')) });
     }
 
     /**
@@ -329,12 +374,14 @@ export class BoardHandler {
      * included. Resolves once every tower has landed.
      */
     public async applyPlacements(playerID: number, placements: NexoPlacement[]): Promise<void> {
-        //the turn is over: no more clicks while it animates (the next PlaceTowers sets a handler again)
-        this.setSpotClickHandler(null);
+        //the turn is over: no more clicks while it animates (the next PlaceTowers sets its handlers again), no more badges or
+        //undo buttons
+        this.setDraftClickHandlers(null);
         const draftedElements = new Map(this.pendingElements);
         this.pendingElements.clear();
         this.draft = null;
         this.updateTowerDraftClasses();
+        this.renderPendingControls();
         draftedElements.forEach((draftedElement, key) => {
             draftedElement.classList.add('confirmed-tower'); //no more hover or click while it waits for its spot's turn
             this.towerElements.get(key)?.classList.add('being-replaced'); //the enemy tower it replaces stays faded until then
