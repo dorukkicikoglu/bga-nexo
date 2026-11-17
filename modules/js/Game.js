@@ -571,8 +571,8 @@ class BoardHandler {
     }
     /**
      * [BGA] The board as big as the window allows: square, from #nexo-board-container's padding under the status bar down to
-     * BOARD_VIEWPORT_MARGIN above the window's bottom when the page is at its top (so the page still scrolls down to BGA's
-     * settings below), never wider than the game area, nor smaller than MIN_BOARD_CELL_SIZE spots. Sized through --cell-size
+     * BOARD_VIEWPORT_MARGIN above the window's bottom when the page is at its top (then the gap under it, $below-board-gap-*,
+     * and BGA's settings below), never wider than the game area, nor smaller than MIN_BOARD_CELL_SIZE spots. Sized through --cell-size
      * on #nexo-board, so the towers, spots and the layer's translate scale with it. Measured on screen, converted with the
      * container's measured zoom (BGA scales the game area down on a phone)
      */
@@ -596,6 +596,11 @@ class BoardHandler {
         const boardZoom = zoom.toFixed(4);
         if (zoom > 0 && this.boardElement.style.getPropertyValue('--board-zoom') !== boardZoom)
             this.boardElement.style.setProperty('--board-zoom', boardZoom);
+        //the gap under the board (Game.scss: #nexo-board-container) keeps BGA's content after the game area under the window's
+        //bottom with the page at its top: the board's bottom on the page, screen px, measured at its new size
+        const boardPageBottom = Math.ceil(this.boardElement.getBoundingClientRect().bottom + window.scrollY) + 'px';
+        if (container.style.getPropertyValue('--board-page-bottom') !== boardPageBottom)
+            container.style.setProperty('--board-page-bottom', boardPageBottom);
         this.measureForBackgroundDisc(cellSize * zoom);
     }
     /**

@@ -345,3 +345,31 @@ Deploy `modules/` only; an ongoing table is fine (F5).
 - [ ] Instantaneous mode (or a hidden tab when the turn confirms): no placeholder left on the board after the turn.
 - [ ] The opponent and spectators: unchanged (they never had placeholders).
 - [ ] No errors in the browser console.
+
+## After M1: gap under the board
+
+Deploy `nexo.css` and `modules/` (F5 on an ongoing table is fine).
+
+- [ ] Desktop, page at its top: BGA's top bar at the very top, then the status bar and the board, as before; nothing of BGA's below the board is on screen.
+- [ ] Desktop: scroll down: under the board about 40% of the window's height is only the background, then BGA's footer and other content start.
+- [ ] Phone (about 375px wide, and a tall phone or device mode such as 390 x 844 or 412 x 915), page at its top: nothing of BGA's below the board shows, only the background under it. Scroll: about half the screen's height of background, then BGA's content.
+- [ ] Phone: the gap doesn't move things around noticeably when the browser's address bar hides or shows while scrolling.
+- [ ] Click and right-click (tap and long-press on a phone) in the gap: nothing reacts.
+- [ ] Resize the window across BGA's mobile switch (about 740px): the gap goes from 40% to 50% and back, the board refits.
+- [ ] Nothing jumps once loading ends; F5 at the top and F5 scrolled down come back the same.
+- [ ] A replay: the same gap; the replay controls work.
+- [ ] The red disc in the background: unchanged on desktop; on a phone it sits in the background under the board, no longer covered by BGA's content.
+- [ ] No errors in the browser console.
+
+## After M1: mobile arc
+
+Deploy `nexo.css` (F5 on an ongoing table is fine). Phone held upright, or the browser's device mode at about 375 and 430 px wide (375 x 812, 430 x 932, and a shorter 375 x 667).
+
+- [ ] The black disc covers about half the screen's width at the bottom and about a third at the top, its edge running up behind the board (a 375 x 667 a little less: about 42% and 31%).
+- [ ] The edge is one clean, crisp curve (no jagged pixels, no straight-looking line), with the faint rim light inside it and the soft shadow outside; the sheen and veins show on the black like on desktop.
+- [ ] Scroll the whole page, the gap under the board included: the disc stays put on the screen.
+- [ ] The board, the player boards and the status bar stay readable where they cross the black.
+- [ ] The red disc in the bottom-right corner sits on the white side, clear of the black.
+- [ ] Scroll down to BGA's content after the gap (footer, links): note whether any of it is hard to read over the black.
+- [ ] Turn the phone sideways: the arc is the landscape one (as on desktop). Back upright: the mobile arc again.
+- [ ] Desktop, landscape and a tall portrait window: the arc is unchanged.

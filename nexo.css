@@ -71,6 +71,11 @@ body::after {
     --bg-arc-center-x: -105vw;
     --bg-arc-center-y: 10vw;
   }
+  body.mobile_version {
+    --bg-arc-radius: 320vh;
+    --bg-arc-center-x: -295vh;
+    --bg-arc-center-y: -30vh;
+  }
 }
 body .sliding-clone {
   position: fixed;
@@ -185,6 +190,13 @@ html.hide-stack-heights .tower-height-number {
   flex-direction: column;
   align-items: center;
   padding: 10px 0px;
+  --below-board-gap-share: 40;
+  padding-bottom: calc(max(var(--below-board-gap-share) * 1vh, 100vh - var(--board-page-bottom, 0px)) / var(--bga-game-zoom, 1));
+  padding-bottom: calc(max(var(--below-board-gap-share) * 1dvh, 100dvh - var(--board-page-bottom, 0px)) / var(--bga-game-zoom, 1));
+}
+
+.mobile_version #nexo-board-container {
+  --below-board-gap-share: 50;
 }
 
 #nexo-board {

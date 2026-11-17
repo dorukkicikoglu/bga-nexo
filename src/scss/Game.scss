@@ -57,10 +57,19 @@ $bg-disc-shadow-width: 1.6vw;
 $bg-arc-radius: 150vw;
 $bg-arc-center-x: -90vw; //from the window's left edge (negative: off-screen)
 $bg-arc-center-y: 5vw; //below the window's bottom edge
-//portrait windows (phones): the disc further down and left, so it stays in the bottom-left corner (about 45vw at the bottom)
+//portrait windows that are not BGA's mobile layout (a tall desktop window; phones take $bg-arc-mobile-* below): the disc
+//further down and left, so it stays in the bottom-left corner (about 45vw at the bottom)
 $bg-arc-portrait-radius: 150vw;
 $bg-arc-portrait-center-x: -105vw;
 $bg-arc-portrait-center-y: 10vw;
+//mobile (body.mobile_version, BGA's own switch) held upright: a phone is about twice as tall as wide, so these are in vh (the
+//long side) and the vw ones above would only reach the bottom-left corner. The edge runs up behind the board: about 51% of
+//the width at the bottom, 54% a quarter up, 37% at the top on a 9:19.5 phone (375 x 812, 430 x 932); 42% and 31% on a shorter
+//375 x 667. A negative center-y puts the centre above the window's bottom edge (the edge bulges out a little a third of the way
+//up, as a disc's would). A phone held sideways keeps the landscape arc above, made for wide windows
+$bg-arc-mobile-radius: 320vh;
+$bg-arc-mobile-center-x: -295vh;
+$bg-arc-mobile-center-y: -30vh;
 //a red disc lying on the surface in the bottom-right corner (img/bg_red_disc.png, its shadow baked in), the top layer of the
 //surface (body::before). Its disc is $bg-red-disc-token-ratio times a board tower's disc wide, from the board's spot size on
 //screen (--board-cell-screen-size, BoardHandler.fitToViewport). Placed by its disc's centre, from the window's right and bottom
@@ -83,6 +92,12 @@ $bg-red-disc-disc-share: math.div(118, 255);
 $bg-red-disc-center-x-share: math.div(70.5, 255);
 $bg-red-disc-center-y-share: math.div(48, 89);
 $bg-red-disc-half-height-share: math.div(38, 89); //from the disc's centre to its top or bottom edge (y 10 to 86)
+//the empty space under the board, where only the background shows, before BGA's own content after the game area (the
+//footer, its menus and links, the table's info): a share of the window's height, in % (dvh, vh where dvh is unknown).
+//Mobile: body.mobile_version, BGA's own switch. Never less than what keeps that content under the window's bottom with the
+//page at its top (see #nexo-board-container)
+$below-board-gap-share: 40;
+$below-board-gap-mobile-share: 50;
 
 //the material set: the board, the player boards and the log rows in the page background's palette, a white marble a little
 //lighter than the surface, charcoal for lines and dots (the black discs' tone) and the game's red
@@ -229,6 +244,7 @@ body{ background: $bg-surface-color; isolation: isolate;
 }
 @media (orientation: portrait){
     body{ --bg-arc-radius: #{$bg-arc-portrait-radius}; --bg-arc-center-x: #{$bg-arc-portrait-center-x}; --bg-arc-center-y: #{$bg-arc-portrait-center-y}; }
+    body.mobile_version{ --bg-arc-radius: #{$bg-arc-mobile-radius}; --bg-arc-center-x: #{$bg-arc-mobile-center-x}; --bg-arc-center-y: #{$bg-arc-mobile-center-y}; }
 }
 
 @mixin non-selectable() { -webkit-touch-callout: none; -webkit-user-select: none; -khtml-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
@@ -290,7 +306,17 @@ html.hide-stack-heights .tower-height-number{ display: none; }
 //board (BoardHandler): --board-size spots across and down (GRID_SIZE + 2). .board-layer holds the spots and towers at their
 //own board coordinates (--x, --y, spots of --cell-size) and its translate (set inline, transitioned only while recentering)
 //centres them on the board. Overflow is hidden, so nothing ever shows outside the board
-#nexo-board-container{ display: flex; flex-direction: column; align-items: center; padding: 10px 0px; } //10px from the status bar and, at the page's top, the window's bottom (BoardHandler.fitToViewport)
+//#nexo-board-container: 10px from the status bar. Under the board, the gap ($below-board-gap-*) before BGA's content after
+//the game area, never less than what puts that content under the window's bottom with the page at its top: on a phone the
+//board is only as tall as the screen is wide, so it ends well above the screen's bottom (--board-page-bottom: the board's
+//bottom on the page, screen px, BoardHandler.fitToViewport). Both are screen lengths, divided by BGA's zoom (it scales the
+//game area down on a phone, and these lengths with it). Padding: nothing in the gap catches a click or a tap
+#nexo-board-container{ display: flex; flex-direction: column; align-items: center; padding: 10px 0px;
+    --below-board-gap-share: #{$below-board-gap-share};
+    padding-bottom: calc(max(var(--below-board-gap-share) * 1vh, 100vh - var(--board-page-bottom, 0px)) / var(--bga-game-zoom, 1));
+    padding-bottom: calc(max(var(--below-board-gap-share) * 1dvh, 100dvh - var(--board-page-bottom, 0px)) / var(--bga-game-zoom, 1));
+}
+.mobile_version #nexo-board-container{ --below-board-gap-share: #{$below-board-gap-mobile-share}; }
 #nexo-board{ position: relative; box-sizing: content-box; width: calc(var(--board-size) * var(--cell-size)); height: calc(var(--board-size) * var(--cell-size)); overflow: hidden;
     border: 1px solid $board-border-color; border-radius: $board-radius; background: $board-background; box-shadow: $slab-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.9); @include non-selectable();
 }
