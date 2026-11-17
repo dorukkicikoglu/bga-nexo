@@ -113,9 +113,12 @@ $panel-shadow: 0 1px 2px rgba($slab-shadow-color, 0.14), 0 4px 12px -4px rgba($s
 
 //board (see "board" below)
 $board-radius: 8px;
+//the board's veins run top-left to bottom-right (35deg and 41deg gradients: stripes 49 to 55 degrees left of vertical), at
+//least 63 degrees from the page background's (104deg to 121deg: 14 to 31 degrees right of vertical, bottom-left to top-right),
+//so the board never reads as a cut-out of the page. A linear-gradient's stripes run perpendicular to its angle
 $board-background: radial-gradient(ellipse 70% 55% at 30% 20%, #ffffff 0%, transparent 100%),
-    linear-gradient(117deg, transparent 38%, $marble-vein-color 39%, transparent 40.4%),
-    linear-gradient(111deg, transparent 67%, rgba($marble-vein-color, 0.035) 67.6%, transparent 68.5%),
+    linear-gradient(35deg, transparent 38%, $marble-vein-color 39%, transparent 40.4%),
+    linear-gradient(41deg, transparent 67%, rgba($marble-vein-color, 0.035) 67.6%, transparent 68.5%),
     linear-gradient(160deg, $marble-white 0%, $marble-white-shade 100%);
 $board-border-color: rgba($material-charcoal, 0.1);
 $selected-spot-color: #ffc400; //the gold ring under the active drafted tower

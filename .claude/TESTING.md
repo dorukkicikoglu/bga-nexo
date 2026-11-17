@@ -373,3 +373,12 @@ Deploy `nexo.css` (F5 on an ongoing table is fine). Phone held upright, or the b
 - [ ] Scroll down to BGA's content after the gap (footer, links): note whether any of it is hard to read over the black.
 - [ ] Turn the phone sideways: the arc is the landscape one (as on desktop). Back upright: the mobile arc again.
 - [ ] Desktop, landscape and a tall portrait window: the arc is unchanged.
+
+## After M1: board veins
+
+Deploy `nexo.css` (F5 is fine).
+
+- [ ] Desktop: the board's faint veins run top-left to bottom-right, clearly across the page background's (bottom-left to top-right); the board no longer looks cut out of the background.
+- [ ] The board's colour, brightness, light top-left corner, shadow and rounded corners are as before; no edge or empty corner anywhere.
+- [ ] Resize the window (small and large board) and try a phone (about 375 and 430 px wide): the veins scale with the board and keep their direction.
+- [ ] Towers, legal spots, the undo and confirm buttons all show and work as before.

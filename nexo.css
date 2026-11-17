@@ -207,7 +207,7 @@ html.hide-stack-heights .tower-height-number {
   overflow: hidden;
   border: 1px solid rgba(27, 27, 29, 0.1);
   border-radius: 8px;
-  background: radial-gradient(ellipse 70% 55% at 30% 20%, #ffffff 0%, transparent 100%), linear-gradient(117deg, transparent 38%, rgba(100, 96, 90, 0.05) 39%, transparent 40.4%), linear-gradient(111deg, transparent 67%, rgba(100, 96, 90, 0.035) 67.6%, transparent 68.5%), linear-gradient(160deg, #fcfbf9 0%, #f0eee9 100%);
+  background: radial-gradient(ellipse 70% 55% at 30% 20%, #ffffff 0%, transparent 100%), linear-gradient(35deg, transparent 38%, rgba(100, 96, 90, 0.05) 39%, transparent 40.4%), linear-gradient(41deg, transparent 67%, rgba(100, 96, 90, 0.035) 67.6%, transparent 68.5%), linear-gradient(160deg, #fcfbf9 0%, #f0eee9 100%);
   box-shadow: 0 1px 2px rgba(40, 30, 18, 0.16), 0 6px 16px -4px rgba(40, 30, 18, 0.22), 0 18px 36px -14px rgba(40, 30, 18, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.9);
   -webkit-touch-callout: none;
   -webkit-user-select: none;
