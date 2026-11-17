@@ -103,9 +103,9 @@ $board-background: radial-gradient(ellipse 70% 55% at 30% 20%, #ffffff 0%, trans
     linear-gradient(111deg, transparent 67%, rgba($marble-vein-color, 0.035) 67.6%, transparent 68.5%),
     linear-gradient(160deg, $marble-white 0%, $marble-white-shade 100%);
 $board-border-color: rgba($material-charcoal, 0.1);
-$selected-spot-color: #ffc400; //the gold ring under the current drafted tower
+$selected-spot-color: #ffc400; //the gold ring under the active drafted tower
 //the draft's controls on each drafted tower (BoardHandler.renderPendingControls): a count badge on its top right corner and,
-//just under it, round buttons side by side: undo, and confirm under the current tower. Shares of --cell-size, so they scale
+//under the active tower only, round buttons side by side: undo and confirm. Shares of --cell-size, so they scale
 //with the board, but never smaller on screen than the minimums, which are screen px (divided by --board-zoom: BGA scales the
 //game area down on a phone)
 $pending-badge-size-ratio: 0.26;
@@ -349,7 +349,7 @@ html.hide-stack-heights .tower-height-number{ display: none; }
     //BoardHandler.centerContents), the spot (--x, --y) and --board-size, all in spots. CSS has no condition, so the flip is
     //the overflow below (a length, 0 when it fits) times 1000, capped at the distance from below to above. The container takes
     //clicks too, so a click in the gap never reaches the tower under it (BoardHandler.onBoardClick ignores it)
-    .pending-actions{ position: absolute; z-index: 1; display: flex; gap: $pending-actions-gap; pointer-events: auto;
+    .pending-actions{ position: absolute; z-index: 1; display: flex; gap: $pending-actions-gap; pointer-events: auto; //z-index: over the other towers' badges
         --actions-width: calc(var(--pending-actions-count) * var(--pending-button-size) + (var(--pending-actions-count) - 1) * #{$pending-actions-gap});
         --actions-margin: calc(#{$pending-actions-edge-margin} / var(--board-zoom, 1));
         --actions-below-top: calc(var(--cell-size) * #{1 - $tower-base-ratio} + #{$pending-actions-offset});
@@ -361,7 +361,6 @@ html.hide-stack-heights .tower-height-number{ display: none; }
             calc((var(--board-size) - var(--layer-offset-x, 0) - var(--x)) * var(--cell-size) - var(--actions-margin) - var(--actions-width)));
         top: calc(var(--actions-below-top) - min(var(--actions-below-top) - var(--actions-above-top), var(--actions-overflow-below) * 1000));
     }
-    .current-pending-actions{ z-index: 2; } //over another tower's undo button
 
     .pending-button{ flex: none; box-sizing: border-box; width: var(--pending-button-size); height: var(--pending-button-size); padding: 0px; margin: 0px;
         display: flex; align-items: center; justify-content: center; border-radius: 50%; box-shadow: $pending-button-shadow;

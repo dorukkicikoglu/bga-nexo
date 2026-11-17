@@ -309,10 +309,25 @@ Deploy `modules/` and `nexo.css`; no server change, an ongoing table is fine (F5
 - [ ] Your turn: the status bar shows only "You must place 1 to N discs", never Confirm or Reset turn, at any point of the draft.
 - [ ] Phone (or device mode at 375px) and desktop: note the board's top edge, then draft a tower, cycle it, draft a second, undo one, cycle one past its highest, confirm: the board's frame never moves or resizes (the towers may still slide inside it as the draft re-centres).
 - [ ] One drafted tower: under it, side by side and centred, a neutral round undo button (curved arrow) and a green confirm button (white tick), the same size, a small gap between, both at least 32px on screen, with a shadow, over the row below.
-- [ ] Two drafted towers: each has its undo button; only the current one (gold ring) has confirm too. Undo the current one: the ring and confirm move to the other tower.
+- [ ] Two drafted towers: only the one clicked last has the gold ring and the two buttons; the other shows its discs and badge only. Click the other (it gains a disc): the ring and buttons move to it.
+- [ ] History: draft A, then B, then C, then click A again (A active). Undo A: C is active. Undo C: B is active. Cycle B past its highest: no tower left, no buttons. Same with cycling instead of undo at each step.
+- [ ] Undo of a tower that links two others to the board: the cut-off towers go too, and the buttons move to the last clicked tower still drafted.
 - [ ] Tap undo, tap confirm, tap the gap between them: the tower under the buttons never gets a disc added.
 - [ ] Edges: a drafted tower in the board's leftmost or rightmost column keeps both buttons wholly inside the board (nudged sideways); one on the bottom row shows them above the tower instead. Use `debug_fillBoard` with a few empty spots to reach the edges.
 - [ ] Confirm: both buttons grey out at once; double-tapping confirm sends one turn only (one log row). Then the towers fly in and the badges and buttons disappear.
 - [ ] A refused turn can't be reached through the UI (the draft only offers legal moves). To check the recovery, block the request in the browser's dev tools (Network > Block request URL for `actPlaceTowers`) and confirm: BGA shows an error, the buttons come back usable, and confirming again with the block removed works.
 - [ ] The opponent, spectators and replays never see these buttons. F5 mid-draft: no draft, no buttons.
+- [ ] No errors in the browser console.
+
+## After M1: board frozen while drafting
+
+Deploy `modules/` only; an ongoing table is fine (F5).
+
+- [ ] Your turn: draft a tower on the edge of the cluster (new legal spots appear beyond it): the board does not move, even if it now looks off-centre. Cycle it, draft a second tower, switch the active tower, undo: still no movement at any point.
+- [ ] Draft on a legal spot that only appeared because of your own drafted tower: it works, and the turn confirms.
+- [ ] Undo every drafted tower: nothing moves.
+- [ ] Confirm: your towers fly in onto the board as it is, then the board slides to its new centre in about 0.3s, easing out, no jump.
+- [ ] Edge: from a single tower (or on the first turn), draft a line of 1-disc towers in one direction: once the next legal spot would fall outside the board, the board slides just enough to keep every tower and legal spot inside (never cut off). Undo them all: it slides back.
+- [ ] The opponent's turn (as the passive player and as a spectator) and a replay: the board re-centres once their towers have landed, with the same short slide. Fast replay: no slide, the board just ends centred.
+- [ ] Phone (375px) and desktop: nothing outside the board moves during the draft.
 - [ ] No errors in the browser console.

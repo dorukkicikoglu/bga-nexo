@@ -102,11 +102,11 @@ class BoardRules {
  * a tower, or an enemy tower they can out-height) drafts a tower there at the lowest legal height (1, or the enemy tower's
  * height + 1); each click on that drafted tower adds one disc, and a click when it is already at the most it may take (5, or
  * every disc left this turn) takes it back, so the next click starts again at the lowest. A turn may hold several towers, so
- * another highlighted spot starts a tower of its own and the others stay. The current tower (the one clicked last, else the
- * last one drafted) has the gold ring. Each drafted tower shows semi-transparent with a count badge and an undo button under
- * it that takes it back (with any new tower that no longer reaches the board through the others); the current tower also has
- * a confirm button there, which sends the whole turn (actPlaceTowers, checked again by the server) and is disabled until the
- * server answers. No action buttons in the status bar: they changed its height and moved the board. The status bar keeps
+ * another highlighted spot starts a tower of its own and the others stay. Each drafted tower shows semi-transparent with a
+ * count badge. The active tower (the one clicked last that is still drafted: clickHistory) alone has the gold ring and, under
+ * it, an undo button that takes it back (with any new tower that no longer reaches the board through the others) and a
+ * confirm button, which sends the whole turn (actPlaceTowers, checked again by the server) and is disabled until the server
+ * answers. Once the active tower is taken back (undo, or a click past its highest), the one clicked before it is active again. No action buttons in the status bar: they changed its height and moved the board. The status bar keeps
  * one title for the whole draft. Everyone else only sees the status text. The draft lives on this page only: a reload starts it again.
  */
 class PlaceTowers {
@@ -115,7 +115,7 @@ class PlaceTowers {
         this.bga = bga;
         this.stateArgs = null;
         this.pending = [];
-        this.selectedSpot = null; //the current drafted tower (gold ring, confirm button), null with no draft
+        this.clickHistory = []; //the drafted towers in the order last clicked, each once: the last one is active (gold ring, buttons)
         this.drafting = false;
         this.confirming = false; //the turn is on its way to the server
     }
@@ -125,7 +125,7 @@ class PlaceTowers {
     onEnteringState(args, isCurrentPlayerActive) {
         this.stateArgs = args;
         this.pending = [];
-        this.selectedSpot = null;
+        this.clickHistory = [];
         this.drafting = isCurrentPlayerActive;
         this.confirming = false;
         if (!isCurrentPlayerActive) {
@@ -149,7 +149,7 @@ class PlaceTowers {
         this.drafting = false;
         this.confirming = false;
         this.pending = [];
-        this.selectedSpot = null;
+        this.clickHistory = [];
         this.game.boardHandler.setDraftClickHandlers(null);
         this.game.boardHandler.setDraft(null);
     }
@@ -179,6 +179,15 @@ class PlaceTowers {
     getPendingAt(spot) {
         return this.pending.find(tower => tower.x === spot.x && tower.y === spot.y);
     }
+    //a click on a spot makes its tower the active one: on top of the history, wherever it was
+    activate(spot) {
+        this.clickHistory = this.clickHistory.filter(clicked => clicked.x !== spot.x || clicked.y !== spot.y);
+        this.clickHistory.push({ x: spot.x, y: spot.y });
+    }
+    //the active tower: the last clicked one still drafted, null with no draft
+    getActiveSpot() {
+        return this.clickHistory[this.clickHistory.length - 1] ?? null;
+    }
     //the enemy tower a click on spot would replace (null for an empty spot), or undefined when the spot can't take a tower now
     getSpotTarget(spot) {
         if (this.getLegalNewSpots().some(legalSpot => legalSpot.x === spot.x && legalSpot.y === spot.y))
@@ -197,7 +206,7 @@ class PlaceTowers {
         return this.game.boardRules.getHeightOptions(tower.replaced ? tower.replaced.height : null, this.getDiscsLeft() + tower.height);
     }
     //called by BoardHandler, on a highlighted spot or a drafted tower: a new tower at its lowest height, one more disc, or, past
-    //the highest height, the tower taken back
+    //the highest height, the tower taken back like an undo (the tower clicked before it is active again)
     spotClicked(spot) {
         if (!this.canDraft())
             return;
@@ -209,7 +218,7 @@ class PlaceTowers {
                 return;
             }
             this.pending = this.pending.map(tower => tower === pendingTower ? { ...tower, height: nextHeight } : tower);
-            this.selectedSpot = { x: spot.x, y: spot.y };
+            this.activate(spot);
             this.update();
             return;
         }
@@ -217,7 +226,7 @@ class PlaceTowers {
         if (heightOptions.length > 0)
             this.addPending(spot, heightOptions[0]);
     }
-    //called by BoardHandler: a drafted tower's undo button (never also a click on its spot)
+    //called by BoardHandler: the active tower's undo button (never also a click on its spot)
     undoClicked(spot) {
         if (this.canDraft() && this.getPendingAt(spot))
             this.removePending(spot);
@@ -227,10 +236,11 @@ class PlaceTowers {
         if (target === undefined || !this.getHeightOptions(spot).includes(height))
             return;
         this.pending.push({ x: spot.x, y: spot.y, height: height, kind: target ? 'replace' : 'new', replaced: target ?? null });
-        this.selectedSpot = { x: spot.x, y: spot.y };
+        this.activate(spot);
         this.update();
     }
-    //a new tower that no longer reaches the board through the turn's other new towers goes too (BoardRules.keepConnectedPending)
+    //a new tower that no longer reaches the board through the turn's other new towers goes too (BoardRules.keepConnectedPending).
+    //Every tower gone leaves the history in update(), so the one clicked before is active again
     removePending(spot) {
         const remaining = this.pending.filter(tower => tower.x !== spot.x || tower.y !== spot.y);
         this.pending = BoardRules.keepConnectedPending(this.game.boardHandler.getTowerMap(), remaining);
@@ -256,17 +266,13 @@ class PlaceTowers {
     update() {
         if (!this.drafting)
             return;
-        //the current tower is the one clicked last; once it is taken back, the last one drafted, so a draft always has its confirm
-        if (this.selectedSpot && !this.getPendingAt(this.selectedSpot))
-            this.selectedSpot = null;
-        const lastPending = this.pending[this.pending.length - 1];
-        if (!this.selectedSpot && lastPending)
-            this.selectedSpot = { x: lastPending.x, y: lastPending.y };
+        //towers taken back leave the history: the last one clicked that is still drafted is active
+        this.clickHistory = this.clickHistory.filter(clicked => this.getPendingAt(clicked));
         this.game.boardHandler.setDraft({
             pending: this.pending,
             legalNewSpots: this.getLegalNewSpots(),
             replaceableTowers: this.getReplaceableTowers(),
-            selectedSpot: this.selectedSpot,
+            selectedSpot: this.getActiveSpot(),
             discColor: this.game.getDiscColor(this.game.getMyPlayerID()),
             confirming: this.confirming,
         });
@@ -518,6 +524,9 @@ class BoardHandler {
         this.game = game;
         this.contentsCenterX = null; //the middle of the towers' and legal spots' bounding box, in spots, once centred
         this.contentsCenterY = null;
+        //[BGA] while my draft has towers, the centre is frozen where it was when the first one was drafted (centerContents), until
+        //the turn's towers have landed (recenter) or the draft is emptied (setDraft)
+        this.frozenCenter = null;
         this.boxLegalSpots = []; //the legal spots the box is centred on, shown or not (getBoxLegalSpots)
         this.towers = new Map();
         this.towerElements = new Map();
@@ -652,7 +661,10 @@ class BoardHandler {
      * Yaxha's centerCubesContainer(): the layer's translate puts the middle of the bounding box of the towers, the draft's new
      * towers and the legal spots (shown or not, getBoxLegalSpots) in the middle of the board. Computed from board coordinates rather than measured on the
      * page (Yaxha measures its cubes), so every viewer, a reload and a replay get the very same layout. Slides when animate
-     * (BOARD_RECENTER_DURATION, Yaxha's 400ms) and animations are on, else applies at once (on load). Resolves once it has slid
+     * (BOARD_RECENTER_DURATION) and animations are on, else applies at once (on load). Resolves once it has slid.
+     * [BGA] While my draft has towers (frozenCenter), the contents keep the centre they had when it began, even off-centre: they
+     * only move when the draft would leave the board (a line of new towers from the edge of the box, whose own new legal spots
+     * may be built on this turn), by the least that keeps the whole box on it; the box is never wider than the board
      */
     async centerContents(animate) {
         const contents = new Map(this.towers);
@@ -661,8 +673,17 @@ class BoardHandler {
         for (const spot of this.boxLegalSpots)
             contents.set(BoardRules.key(spot.x, spot.y), spot);
         const bounds = BoardRules.getBounds(contents);
-        const centerX = bounds ? (bounds.minX + bounds.maxX + 1) / 2 : 0.5; //spot x covers x to x + 1
-        const centerY = bounds ? (bounds.minY + bounds.maxY + 1) / 2 : 0.5;
+        let centerX = bounds ? (bounds.minX + bounds.maxX + 1) / 2 : 0.5; //spot x covers x to x + 1
+        let centerY = bounds ? (bounds.minY + bounds.maxY + 1) / 2 : 0.5;
+        if (this.frozenCenter) {
+            const halfBoard = this.boardSize / 2;
+            if (bounds) {
+                this.frozenCenter.x = Math.min(Math.max(this.frozenCenter.x, bounds.maxX + 1 - halfBoard), bounds.minX + halfBoard);
+                this.frozenCenter.y = Math.min(Math.max(this.frozenCenter.y, bounds.maxY + 1 - halfBoard), bounds.minY + halfBoard);
+            }
+            centerX = this.frozenCenter.x;
+            centerY = this.frozenCenter.y;
+        }
         if (centerX === this.contentsCenterX && centerY === this.contentsCenterY)
             return;
         const slide = animate && this.contentsCenterX !== null && this.game.bga.gameui.bgaAnimationsActive();
@@ -677,9 +698,10 @@ class BoardHandler {
         if (slide)
             await this.game.bga.gameui.wait(Game.BOARD_RECENTER_DURATION);
     }
-    //after a turn (notif_towersPlaced, once the towers have landed): the spots for the new board, then the layer slides to
-    //centre the new bounding box
+    //after a turn (notif_towersPlaced, once the towers have landed, so my own confirmed towers land on the frozen layout): the
+    //centre is free again, the spots for the new board, then the layer slides to centre the new bounding box
     async recenter() {
+        this.frozenCenter = null;
         this.renderSpots();
         await this.centerContents(true);
     }
@@ -730,11 +752,17 @@ class BoardHandler {
     //enemy tower fades under its replacement) with their count badges and undo buttons, legal spots and replaceable towers highlighted
     setDraft(draft) {
         this.draft = draft;
+        //[BGA] the first drafted tower freezes the centre where it is (centerContents has not seen it yet); an empty draft frees
+        //it, which moves nothing: the box is the same as when the turn began, unless the draft had to shift it at the board's edge
+        if ((draft?.pending.length ?? 0) === 0)
+            this.frozenCenter = null;
+        else if (!this.frozenCenter && this.contentsCenterX !== null)
+            this.frozenCenter = { x: this.contentsCenterX, y: this.contentsCenterY };
         this.renderPending();
         this.renderPendingControls();
         this.updateTowerDraftClasses();
         this.renderSpots();
-        this.centerContents(true); //like Yaxha after each cube: the layer slides as drafted towers and legal spots change the box
+        this.centerContents(true); //frozen while drafting (frozenCenter): moves only to keep the draft on the board
     }
     setDraftClickHandlers(handlers) {
         this.draftClickHandlers = handlers;
@@ -749,8 +777,8 @@ class BoardHandler {
             this.pendingElements.set(BoardRules.key(pendingTower.x, pendingTower.y), pendingElement);
         }
     }
-    //on each drafted tower, in a layer over every tower: a badge with its height (the discs it adds) on its top right corner and,
-    //just under it, round buttons: undo (takes it back) and, under the current tower only, confirm (sends the whole turn).
+    //on each drafted tower, in a layer over every tower: a badge with its height (the discs it adds) on its top right corner.
+    //Under the active tower only, round buttons side by side: undo (takes it back) and confirm (sends the whole turn).
     //Game.scss keeps them inside the board (nudged sideways, or above the tower on the bottom row). Their clicks never reach
     //the tower or spot underneath. While the turn is on its way to the server, both are disabled
     renderPendingControls() {
@@ -758,23 +786,23 @@ class BoardHandler {
         const draft = this.draft;
         if (!draft)
             return;
-        const currentKey = draft.selectedSpot ? BoardRules.key(draft.selectedSpot.x, draft.selectedSpot.y) : null;
+        const activeKey = draft.selectedSpot ? BoardRules.key(draft.selectedSpot.x, draft.selectedSpot.y) : null;
         for (const pendingTower of draft.pending) {
             const spot = { x: pendingTower.x, y: pendingTower.y };
-            const isCurrent = BoardRules.key(spot.x, spot.y) === currentKey;
             const controls = document.createElement('div');
             controls.className = 'pending-controls';
             BoardHandler.placeOnBoard(controls, spot);
             const badge = document.createElement('div');
             badge.className = 'pending-count-badge';
             badge.textContent = pendingTower.height.toString();
-            const actions = document.createElement('div');
-            actions.className = 'pending-actions' + (isCurrent ? ' current-pending-actions' : '');
-            actions.style.setProperty('--pending-actions-count', isCurrent ? '2' : '1');
-            actions.appendChild(this.createPendingButton('pending-undo-button', _('Take this tower back'), BoardHandler.UNDO_ICON_SVG, draft.confirming, () => this.draftClickHandlers?.undoClicked(spot)));
-            if (isCurrent)
-                actions.appendChild(this.createPendingButton('pending-confirm-button', _('Confirm'), BoardHandler.CONFIRM_ICON_SVG, draft.confirming, () => this.draftClickHandlers?.confirmClicked()));
-            controls.append(badge, actions);
+            controls.appendChild(badge);
+            if (BoardRules.key(spot.x, spot.y) === activeKey) {
+                const actions = document.createElement('div');
+                actions.className = 'pending-actions';
+                actions.style.setProperty('--pending-actions-count', '2');
+                actions.append(this.createPendingButton('pending-undo-button', _('Take this tower back'), BoardHandler.UNDO_ICON_SVG, draft.confirming, () => this.draftClickHandlers?.undoClicked(spot)), this.createPendingButton('pending-confirm-button', _('Confirm'), BoardHandler.CONFIRM_ICON_SVG, draft.confirming, () => this.draftClickHandlers?.confirmClicked()));
+                controls.appendChild(actions);
+            }
             this.controlsLayer.appendChild(controls);
         }
     }
@@ -1412,8 +1440,8 @@ class Game {
 Game.TOWER_SLIDE_DURATION = 520; //ms of a disc flying between a player board's reserve and its spot; a turn plays its spots one after the other
 Game.TOWER_DISC_STAGGER = 50; //ms between two discs of the same tower leaving (bottom disc first onto the board, top disc first off it); a spot takes TOWER_SLIDE_DURATION plus this much per disc above the first
 Game.TOWER_SLIDE_EASING = 'ease-in-out';
-Game.BOARD_RECENTER_DURATION = 400; //ms of the board's contents sliding to stay centred (BoardHandler.centerContents, Yaxha's 400ms)
-Game.BOARD_RECENTER_EASING = 'ease-in-out';
+Game.BOARD_RECENTER_DURATION = 280; //ms of the board's contents sliding to stay centred (BoardHandler.centerContents; Yaxha's was 400ms)
+Game.BOARD_RECENTER_EASING = 'ease-out';
 Game.BOARD_VIEWPORT_MARGIN = 10; //screen px from the board to the window's bottom (BoardHandler.fitToViewport); the status bar's gap is #nexo-board-container's padding
 Game.MIN_BOARD_CELL_SIZE = 40; //px of a spot, however short the window
 //[BGA] a pass (PlayerHandler.animatePass): the big PASSED stamp pops in at the centre, holds, flies onto the player

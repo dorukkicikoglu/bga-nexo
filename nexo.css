@@ -357,9 +357,6 @@ html.hide-stack-heights .tower-height-number {
   left: clamp(-1 * (var(--layer-offset-x, 0) + var(--x)) * var(--cell-size) + var(--actions-margin), (var(--cell-size) - var(--actions-width)) / 2, (var(--board-size) - var(--layer-offset-x, 0) - var(--x)) * var(--cell-size) - var(--actions-margin) - var(--actions-width));
   top: calc(var(--actions-below-top) - min(var(--actions-below-top) - var(--actions-above-top), var(--actions-overflow-below) * 1000));
 }
-.pending-controls .current-pending-actions {
-  z-index: 2;
-}
 .pending-controls .pending-button {
   flex: none;
   box-sizing: border-box;

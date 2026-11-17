@@ -17,7 +17,7 @@ export type DraftView = {
     pending: PendingTower[];
     legalNewSpots: NexoSpot[];
     replaceableTowers: NexoTower[];
-    selectedSpot: NexoSpot | null; //the current drafted tower: the gold ring, and the confirm button under it
+    selectedSpot: NexoSpot | null; //the active drafted tower: the gold ring, and the undo and confirm buttons under it
     discColor: DiscColor;
     confirming: boolean; //the turn is on its way to the server: the buttons stay, disabled
 };
@@ -49,6 +49,9 @@ export class BoardHandler {
     private boardSize: number;
     private contentsCenterX: number | null = null; //the middle of the towers' and legal spots' bounding box, in spots, once centred
     private contentsCenterY: number | null = null;
+    //[BGA] while my draft has towers, the centre is frozen where it was when the first one was drafted (centerContents), until
+    //the turn's towers have landed (recenter) or the draft is emptied (setDraft)
+    private frozenCenter: { x: number; y: number; } | null = null;
     private boxLegalSpots: NexoSpot[] = []; //the legal spots the box is centred on, shown or not (getBoxLegalSpots)
     private towers = new Map<string, NexoTower>();
     private towerElements = new Map<string, HTMLDivElement>();
@@ -209,7 +212,10 @@ export class BoardHandler {
      * Yaxha's centerCubesContainer(): the layer's translate puts the middle of the bounding box of the towers, the draft's new
      * towers and the legal spots (shown or not, getBoxLegalSpots) in the middle of the board. Computed from board coordinates rather than measured on the
      * page (Yaxha measures its cubes), so every viewer, a reload and a replay get the very same layout. Slides when animate
-     * (BOARD_RECENTER_DURATION, Yaxha's 400ms) and animations are on, else applies at once (on load). Resolves once it has slid
+     * (BOARD_RECENTER_DURATION) and animations are on, else applies at once (on load). Resolves once it has slid.
+     * [BGA] While my draft has towers (frozenCenter), the contents keep the centre they had when it began, even off-centre: they
+     * only move when the draft would leave the board (a line of new towers from the edge of the box, whose own new legal spots
+     * may be built on this turn), by the least that keeps the whole box on it; the box is never wider than the board
      */
     private async centerContents(animate: boolean): Promise<void> {
         const contents = new Map<string, NexoSpot>(this.towers);
@@ -219,8 +225,17 @@ export class BoardHandler {
             contents.set(BoardRules.key(spot.x, spot.y), spot);
 
         const bounds = BoardRules.getBounds(contents);
-        const centerX = bounds ? (bounds.minX + bounds.maxX + 1) / 2 : 0.5; //spot x covers x to x + 1
-        const centerY = bounds ? (bounds.minY + bounds.maxY + 1) / 2 : 0.5;
+        let centerX = bounds ? (bounds.minX + bounds.maxX + 1) / 2 : 0.5; //spot x covers x to x + 1
+        let centerY = bounds ? (bounds.minY + bounds.maxY + 1) / 2 : 0.5;
+        if(this.frozenCenter){
+            const halfBoard = this.boardSize / 2;
+            if(bounds){
+                this.frozenCenter.x = Math.min(Math.max(this.frozenCenter.x, bounds.maxX + 1 - halfBoard), bounds.minX + halfBoard);
+                this.frozenCenter.y = Math.min(Math.max(this.frozenCenter.y, bounds.maxY + 1 - halfBoard), bounds.minY + halfBoard);
+            }
+            centerX = this.frozenCenter.x;
+            centerY = this.frozenCenter.y;
+        }
         if(centerX === this.contentsCenterX && centerY === this.contentsCenterY)
             return;
 
@@ -238,9 +253,10 @@ export class BoardHandler {
             await this.game.bga.gameui.wait(Game.BOARD_RECENTER_DURATION);
     }
 
-    //after a turn (notif_towersPlaced, once the towers have landed): the spots for the new board, then the layer slides to
-    //centre the new bounding box
+    //after a turn (notif_towersPlaced, once the towers have landed, so my own confirmed towers land on the frozen layout): the
+    //centre is free again, the spots for the new board, then the layer slides to centre the new bounding box
     public async recenter(): Promise<void> {
+        this.frozenCenter = null;
         this.renderSpots();
         await this.centerContents(true);
     }
@@ -299,11 +315,17 @@ export class BoardHandler {
     //enemy tower fades under its replacement) with their count badges and undo buttons, legal spots and replaceable towers highlighted
     public setDraft(draft: DraftView | null): void {
         this.draft = draft;
+        //[BGA] the first drafted tower freezes the centre where it is (centerContents has not seen it yet); an empty draft frees
+        //it, which moves nothing: the box is the same as when the turn began, unless the draft had to shift it at the board's edge
+        if((draft?.pending.length ?? 0) === 0)
+            this.frozenCenter = null;
+        else if(!this.frozenCenter && this.contentsCenterX !== null)
+            this.frozenCenter = { x: this.contentsCenterX, y: this.contentsCenterY };
         this.renderPending();
         this.renderPendingControls();
         this.updateTowerDraftClasses();
         this.renderSpots();
-        this.centerContents(true); //like Yaxha after each cube: the layer slides as drafted towers and legal spots change the box
+        this.centerContents(true); //frozen while drafting (frozenCenter): moves only to keep the draft on the board
     }
 
     public setDraftClickHandlers(handlers: DraftClickHandlers | null): void {
@@ -322,8 +344,8 @@ export class BoardHandler {
         }
     }
 
-    //on each drafted tower, in a layer over every tower: a badge with its height (the discs it adds) on its top right corner and,
-    //just under it, round buttons: undo (takes it back) and, under the current tower only, confirm (sends the whole turn).
+    //on each drafted tower, in a layer over every tower: a badge with its height (the discs it adds) on its top right corner.
+    //Under the active tower only, round buttons side by side: undo (takes it back) and confirm (sends the whole turn).
     //Game.scss keeps them inside the board (nudged sideways, or above the tower on the bottom row). Their clicks never reach
     //the tower or spot underneath. While the turn is on its way to the server, both are disabled
     private renderPendingControls(): void {
@@ -332,10 +354,9 @@ export class BoardHandler {
         if(!draft)
             return;
 
-        const currentKey = draft.selectedSpot ? BoardRules.key(draft.selectedSpot.x, draft.selectedSpot.y) : null;
+        const activeKey = draft.selectedSpot ? BoardRules.key(draft.selectedSpot.x, draft.selectedSpot.y) : null;
         for(const pendingTower of draft.pending){
             const spot: NexoSpot = { x: pendingTower.x, y: pendingTower.y };
-            const isCurrent = BoardRules.key(spot.x, spot.y) === currentKey;
             const controls = document.createElement('div');
             controls.className = 'pending-controls';
             BoardHandler.placeOnBoard(controls, spot);
@@ -344,14 +365,18 @@ export class BoardHandler {
             badge.className = 'pending-count-badge';
             badge.textContent = pendingTower.height.toString();
 
-            const actions = document.createElement('div');
-            actions.className = 'pending-actions' + (isCurrent ? ' current-pending-actions' : '');
-            actions.style.setProperty('--pending-actions-count', isCurrent ? '2' : '1');
-            actions.appendChild(this.createPendingButton('pending-undo-button', _('Take this tower back'), BoardHandler.UNDO_ICON_SVG, draft.confirming, () => this.draftClickHandlers?.undoClicked(spot)));
-            if(isCurrent)
-                actions.appendChild(this.createPendingButton('pending-confirm-button', _('Confirm'), BoardHandler.CONFIRM_ICON_SVG, draft.confirming, () => this.draftClickHandlers?.confirmClicked()));
+            controls.appendChild(badge);
 
-            controls.append(badge, actions);
+            if(BoardRules.key(spot.x, spot.y) === activeKey){
+                const actions = document.createElement('div');
+                actions.className = 'pending-actions';
+                actions.style.setProperty('--pending-actions-count', '2');
+                actions.append(
+                    this.createPendingButton('pending-undo-button', _('Take this tower back'), BoardHandler.UNDO_ICON_SVG, draft.confirming, () => this.draftClickHandlers?.undoClicked(spot)),
+                    this.createPendingButton('pending-confirm-button', _('Confirm'), BoardHandler.CONFIRM_ICON_SVG, draft.confirming, () => this.draftClickHandlers?.confirmClicked()),
+                );
+                controls.appendChild(actions);
+            }
             this.controlsLayer.appendChild(controls);
         }
     }

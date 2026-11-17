@@ -17,17 +17,17 @@ import { BoardRules } from "../BoardRules";
  * a tower, or an enemy tower they can out-height) drafts a tower there at the lowest legal height (1, or the enemy tower's
  * height + 1); each click on that drafted tower adds one disc, and a click when it is already at the most it may take (5, or
  * every disc left this turn) takes it back, so the next click starts again at the lowest. A turn may hold several towers, so
- * another highlighted spot starts a tower of its own and the others stay. The current tower (the one clicked last, else the
- * last one drafted) has the gold ring. Each drafted tower shows semi-transparent with a count badge and an undo button under
- * it that takes it back (with any new tower that no longer reaches the board through the others); the current tower also has
- * a confirm button there, which sends the whole turn (actPlaceTowers, checked again by the server) and is disabled until the
- * server answers. No action buttons in the status bar: they changed its height and moved the board. The status bar keeps
+ * another highlighted spot starts a tower of its own and the others stay. Each drafted tower shows semi-transparent with a
+ * count badge. The active tower (the one clicked last that is still drafted: clickHistory) alone has the gold ring and, under
+ * it, an undo button that takes it back (with any new tower that no longer reaches the board through the others) and a
+ * confirm button, which sends the whole turn (actPlaceTowers, checked again by the server) and is disabled until the server
+ * answers. Once the active tower is taken back (undo, or a click past its highest), the one clicked before it is active again. No action buttons in the status bar: they changed its height and moved the board. The status bar keeps
  * one title for the whole draft. Everyone else only sees the status text. The draft lives on this page only: a reload starts it again.
  */
 export class PlaceTowers {
     private stateArgs: PlaceTowersArgs | null = null;
     private pending: PendingTower[] = [];
-    private selectedSpot: NexoSpot | null = null; //the current drafted tower (gold ring, confirm button), null with no draft
+    private clickHistory: NexoSpot[] = []; //the drafted towers in the order last clicked, each once: the last one is active (gold ring, buttons)
     private drafting: boolean = false;
     private confirming: boolean = false; //the turn is on its way to the server
 
@@ -40,7 +40,7 @@ export class PlaceTowers {
     onEnteringState(args: PlaceTowersArgs, isCurrentPlayerActive: boolean) {
         this.stateArgs = args;
         this.pending = [];
-        this.selectedSpot = null;
+        this.clickHistory = [];
         this.drafting = isCurrentPlayerActive;
         this.confirming = false;
 
@@ -68,7 +68,7 @@ export class PlaceTowers {
         this.drafting = false;
         this.confirming = false;
         this.pending = [];
-        this.selectedSpot = null;
+        this.clickHistory = [];
         this.game.boardHandler.setDraftClickHandlers(null);
         this.game.boardHandler.setDraft(null);
     }
@@ -104,6 +104,17 @@ export class PlaceTowers {
         return this.pending.find(tower => tower.x === spot.x && tower.y === spot.y);
     }
 
+    //a click on a spot makes its tower the active one: on top of the history, wherever it was
+    private activate(spot: NexoSpot): void {
+        this.clickHistory = this.clickHistory.filter(clicked => clicked.x !== spot.x || clicked.y !== spot.y);
+        this.clickHistory.push({ x: spot.x, y: spot.y });
+    }
+
+    //the active tower: the last clicked one still drafted, null with no draft
+    private getActiveSpot(): NexoSpot | null {
+        return this.clickHistory[this.clickHistory.length - 1] ?? null;
+    }
+
     //the enemy tower a click on spot would replace (null for an empty spot), or undefined when the spot can't take a tower now
     private getSpotTarget(spot: NexoSpot): NexoTower | null | undefined {
         if(this.getLegalNewSpots().some(legalSpot => legalSpot.x === spot.x && legalSpot.y === spot.y))
@@ -125,7 +136,7 @@ export class PlaceTowers {
     }
 
     //called by BoardHandler, on a highlighted spot or a drafted tower: a new tower at its lowest height, one more disc, or, past
-    //the highest height, the tower taken back
+    //the highest height, the tower taken back like an undo (the tower clicked before it is active again)
     private spotClicked(spot: NexoSpot): void {
         if(!this.canDraft())
             return;
@@ -138,7 +149,7 @@ export class PlaceTowers {
                 return;
             }
             this.pending = this.pending.map(tower => tower === pendingTower ? { ...tower, height: nextHeight } : tower);
-            this.selectedSpot = { x: spot.x, y: spot.y };
+            this.activate(spot);
             this.update();
             return;
         }
@@ -148,7 +159,7 @@ export class PlaceTowers {
             this.addPending(spot, heightOptions[0]);
     }
 
-    //called by BoardHandler: a drafted tower's undo button (never also a click on its spot)
+    //called by BoardHandler: the active tower's undo button (never also a click on its spot)
     private undoClicked(spot: NexoSpot): void {
         if(this.canDraft() && this.getPendingAt(spot))
             this.removePending(spot);
@@ -160,11 +171,12 @@ export class PlaceTowers {
             return;
 
         this.pending.push({ x: spot.x, y: spot.y, height: height, kind: target ? 'replace' : 'new', replaced: target ?? null });
-        this.selectedSpot = { x: spot.x, y: spot.y };
+        this.activate(spot);
         this.update();
     }
 
-    //a new tower that no longer reaches the board through the turn's other new towers goes too (BoardRules.keepConnectedPending)
+    //a new tower that no longer reaches the board through the turn's other new towers goes too (BoardRules.keepConnectedPending).
+    //Every tower gone leaves the history in update(), so the one clicked before is active again
     private removePending(spot: NexoSpot): void {
         const remaining = this.pending.filter(tower => tower.x !== spot.x || tower.y !== spot.y);
         this.pending = BoardRules.keepConnectedPending(this.game.boardHandler.getTowerMap(), remaining);
@@ -194,18 +206,14 @@ export class PlaceTowers {
         if(!this.drafting)
             return;
 
-        //the current tower is the one clicked last; once it is taken back, the last one drafted, so a draft always has its confirm
-        if(this.selectedSpot && !this.getPendingAt(this.selectedSpot))
-            this.selectedSpot = null;
-        const lastPending = this.pending[this.pending.length - 1];
-        if(!this.selectedSpot && lastPending)
-            this.selectedSpot = { x: lastPending.x, y: lastPending.y };
+        //towers taken back leave the history: the last one clicked that is still drafted is active
+        this.clickHistory = this.clickHistory.filter(clicked => this.getPendingAt(clicked));
 
         this.game.boardHandler.setDraft({
             pending: this.pending,
             legalNewSpots: this.getLegalNewSpots(),
             replaceableTowers: this.getReplaceableTowers(),
-            selectedSpot: this.selectedSpot,
+            selectedSpot: this.getActiveSpot(),
             discColor: this.game.getDiscColor(this.game.getMyPlayerID()),
             confirming: this.confirming,
         });

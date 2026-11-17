@@ -30,8 +30,8 @@ export class Game {
     public static readonly TOWER_SLIDE_DURATION = 520; //ms of a disc flying between a player board's reserve and its spot; a turn plays its spots one after the other
     public static readonly TOWER_DISC_STAGGER = 50; //ms between two discs of the same tower leaving (bottom disc first onto the board, top disc first off it); a spot takes TOWER_SLIDE_DURATION plus this much per disc above the first
     public static readonly TOWER_SLIDE_EASING = 'ease-in-out';
-    public static readonly BOARD_RECENTER_DURATION = 400; //ms of the board's contents sliding to stay centred (BoardHandler.centerContents, Yaxha's 400ms)
-    public static readonly BOARD_RECENTER_EASING = 'ease-in-out';
+    public static readonly BOARD_RECENTER_DURATION = 280; //ms of the board's contents sliding to stay centred (BoardHandler.centerContents; Yaxha's was 400ms)
+    public static readonly BOARD_RECENTER_EASING = 'ease-out';
     public static readonly BOARD_VIEWPORT_MARGIN = 10; //screen px from the board to the window's bottom (BoardHandler.fitToViewport); the status bar's gap is #nexo-board-container's padding
     public static readonly MIN_BOARD_CELL_SIZE = 40; //px of a spot, however short the window
     //[BGA] a pass (PlayerHandler.animatePass): the big PASSED stamp pops in at the centre, holds, flies onto the player
