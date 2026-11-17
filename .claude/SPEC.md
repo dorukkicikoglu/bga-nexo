@@ -93,6 +93,7 @@ Registered like Riviera's: one class per state in `modules/php/States/`, each wi
 - `NextPlayer`: activates the other player and passes for anyone with no valid move (at most `PASSES_TO_END_GAME` loops).
 - `EndScore`: final scores, stats, `displayEndGameScoring` (largest groups, winner log row).
 - Debug jumps (Studio only): `debug_goToState($state = 10)`; `debug_setReserves()` and `debug_fillBoard()` → 10; `debug_endGame()` → 98.
+- Client-only console helpers (no server call, no game state): `gameui.debug_passAnim(who)` plays the pass display exactly as `playerPassed` does (`who`: a turn-order position 1 to 4 by `player_no`, or a player id; returns a Promise), `gameui.debug_clearPassed()` hides every PASSED stamp.
 
 ## Statistics (stats.jsonc)
 

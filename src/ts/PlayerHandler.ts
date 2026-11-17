@@ -167,8 +167,11 @@ export class PlayerHandler{
         banner.style.opacity = '0';
         document.body.appendChild(banner);
 
+        //the zoom compares like with like: the rect is the border box, and computed `width` is only the content box (the
+        //banner's 3x padding and border made it about 1.3 on an unzoomed page, so it flew about 77% of the way)
         const bannerRect = banner.getBoundingClientRect(); //unrotated: no transform yet
-        const cssWidth = parseFloat(getComputedStyle(banner).width);
+        const bannerStyle = getComputedStyle(banner);
+        const cssWidth = (bannerStyle.boxSizing === 'border-box') ? parseFloat(bannerStyle.width) : ['width', 'paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, property) => sum + parseFloat(bannerStyle[property]), 0);
         const zoom = (cssWidth > 0) ? bannerRect.width / cssWidth : 1;
         const transformTo = (dx: number, dy: number, scale: number): string => `translate(${dx / zoom}px, ${dy / zoom}px) scale(${scale}) rotate(${rotate})`;
 
@@ -188,8 +191,11 @@ export class PlayerHandler{
         const dy = (stampRect.top + stampRect.height / 2) - (bannerRect.top + bannerRect.height / 2);
         const scale = (bannerRect.width > 0) ? stampRect.width / bannerRect.width : 1;
 
-        banner.classList.add('passed-banner-flying'); //the name fades out on the way
-        banner.style.transition = `transform ${Game.PASS_BANNER_FLIGHT_DURATION}ms ease-in-out`;
+        //the flight's transition is .passed-banner-flying's (Game.scss): the transform and the shadow together, so it lands
+        //with the board stamp's shadow. The name fades out on the way
+        banner.style.transition = '';
+        banner.style.setProperty('--passed-banner-flight-duration', `${Game.PASS_BANNER_FLIGHT_DURATION}ms`);
+        banner.classList.add('passed-banner-flying');
         banner.style.transform = transformTo(dx, dy, scale);
         await this.game.bga.gameui.wait(Game.PASS_BANNER_FLIGHT_DURATION);
 

@@ -535,6 +535,7 @@ html.hide-stack-heights .tower-height-number {
   text-transform: uppercase;
   letter-spacing: 1px;
   white-space: nowrap;
+  box-shadow: 0 0 0 0 rgba(27, 27, 29, 0);
   position: absolute;
   right: 0px;
   top: 50%;
@@ -572,7 +573,12 @@ body .passed-banner {
   text-transform: uppercase;
   letter-spacing: 3px;
   white-space: nowrap;
-  box-shadow: 0 6px 24px rgba(27, 27, 29, 0.3);
+  box-shadow: 0 0 0 0 rgba(27, 27, 29, 0);
+  box-shadow: 0 6px 24px 0 rgba(27, 27, 29, 0.3);
+}
+body .passed-banner.passed-banner-flying {
+  box-shadow: 0 0 0 0 rgba(27, 27, 29, 0);
+  transition: transform var(--passed-banner-flight-duration) ease-in-out, box-shadow var(--passed-banner-flight-duration) ease-in-out;
 }
 body .passed-banner .passed-banner-name {
   position: absolute;

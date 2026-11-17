@@ -108,6 +108,10 @@ export class Game {
         this.tooltipHandler = new TooltipHandler(this);
         this.prefHandler = new PrefHandler(this, gamedatas.pref_names);
         this.bga.gameui.onScreenWidthChange = () => this.onScreenWidthChange();
+        Object.assign(this.bga.gameui, { //client-only console helpers (debug_passAnim)
+            debug_passAnim: (who: number | string) => this.debug_passAnim(who),
+            debug_clearPassed: () => this.debug_clearPassed(),
+        });
 
         if(gamedatas.hasOwnProperty('endGameScoring'))
             this.endGameScoringHandler.displayEndGameScore(gamedatas.endGameScoring);
@@ -367,9 +371,39 @@ export class Game {
             return;
 
         player.setReserve(args.reserve);
+        await this.showPass(player);
+    }
+
+    //a pass on a player board, for the notification and debug_passAnim alike: the big banner flying onto the board's stamp,
+    //or, with animations off or in a replay, just the stamp
+    private async showPass(player: PlayerHandler): Promise<void> {
         if(this.bga.gameui.bgaAnimationsActive() && !this.isReplay())
             await player.animatePass(); //marks the player passed as it lands
         else player.setPassed(true);
+    }
+
+    //client-only console helpers, nothing reaches the server (on gameui in setup()): window[0].gameui.debug_passAnim(2).
+    //`who` is a turn-order position (1 to 4, by player_no, the same for every viewer) or a player id. The pass plays
+    //exactly as a real one, so with the other player already passed it is the game-ending pass (the banner fades out)
+    public async debug_passAnim(who: number | string): Promise<void> {
+        const order = Object.keys(this.gamedatas.players).map(Number).sort((a, b) => Number(this.gamedatas.players[a].player_no) - Number(this.gamedatas.players[b].player_no));
+        const value = Number(who);
+        const playerID = (Number.isInteger(value) && value >= 1 && value <= 4) ? order[value - 1] : value;
+        const player = this.players[playerID];
+
+        if(!player){
+            const valid = order.map((id, index) => `${index + 1} or ${id} (${this.getPlayerName(id)})`).join(', ');
+            console.warn(`debug_passAnim: no player for ${JSON.stringify(who)}. Use a position or a player id: ${valid}`);
+            return;
+        }
+
+        await this.showPass(player);
+        console.log(`debug_passAnim: done for ${playerID} (${this.getPlayerName(playerID)})`);
+    }
+
+    //hides every PASSED stamp (client only), so debug_passAnim can run again from a clean state
+    public debug_clearPassed(): void {
+        Object.values(this.players).forEach(player => player.setPassed(false));
     }
 
     private async notif_displayEndGameScoring(args: DisplayEndGameScoringArgs) {

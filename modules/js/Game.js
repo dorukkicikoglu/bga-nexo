@@ -447,8 +447,11 @@ class PlayerHandler {
         banner.innerHTML = `<div class="passed-banner-name">${this.game.divColoredPlayer(this.playerID, { class: 'playername' })}</div><i class="fa6 fa-forward"></i>${_('Passed')}`;
         banner.style.opacity = '0';
         document.body.appendChild(banner);
+        //the zoom compares like with like: the rect is the border box, and computed `width` is only the content box (the
+        //banner's 3x padding and border made it about 1.3 on an unzoomed page, so it flew about 77% of the way)
         const bannerRect = banner.getBoundingClientRect(); //unrotated: no transform yet
-        const cssWidth = parseFloat(getComputedStyle(banner).width);
+        const bannerStyle = getComputedStyle(banner);
+        const cssWidth = (bannerStyle.boxSizing === 'border-box') ? parseFloat(bannerStyle.width) : ['width', 'paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, property) => sum + parseFloat(bannerStyle[property]), 0);
         const zoom = (cssWidth > 0) ? bannerRect.width / cssWidth : 1;
         const transformTo = (dx, dy, scale) => `translate(${dx / zoom}px, ${dy / zoom}px) scale(${scale}) rotate(${rotate})`;
         banner.style.transform = transformTo(0, 0, 1.4);
@@ -464,8 +467,11 @@ class PlayerHandler {
         const dx = (stampRect.left + stampRect.width / 2) - (bannerRect.left + bannerRect.width / 2);
         const dy = (stampRect.top + stampRect.height / 2) - (bannerRect.top + bannerRect.height / 2);
         const scale = (bannerRect.width > 0) ? stampRect.width / bannerRect.width : 1;
-        banner.classList.add('passed-banner-flying'); //the name fades out on the way
-        banner.style.transition = `transform ${Game.PASS_BANNER_FLIGHT_DURATION}ms ease-in-out`;
+        //the flight's transition is .passed-banner-flying's (Game.scss): the transform and the shadow together, so it lands
+        //with the board stamp's shadow. The name fades out on the way
+        banner.style.transition = '';
+        banner.style.setProperty('--passed-banner-flight-duration', `${Game.PASS_BANNER_FLIGHT_DURATION}ms`);
+        banner.classList.add('passed-banner-flying');
         banner.style.transform = transformTo(dx, dy, scale);
         await this.game.bga.gameui.wait(Game.PASS_BANNER_FLIGHT_DURATION);
         this.setPassed(true);
@@ -1283,6 +1289,10 @@ class Game {
         this.tooltipHandler = new TooltipHandler(this);
         this.prefHandler = new PrefHandler(this, gamedatas.pref_names);
         this.bga.gameui.onScreenWidthChange = () => this.onScreenWidthChange();
+        Object.assign(this.bga.gameui, {
+            debug_passAnim: (who) => this.debug_passAnim(who),
+            debug_clearPassed: () => this.debug_clearPassed(),
+        });
         if (gamedatas.hasOwnProperty('endGameScoring'))
             this.endGameScoringHandler.displayEndGameScore(gamedatas.endGameScoring);
         // Setup game notifications to handle (see "setupNotifications" method below)
@@ -1507,10 +1517,35 @@ class Game {
         if (!player)
             return;
         player.setReserve(args.reserve);
+        await this.showPass(player);
+    }
+    //a pass on a player board, for the notification and debug_passAnim alike: the big banner flying onto the board's stamp,
+    //or, with animations off or in a replay, just the stamp
+    async showPass(player) {
         if (this.bga.gameui.bgaAnimationsActive() && !this.isReplay())
             await player.animatePass(); //marks the player passed as it lands
         else
             player.setPassed(true);
+    }
+    //client-only console helpers, nothing reaches the server (on gameui in setup()): window[0].gameui.debug_passAnim(2).
+    //`who` is a turn-order position (1 to 4, by player_no, the same for every viewer) or a player id. The pass plays
+    //exactly as a real one, so with the other player already passed it is the game-ending pass (the banner fades out)
+    async debug_passAnim(who) {
+        const order = Object.keys(this.gamedatas.players).map(Number).sort((a, b) => Number(this.gamedatas.players[a].player_no) - Number(this.gamedatas.players[b].player_no));
+        const value = Number(who);
+        const playerID = (Number.isInteger(value) && value >= 1 && value <= 4) ? order[value - 1] : value;
+        const player = this.players[playerID];
+        if (!player) {
+            const valid = order.map((id, index) => `${index + 1} or ${id} (${this.getPlayerName(id)})`).join(', ');
+            console.warn(`debug_passAnim: no player for ${JSON.stringify(who)}. Use a position or a player id: ${valid}`);
+            return;
+        }
+        await this.showPass(player);
+        console.log(`debug_passAnim: done for ${playerID} (${this.getPlayerName(playerID)})`);
+    }
+    //hides every PASSED stamp (client only), so debug_passAnim can run again from a clean state
+    debug_clearPassed() {
+        Object.values(this.players).forEach(player => player.setPassed(false));
     }
     async notif_displayEndGameScoring(args) {
         this.endGameScoringHandler.displayEndGameScore(args.endGameScoring);

@@ -316,8 +316,13 @@ $passed-stamp-color: #5a5f6e;
 $passed-banner-scale: 3;
 $passed-banner-name-size: 22px;
 $passed-banner-z-index: 1000;
+//the board stamp's shadow: none, written as a transparent zero shadow so the banner's can transition down to it. A visible
+//one here would land scaled by the banner's transform, so it would no longer match exactly
+$passed-stamp-shadow: 0 0 0 0 rgba($material-charcoal, 0);
+$passed-banner-shadow: 0 6px 24px 0 rgba($material-charcoal, 0.3); //while it is big in the centre
+$passed-banner-flight-easing: ease-in-out;
 @mixin passed-stamp-look($scale) { display: flex; align-items: center; gap: 5px * $scale; padding: 1px * $scale 7px * $scale; border: 2px * $scale solid $passed-stamp-color; border-radius: 4px * $scale;
-    background-color: rgba(255, 255, 255, 0.7); color: $passed-stamp-color; font-size: 13px * $scale; font-weight: bold; text-transform: uppercase; letter-spacing: 1px * $scale; white-space: nowrap; }
+    background-color: rgba(255, 255, 255, 0.7); color: $passed-stamp-color; font-size: 13px * $scale; font-weight: bold; text-transform: uppercase; letter-spacing: 1px * $scale; white-space: nowrap; box-shadow: $passed-stamp-shadow; }
 
 //mobile: a line break right before the action buttons, like a <br>, so they and BGA's arrow button start a second line
 //under the status bar title (the hourglass stays inline with it). Desktop keeps them next to the title
@@ -493,7 +498,11 @@ html.hide-stack-heights .tower-height-number{ display: none; }
 //it, then flown onto the board's stamp by its transform (which holds the -6deg rotation too). Fixed in <body>, outside
 //BGA's mobile scaling; over the status bar, like the flying tower copies
 body .passed-banner{ position: fixed; inset: 0px; margin: auto; width: fit-content; height: fit-content; z-index: $passed-banner-z-index; pointer-events: none; transform-origin: 50% 50%; will-change: transform, opacity;
-    @include passed-stamp-look($passed-banner-scale); box-shadow: 0 6px 24px rgba($material-charcoal, 0.3);
+    @include passed-stamp-look($passed-banner-scale); box-shadow: $passed-banner-shadow;
+    //the flight (PlayerHandler.animatePass sets the duration): the shadow shrinks to the board stamp's with the move, same
+    //duration and easing, so nothing changes when the stamp takes over
+    &.passed-banner-flying{ box-shadow: $passed-stamp-shadow;
+        transition: transform var(--passed-banner-flight-duration) $passed-banner-flight-easing, box-shadow var(--passed-banner-flight-duration) $passed-banner-flight-easing; }
     .passed-banner-name{ position: absolute; left: 50%; bottom: 100%; translate: -50% 0; margin-bottom: 10px; padding: 3px 12px; border-radius: 4px; background-color: rgba(255, 255, 255, 0.9);
         font-size: $passed-banner-name-size; letter-spacing: 0; text-transform: none; transition: opacity 0.2s ease; }
     &.passed-banner-flying .passed-banner-name{ opacity: 0; }
