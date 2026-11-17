@@ -103,7 +103,7 @@ body .sliding-clone {
   user-select: none;
   --disc-width: calc(var(--cell-size) * 0.78);
   --disc-face-height: calc(var(--disc-width) * 0.45);
-  --disc-thickness: calc(var(--cell-size) * 0.09);
+  --disc-thickness: calc(var(--cell-size) * 0.1);
   --tower-base: calc(var(--cell-size) * 0.08);
 }
 .nexo-tower .tower-disc {
@@ -162,8 +162,8 @@ body .sliding-clone {
   --disc-side: #a8150e;
   --disc-side-dark: #6a0905;
   --disc-number: #ffffff;
-  --disc-seam-above: rgba(255, 140, 125, 0.55);
-  --disc-seam-below: #3a0402;
+  --disc-seam-above: rgba(255, 150, 135, 0.75);
+  --disc-seam-below: #240100;
 }
 
 .nexo-tower[data-disc-color=black] {
@@ -173,14 +173,7 @@ body .sliding-clone {
   --disc-side-dark: #050506;
   --disc-number: #ffffff;
   --disc-seam-above: #000000;
-  --disc-seam-below: rgba(150, 153, 164, 0.6);
-}
-
-.nexo-tower.mini-tower {
-  --cell-size: 26px;
-}
-.nexo-tower.mini-tower .tower-height-number {
-  display: none;
+  --disc-seam-below: rgba(178, 181, 192, 0.8);
 }
 
 html.hide-stack-heights .tower-height-number {
@@ -492,29 +485,27 @@ html.hide-stack-heights .tower-height-number {
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
   min-height: 30px;
 }
-.nexo-player-board .reserve-indicator {
+.nexo-player-board .reserve-stacks {
   display: flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 16px;
-  font-weight: bold;
-  color: #27271c;
+  gap: 1px;
 }
-.nexo-player-board .reserve-indicator .reserve-icon-slot {
-  display: flex;
-  align-items: center;
-  margin: -4px 0px;
+.nexo-player-board .nexo-tower.reserve-stack {
+  --cell-size: 28px;
+  --disc-thickness: calc(var(--cell-size) * 0.14);
+  height: calc(var(--cell-size) * 1.131);
 }
-.nexo-player-board .reserve-indicator .reserve-times {
-  font-weight: normal;
-  opacity: 0.7;
-}
-.nexo-player-board[data-empty-reserve=true] .reserve-indicator {
-  opacity: 0.45;
+.nexo-player-board .nexo-tower.reserve-stack::before {
+  content: "";
+  position: absolute;
+  box-sizing: border-box;
+  left: calc((var(--cell-size) - var(--disc-width)) / 2);
+  bottom: var(--tower-base);
+  width: var(--disc-width);
+  height: var(--disc-face-height);
+  border: 1px dashed rgba(27, 27, 29, 0.2);
+  border-radius: 50%;
 }
 .nexo-player-board .passed-stamp {
   display: flex;
@@ -530,6 +521,10 @@ html.hide-stack-heights .tower-height-number {
   text-transform: uppercase;
   letter-spacing: 1px;
   white-space: nowrap;
+  position: absolute;
+  right: 0px;
+  top: 50%;
+  translate: 0px -50%;
   rotate: -6deg;
   opacity: 0;
   visibility: hidden;
@@ -710,5 +705,3 @@ body .passed-banner.passed-banner-flying .passed-banner-name {
 .dijitTooltipLeft, .dijitTooltipRight {
   max-width: calc(100vw - 30px);
 }
-
-/*# sourceMappingURL=nexo.css.map */

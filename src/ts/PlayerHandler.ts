@@ -10,14 +10,16 @@
  * PlayerHandler.ts
  */
 import { Game } from "./Game";
-import { BoardHandler } from "./BoardHandler";
 
 export class PlayerHandler{
     private static readonly BOUNCE_CLASS = 'bouncing-player-board'; //the one shared bounce class, its timing lives in Game.scss
+    //the reserve: RESERVE_STACK_COUNT stacks of up to RESERVE_STACK_SIZE discs side by side, DISCS_PER_PLAYER (25) in all
+    private static readonly RESERVE_STACK_COUNT = 5;
+    private static readonly RESERVE_STACK_SIZE = 5;
 
     private playerBoardContainer: HTMLDivElement;
-    private reserveIcon: HTMLDivElement;
-    private reserveCount: HTMLSpanElement;
+    private reserveStacksElement: HTMLDivElement;
+    private reserveStacks: HTMLDivElement[] = []; //left to right
     private boardElement: HTMLDivElement;
 
 	constructor(private game: Game, private playerID: number, private reserve: number, private passed: boolean) {
@@ -27,18 +29,14 @@ export class PlayerHandler{
         this.showPassedStamp(false); //Game.updatePassedStamps() decides once every player board exists
 	}
 
-    //every player board, spectators included, shows the reserve (a disc in the player's color and its count) and, after an
+    //every player board, spectators included, shows the reserve (its discs as stacks in the player's color) and, after an
     //automatic pass, a PASSED stamp (shown by data-passed). The score is BGA's own counter: the player's largest group
     private createPlayerBoardContainer(){
         this.playerBoardContainer = document.createElement('div');
         this.playerBoardContainer.classList.add('nexo-player-board');
         this.playerBoardContainer.innerHTML = `
             <div class="player-board-reserve-row">
-                <div class="reserve-indicator">
-                    <span class="reserve-icon-slot"></span>
-                    <span class="reserve-times">×</span>
-                    <span class="reserve-count"></span>
-                </div>
+                <div class="reserve-stacks"></div>
                 <div class="passed-stamp"><i class="fa6 fa-forward"></i>${_('Passed')}</div>
             </div>
         `;
@@ -46,9 +44,16 @@ export class PlayerHandler{
         const playerPanel = this.game.bga.playerPanels.getElement(this.playerID);
         playerPanel.appendChild(this.playerBoardContainer);
 
-        this.reserveIcon = BoardHandler.createTowerDiv(this.game.getDiscColor(this.playerID), 1, 'mini-tower reserve-tower-icon');
-        this.playerBoardContainer.querySelector('.reserve-icon-slot').appendChild(this.reserveIcon);
-        this.reserveCount = this.playerBoardContainer.querySelector('.reserve-count');
+        //each stack is a .nexo-tower box (Game.scss .reserve-stack) holding its discs, bottom first, like a tower
+        this.reserveStacksElement = this.playerBoardContainer.querySelector('.reserve-stacks');
+        const discColor = this.game.getDiscColor(this.playerID);
+        for(let stackIndex = 0; stackIndex < PlayerHandler.RESERVE_STACK_COUNT; stackIndex++){
+            const stack = document.createElement('div');
+            stack.className = 'nexo-tower reserve-stack';
+            stack.setAttribute('data-disc-color', discColor);
+            this.reserveStacksElement.appendChild(stack);
+            this.reserveStacks.push(stack);
+        }
 
         this.boardElement = (playerPanel.closest('.player-board') as HTMLDivElement) ?? playerPanel; //BGA's whole board around our panel
         this.boardElement.classList.add('positioned-player-board');
@@ -58,14 +63,81 @@ export class PlayerHandler{
         });
 
         //ids for TooltipHandler
-        this.playerBoardContainer.querySelector('.reserve-indicator').id = 'reserve-indicator-' + this.playerID;
+        this.reserveStacksElement.id = 'reserve-stacks-' + this.playerID;
         this.playerBoardContainer.querySelector('.passed-stamp').id = 'passed-stamp-' + this.playerID;
     }
 
+    /**
+     * The reserve as the server counts it (gamedatas on setup and F5, every notification): whenever the stacks don't show
+     * exactly this many discs, filled left to right, they are rebuilt from it, so they never drift from the real count.
+     * After a turn's flights (takeDiscs, addDiscs) they normally match already. Discs leave from the top of the rightmost
+     * stack that has any and come back onto the top of the leftmost stack with room, so a reserve of n is always the first n
+     * slots, stack by stack
+     */
     public setReserve(reserve: number): void {
-        this.reserve = reserve;
-        this.reserveCount.textContent = reserve.toString();
-        this.playerBoardContainer.setAttribute('data-empty-reserve', reserve <= 0 ? 'true' : 'false');
+        this.reserve = Math.max(0, reserve);
+        if(!this.reserveStacks.every((stack, stackIndex) => PlayerHandler.getStackDiscs(stack).length === this.getStackHeight(stackIndex)))
+            this.reserveStacks.forEach((stack, stackIndex) => {
+                PlayerHandler.getStackDiscs(stack).forEach(disc => disc.remove());
+                for(let level = 0; level < this.getStackHeight(stackIndex); level++)
+                    PlayerHandler.addStackDisc(stack);
+            });
+        this.game.tooltipHandler?.updateReserveTooltip(this.playerID, this.reserve);
+    }
+
+    //a turn's tower takes count discs, one at a time, each from the top of the rightmost stack that has any. Returns where each
+    //was on screen, in the order taken (Game.animateTowerSlide starts the tower's discs there, bottom disc first), measured
+    //just before it goes; fewer if the stacks run out (setReserve sets them right after the turn)
+    public takeDiscs(count: number): DOMRect[] {
+        const takenRects: DOMRect[] = [];
+        for(let taken = 0; taken < count; taken++){
+            const stack = [...this.reserveStacks].reverse().find(stack => PlayerHandler.getStackDiscs(stack).length > 0);
+            if(!stack)
+                break;
+            const disc = PlayerHandler.getStackDiscs(stack).pop();
+            takenRects.push(disc.getBoundingClientRect());
+            disc.remove();
+        }
+        this.reserve = Math.max(0, this.reserve - count);
+        this.game.tooltipHandler?.updateReserveTooltip(this.playerID, this.reserve);
+        return takenRects;
+    }
+
+    //a replaced tower's count discs come back, one at a time, each onto the top of the leftmost stack with room. Returns the new
+    //discs in the order placed (Game.animateTowerSlideAway lands the tower's discs on them, top disc first). Hidden, they keep
+    //their place until their flight lands and shows them; fewer if the stacks are full (setReserve sets them right after the turn)
+    public addDiscs(count: number, hidden: boolean): HTMLDivElement[] {
+        const addedDiscs: HTMLDivElement[] = [];
+        for(let added = 0; added < count; added++){
+            const stack = this.reserveStacks.find(stack => PlayerHandler.getStackDiscs(stack).length < PlayerHandler.RESERVE_STACK_SIZE);
+            if(!stack)
+                break;
+            const disc = PlayerHandler.addStackDisc(stack);
+            if(hidden)
+                disc.style.visibility = 'hidden';
+            addedDiscs.push(disc);
+        }
+        this.reserve += count;
+        this.game.tooltipHandler?.updateReserveTooltip(this.playerID, this.reserve);
+        return addedDiscs;
+    }
+
+    //how many discs stack stackIndex holds for the current reserve: stacks fill left to right
+    private getStackHeight(stackIndex: number): number {
+        return Math.max(0, Math.min(PlayerHandler.RESERVE_STACK_SIZE, this.reserve - stackIndex * PlayerHandler.RESERVE_STACK_SIZE));
+    }
+
+    private static getStackDiscs(stack: HTMLDivElement): HTMLDivElement[] {
+        return Array.from(stack.querySelectorAll<HTMLDivElement>(':scope > .tower-disc'));
+    }
+
+    //a disc on top of the stack, drawn like a tower's (.tower-disc at its --disc-index)
+    private static addStackDisc(stack: HTMLDivElement): HTMLDivElement {
+        const disc = document.createElement('div');
+        disc.className = 'tower-disc';
+        disc.style.setProperty('--disc-index', PlayerHandler.getStackDiscs(stack).length.toString());
+        stack.appendChild(disc);
+        return disc;
     }
 
     //[BGA] the player's last turn was an automatic pass (no valid move); cleared when they place towers again.
@@ -145,8 +217,8 @@ export class PlayerHandler{
         this.boardElement.classList.add(PlayerHandler.BOUNCE_CLASS);
     }
 
-    //where towers leave from and replaced towers fly back to
-    public getReserveIconElement(): HTMLDivElement { return this.reserveIcon; }
-    public getReserve(): number { return this.reserve; } //as tracked by setReserve()
+    //the stacks' row on screen: where a disc flies from or to when its own disc is missing from the stacks (never expected)
+    public getReserveRect(): DOMRect { return this.reserveStacksElement.getBoundingClientRect(); }
+    public getReserve(): number { return this.reserve; } //as tracked by setReserve(), takeDiscs() and addDiscs()
     public isPassed(): boolean { return this.passed; }
 }

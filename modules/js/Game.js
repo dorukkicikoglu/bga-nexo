@@ -310,6 +310,202 @@ class GameEnd {
  * See http://en.boardgamearena.com/#!doc/Studio for more information.
  * -----
  *
+ * PlayerHandler.ts
+ */
+class PlayerHandler {
+    constructor(game, playerID, reserve, passed) {
+        this.game = game;
+        this.playerID = playerID;
+        this.reserve = reserve;
+        this.passed = passed;
+        this.reserveStacks = []; //left to right
+        this.createPlayerBoardContainer();
+        this.setReserve(this.reserve);
+        this.showPassedStamp(false); //Game.updatePassedStamps() decides once every player board exists
+    }
+    //every player board, spectators included, shows the reserve (its discs as stacks in the player's color) and, after an
+    //automatic pass, a PASSED stamp (shown by data-passed). The score is BGA's own counter: the player's largest group
+    createPlayerBoardContainer() {
+        this.playerBoardContainer = document.createElement('div');
+        this.playerBoardContainer.classList.add('nexo-player-board');
+        this.playerBoardContainer.innerHTML = `
+            <div class="player-board-reserve-row">
+                <div class="reserve-stacks"></div>
+                <div class="passed-stamp"><i class="fa6 fa-forward"></i>${_('Passed')}</div>
+            </div>
+        `;
+        const playerPanel = this.game.bga.playerPanels.getElement(this.playerID);
+        playerPanel.appendChild(this.playerBoardContainer);
+        //each stack is a .nexo-tower box (Game.scss .reserve-stack) holding its discs, bottom first, like a tower
+        this.reserveStacksElement = this.playerBoardContainer.querySelector('.reserve-stacks');
+        const discColor = this.game.getDiscColor(this.playerID);
+        for (let stackIndex = 0; stackIndex < PlayerHandler.RESERVE_STACK_COUNT; stackIndex++) {
+            const stack = document.createElement('div');
+            stack.className = 'nexo-tower reserve-stack';
+            stack.setAttribute('data-disc-color', discColor);
+            this.reserveStacksElement.appendChild(stack);
+            this.reserveStacks.push(stack);
+        }
+        this.boardElement = playerPanel.closest('.player-board') ?? playerPanel; //BGA's whole board around our panel
+        this.boardElement.classList.add('positioned-player-board');
+        this.boardElement.addEventListener('animationend', (event) => {
+            if (event.target === this.boardElement && event.animationName === PlayerHandler.BOUNCE_CLASS)
+                this.boardElement.classList.remove(PlayerHandler.BOUNCE_CLASS);
+        });
+        //ids for TooltipHandler
+        this.reserveStacksElement.id = 'reserve-stacks-' + this.playerID;
+        this.playerBoardContainer.querySelector('.passed-stamp').id = 'passed-stamp-' + this.playerID;
+    }
+    /**
+     * The reserve as the server counts it (gamedatas on setup and F5, every notification): whenever the stacks don't show
+     * exactly this many discs, filled left to right, they are rebuilt from it, so they never drift from the real count.
+     * After a turn's flights (takeDiscs, addDiscs) they normally match already. Discs leave from the top of the rightmost
+     * stack that has any and come back onto the top of the leftmost stack with room, so a reserve of n is always the first n
+     * slots, stack by stack
+     */
+    setReserve(reserve) {
+        this.reserve = Math.max(0, reserve);
+        if (!this.reserveStacks.every((stack, stackIndex) => PlayerHandler.getStackDiscs(stack).length === this.getStackHeight(stackIndex)))
+            this.reserveStacks.forEach((stack, stackIndex) => {
+                PlayerHandler.getStackDiscs(stack).forEach(disc => disc.remove());
+                for (let level = 0; level < this.getStackHeight(stackIndex); level++)
+                    PlayerHandler.addStackDisc(stack);
+            });
+        this.game.tooltipHandler?.updateReserveTooltip(this.playerID, this.reserve);
+    }
+    //a turn's tower takes count discs, one at a time, each from the top of the rightmost stack that has any. Returns where each
+    //was on screen, in the order taken (Game.animateTowerSlide starts the tower's discs there, bottom disc first), measured
+    //just before it goes; fewer if the stacks run out (setReserve sets them right after the turn)
+    takeDiscs(count) {
+        const takenRects = [];
+        for (let taken = 0; taken < count; taken++) {
+            const stack = [...this.reserveStacks].reverse().find(stack => PlayerHandler.getStackDiscs(stack).length > 0);
+            if (!stack)
+                break;
+            const disc = PlayerHandler.getStackDiscs(stack).pop();
+            takenRects.push(disc.getBoundingClientRect());
+            disc.remove();
+        }
+        this.reserve = Math.max(0, this.reserve - count);
+        this.game.tooltipHandler?.updateReserveTooltip(this.playerID, this.reserve);
+        return takenRects;
+    }
+    //a replaced tower's count discs come back, one at a time, each onto the top of the leftmost stack with room. Returns the new
+    //discs in the order placed (Game.animateTowerSlideAway lands the tower's discs on them, top disc first). Hidden, they keep
+    //their place until their flight lands and shows them; fewer if the stacks are full (setReserve sets them right after the turn)
+    addDiscs(count, hidden) {
+        const addedDiscs = [];
+        for (let added = 0; added < count; added++) {
+            const stack = this.reserveStacks.find(stack => PlayerHandler.getStackDiscs(stack).length < PlayerHandler.RESERVE_STACK_SIZE);
+            if (!stack)
+                break;
+            const disc = PlayerHandler.addStackDisc(stack);
+            if (hidden)
+                disc.style.visibility = 'hidden';
+            addedDiscs.push(disc);
+        }
+        this.reserve += count;
+        this.game.tooltipHandler?.updateReserveTooltip(this.playerID, this.reserve);
+        return addedDiscs;
+    }
+    //how many discs stack stackIndex holds for the current reserve: stacks fill left to right
+    getStackHeight(stackIndex) {
+        return Math.max(0, Math.min(PlayerHandler.RESERVE_STACK_SIZE, this.reserve - stackIndex * PlayerHandler.RESERVE_STACK_SIZE));
+    }
+    static getStackDiscs(stack) {
+        return Array.from(stack.querySelectorAll(':scope > .tower-disc'));
+    }
+    //a disc on top of the stack, drawn like a tower's (.tower-disc at its --disc-index)
+    static addStackDisc(stack) {
+        const disc = document.createElement('div');
+        disc.className = 'tower-disc';
+        disc.style.setProperty('--disc-index', PlayerHandler.getStackDiscs(stack).length.toString());
+        stack.appendChild(disc);
+        return disc;
+    }
+    //[BGA] the player's last turn was an automatic pass (no valid move); cleared when they place towers again.
+    //Whether the stamp shows is Game.updatePassedStamps()'s call: never when both passed (the game is over)
+    setPassed(passed) {
+        this.passed = passed;
+        this.game.updatePassedStamps();
+    }
+    showPassedStamp(show) {
+        this.playerBoardContainer.setAttribute('data-passed', show ? 'true' : 'false');
+    }
+    //[BGA] a pass, seen by everyone: a big PASSED stamp with the player's name pops in at the centre of the screen, holds,
+    //then shrinks onto this board's PASSED stamp. The player is marked passed as it lands: the board's stamp fades in under
+    //it, or, when it doesn't show (both players passed: the game is over), the banner fades out where it landed.
+    //The banner is in <body>, outside BGA's mobile scaling: it converts screen px with its own measured zoom, like
+    //Game.getSlidingCloneTransform. Its transform holds its rotation (the stamp's rotate), so translate is never rotated
+    async animatePass() {
+        const passedStamp = this.playerBoardContainer.querySelector('.passed-stamp');
+        const rotation = getComputedStyle(passedStamp).rotate;
+        const rotate = (rotation && rotation !== 'none') ? rotation : '0deg';
+        const banner = document.createElement('div');
+        banner.classList.add('passed-banner');
+        banner.innerHTML = `<div class="passed-banner-name">${this.game.divColoredPlayer(this.playerID, { class: 'playername' })}</div><i class="fa6 fa-forward"></i>${_('Passed')}`;
+        banner.style.opacity = '0';
+        document.body.appendChild(banner);
+        const bannerRect = banner.getBoundingClientRect(); //unrotated: no transform yet
+        const cssWidth = parseFloat(getComputedStyle(banner).width);
+        const zoom = (cssWidth > 0) ? bannerRect.width / cssWidth : 1;
+        const transformTo = (dx, dy, scale) => `translate(${dx / zoom}px, ${dy / zoom}px) scale(${scale}) rotate(${rotate})`;
+        banner.style.transform = transformTo(0, 0, 1.4);
+        await this.game.bga.gameui.wait(20); //let the start paint before the transition kicks in
+        banner.style.transition = `transform ${Game.PASS_BANNER_POP_DURATION}ms ease-out, opacity ${Game.PASS_BANNER_POP_DURATION}ms ease-out`;
+        banner.style.transform = transformTo(0, 0, 1);
+        banner.style.opacity = '1';
+        await this.game.bga.gameui.wait(Game.PASS_BANNER_POP_DURATION + Game.PASS_BANNER_HOLD);
+        //the board's stamp, measured unrotated now (the page may have scrolled during the hold); hidden, it keeps its place
+        passedStamp.style.rotate = '0deg';
+        const stampRect = passedStamp.getBoundingClientRect();
+        passedStamp.style.rotate = '';
+        const dx = (stampRect.left + stampRect.width / 2) - (bannerRect.left + bannerRect.width / 2);
+        const dy = (stampRect.top + stampRect.height / 2) - (bannerRect.top + bannerRect.height / 2);
+        const scale = (bannerRect.width > 0) ? stampRect.width / bannerRect.width : 1;
+        banner.classList.add('passed-banner-flying'); //the name fades out on the way
+        banner.style.transition = `transform ${Game.PASS_BANNER_FLIGHT_DURATION}ms ease-in-out`;
+        banner.style.transform = transformTo(dx, dy, scale);
+        await this.game.bga.gameui.wait(Game.PASS_BANNER_FLIGHT_DURATION);
+        this.setPassed(true);
+        if (this.playerBoardContainer.getAttribute('data-passed') !== 'true') {
+            banner.style.transition = `opacity ${Game.PASS_BANNER_SETTLE_DURATION}ms ease`;
+            banner.style.opacity = '0';
+        }
+        await this.game.bga.gameui.wait(Game.PASS_BANNER_SETTLE_DURATION);
+        banner.remove();
+    }
+    //every live score change goes through here: BGA's score counter is the player's largest group
+    setScore(score) {
+        this.game.bga.playerPanels.getScoreCounter(this.playerID)?.toValue(score);
+    }
+    //the one shared bounce (discs given back by a replacement land on this board), removed on animationend
+    bounceBoard() {
+        if (!this.game.bga.gameui.bgaAnimationsActive())
+            return;
+        this.boardElement.classList.remove(PlayerHandler.BOUNCE_CLASS);
+        void this.boardElement.offsetWidth; //restarts a bounce still playing
+        this.boardElement.classList.add(PlayerHandler.BOUNCE_CLASS);
+    }
+    //the stacks' row on screen: where a disc flies from or to when its own disc is missing from the stacks (never expected)
+    getReserveRect() { return this.reserveStacksElement.getBoundingClientRect(); }
+    getReserve() { return this.reserve; } //as tracked by setReserve(), takeDiscs() and addDiscs()
+    isPassed() { return this.passed; }
+}
+PlayerHandler.BOUNCE_CLASS = 'bouncing-player-board'; //the one shared bounce class, its timing lives in Game.scss
+//the reserve: RESERVE_STACK_COUNT stacks of up to RESERVE_STACK_SIZE discs side by side, DISCS_PER_PLAYER (25) in all
+PlayerHandler.RESERVE_STACK_COUNT = 5;
+PlayerHandler.RESERVE_STACK_SIZE = 5;
+
+/**
+ *------
+ * BGA framework: Gregory Isabelli & Emmanuel Colin & BoardGameArena
+ * Nexo implementation : © Doruk Kicikoglu <doruk.kicikoglu@gmail.com>
+ *
+ * This code has been produced on the BGA studio platform for use on http://boardgamearena.com.
+ * See http://en.boardgamearena.com/#!doc/Studio for more information.
+ * -----
+ *
  * BoardHandler.ts
  */
 /**
@@ -568,11 +764,11 @@ class BoardHandler {
     }
     /**
      * A confirmed turn, played one spot at a time in the order the turn was drafted (the payload's order): on each spot, the
-     * replaced enemy tower (if any) flies back to its owner's reserve on their player board, top disc first, while the new
-     * tower flies from the player's reserve onto it, bottom disc first (discs TOWER_DISC_STAGGER apart); once every disc has
-     * landed, the next spot starts. A tower I drafted is already in place: it stays drafted until its spot comes, then just
-     * becomes solid. With animations off nothing flies and nothing is awaited: every spot applies at once. Resolves once
-     * every tower has landed.
+     * replaced enemy tower (if any) flies back onto its owner's reserve stacks on their player board, top disc first, while
+     * the new tower's discs fly from the top of the player's stacks onto it, bottom disc first (discs TOWER_DISC_STAGGER
+     * apart); once every disc has landed, the next spot starts. A tower I drafted is already in place: it stays drafted
+     * until its spot comes, then just becomes solid (its discs leave my stacks then). With animations off nothing flies and
+     * nothing is awaited: every spot applies at once, stacks included. Resolves once every tower has landed.
      */
     async applyPlacements(playerID, placements) {
         //the turn is over: no more clicks while it animates (the next PlaceTowers sets a handler again)
@@ -594,29 +790,39 @@ class BoardHandler {
         draftedElements.forEach(element => element.remove()); //never expected: the server keeps every drafted tower
         this.renderSpots();
     }
-    //one spot of a confirmed turn: swaps its towers on the board and returns the flights to await (none with animations off,
-    //or for a tower I drafted that replaces nothing)
+    //one spot of a confirmed turn: swaps its towers on the board, moves their discs between the player boards' reserve stacks
+    //(with animations off too, so the stacks match the turn) and returns the flights to await (none with animations off, or for
+    //a tower I drafted that replaces nothing)
     applyPlacement(playerID, placement, draftedElements, animate) {
         const key = BoardRules.key(placement.x, placement.y);
         const flights = [];
+        //the replaced tower's discs go back onto its owner's stacks, top disc first: the first disc placed is the top one's
         const replacedElement = this.towerElements.get(key);
         if (replacedElement) {
             this.towerElements.delete(key);
             const owner = this.game.players[placement.replaced_player_id ?? 0];
-            if (animate && owner)
-                flights.push(this.game.animateTowerSlideAway(replacedElement, owner.getReserveIconElement().getBoundingClientRect(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }));
+            if (owner) {
+                const replacedHeight = placement.replaced_height ?? parseInt(replacedElement.getAttribute('data-height'));
+                const placedDiscs = owner.addDiscs(replacedHeight, animate);
+                if (animate) {
+                    const landingDiscs = Array.from({ length: replacedHeight }, (_, discIndex) => placedDiscs[replacedHeight - 1 - discIndex] ?? null);
+                    flights.push(this.game.animateTowerSlideAway(replacedElement, landingDiscs, owner.getReserveRect(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }));
+                }
+            }
             replacedElement.remove();
         }
         const towerElement = this.addBoardTower({ x: placement.x, y: placement.y, player_id: playerID, height: placement.height });
+        //the new tower's discs leave the player's stacks, bottom disc first: the first disc taken is the bottom one's
+        const mover = this.game.players[playerID];
+        const takenDiscRects = mover?.takeDiscs(placement.height) ?? [];
         const draftedElement = draftedElements.get(key);
         if (draftedElement) {
             draftedElement.remove();
             draftedElements.delete(key);
             return flights;
         }
-        const mover = this.game.players[playerID];
         if (animate && mover)
-            flights.push(this.game.animateTowerSlide(towerElement, mover.getReserveIconElement(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }));
+            flights.push(this.game.animateTowerSlide(towerElement, takenDiscRects, mover.getReserveRect(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }));
         return flights;
     }
     //end of the game: each player's largest group(s) glow in their color, every other tower dims
@@ -630,133 +836,6 @@ class BoardHandler {
         }
     }
 }
-
-/**
- *------
- * BGA framework: Gregory Isabelli & Emmanuel Colin & BoardGameArena
- * Nexo implementation : © Doruk Kicikoglu <doruk.kicikoglu@gmail.com>
- *
- * This code has been produced on the BGA studio platform for use on http://boardgamearena.com.
- * See http://en.boardgamearena.com/#!doc/Studio for more information.
- * -----
- *
- * PlayerHandler.ts
- */
-class PlayerHandler {
-    constructor(game, playerID, reserve, passed) {
-        this.game = game;
-        this.playerID = playerID;
-        this.reserve = reserve;
-        this.passed = passed;
-        this.createPlayerBoardContainer();
-        this.setReserve(this.reserve);
-        this.showPassedStamp(false); //Game.updatePassedStamps() decides once every player board exists
-    }
-    //every player board, spectators included, shows the reserve (a disc in the player's color and its count) and, after an
-    //automatic pass, a PASSED stamp (shown by data-passed). The score is BGA's own counter: the player's largest group
-    createPlayerBoardContainer() {
-        this.playerBoardContainer = document.createElement('div');
-        this.playerBoardContainer.classList.add('nexo-player-board');
-        this.playerBoardContainer.innerHTML = `
-            <div class="player-board-reserve-row">
-                <div class="reserve-indicator">
-                    <span class="reserve-icon-slot"></span>
-                    <span class="reserve-times">×</span>
-                    <span class="reserve-count"></span>
-                </div>
-                <div class="passed-stamp"><i class="fa6 fa-forward"></i>${_('Passed')}</div>
-            </div>
-        `;
-        const playerPanel = this.game.bga.playerPanels.getElement(this.playerID);
-        playerPanel.appendChild(this.playerBoardContainer);
-        this.reserveIcon = BoardHandler.createTowerDiv(this.game.getDiscColor(this.playerID), 1, 'mini-tower reserve-tower-icon');
-        this.playerBoardContainer.querySelector('.reserve-icon-slot').appendChild(this.reserveIcon);
-        this.reserveCount = this.playerBoardContainer.querySelector('.reserve-count');
-        this.boardElement = playerPanel.closest('.player-board') ?? playerPanel; //BGA's whole board around our panel
-        this.boardElement.classList.add('positioned-player-board');
-        this.boardElement.addEventListener('animationend', (event) => {
-            if (event.target === this.boardElement && event.animationName === PlayerHandler.BOUNCE_CLASS)
-                this.boardElement.classList.remove(PlayerHandler.BOUNCE_CLASS);
-        });
-        //ids for TooltipHandler
-        this.playerBoardContainer.querySelector('.reserve-indicator').id = 'reserve-indicator-' + this.playerID;
-        this.playerBoardContainer.querySelector('.passed-stamp').id = 'passed-stamp-' + this.playerID;
-    }
-    setReserve(reserve) {
-        this.reserve = reserve;
-        this.reserveCount.textContent = reserve.toString();
-        this.playerBoardContainer.setAttribute('data-empty-reserve', reserve <= 0 ? 'true' : 'false');
-    }
-    //[BGA] the player's last turn was an automatic pass (no valid move); cleared when they place towers again.
-    //Whether the stamp shows is Game.updatePassedStamps()'s call: never when both passed (the game is over)
-    setPassed(passed) {
-        this.passed = passed;
-        this.game.updatePassedStamps();
-    }
-    showPassedStamp(show) {
-        this.playerBoardContainer.setAttribute('data-passed', show ? 'true' : 'false');
-    }
-    //[BGA] a pass, seen by everyone: a big PASSED stamp with the player's name pops in at the centre of the screen, holds,
-    //then shrinks onto this board's PASSED stamp. The player is marked passed as it lands: the board's stamp fades in under
-    //it, or, when it doesn't show (both players passed: the game is over), the banner fades out where it landed.
-    //The banner is in <body>, outside BGA's mobile scaling: it converts screen px with its own measured zoom, like
-    //Game.getSlidingCloneTransform. Its transform holds its rotation (the stamp's rotate), so translate is never rotated
-    async animatePass() {
-        const passedStamp = this.playerBoardContainer.querySelector('.passed-stamp');
-        const rotation = getComputedStyle(passedStamp).rotate;
-        const rotate = (rotation && rotation !== 'none') ? rotation : '0deg';
-        const banner = document.createElement('div');
-        banner.classList.add('passed-banner');
-        banner.innerHTML = `<div class="passed-banner-name">${this.game.divColoredPlayer(this.playerID, { class: 'playername' })}</div><i class="fa6 fa-forward"></i>${_('Passed')}`;
-        banner.style.opacity = '0';
-        document.body.appendChild(banner);
-        const bannerRect = banner.getBoundingClientRect(); //unrotated: no transform yet
-        const cssWidth = parseFloat(getComputedStyle(banner).width);
-        const zoom = (cssWidth > 0) ? bannerRect.width / cssWidth : 1;
-        const transformTo = (dx, dy, scale) => `translate(${dx / zoom}px, ${dy / zoom}px) scale(${scale}) rotate(${rotate})`;
-        banner.style.transform = transformTo(0, 0, 1.4);
-        await this.game.bga.gameui.wait(20); //let the start paint before the transition kicks in
-        banner.style.transition = `transform ${Game.PASS_BANNER_POP_DURATION}ms ease-out, opacity ${Game.PASS_BANNER_POP_DURATION}ms ease-out`;
-        banner.style.transform = transformTo(0, 0, 1);
-        banner.style.opacity = '1';
-        await this.game.bga.gameui.wait(Game.PASS_BANNER_POP_DURATION + Game.PASS_BANNER_HOLD);
-        //the board's stamp, measured unrotated now (the page may have scrolled during the hold); hidden, it keeps its place
-        passedStamp.style.rotate = '0deg';
-        const stampRect = passedStamp.getBoundingClientRect();
-        passedStamp.style.rotate = '';
-        const dx = (stampRect.left + stampRect.width / 2) - (bannerRect.left + bannerRect.width / 2);
-        const dy = (stampRect.top + stampRect.height / 2) - (bannerRect.top + bannerRect.height / 2);
-        const scale = (bannerRect.width > 0) ? stampRect.width / bannerRect.width : 1;
-        banner.classList.add('passed-banner-flying'); //the name fades out on the way
-        banner.style.transition = `transform ${Game.PASS_BANNER_FLIGHT_DURATION}ms ease-in-out`;
-        banner.style.transform = transformTo(dx, dy, scale);
-        await this.game.bga.gameui.wait(Game.PASS_BANNER_FLIGHT_DURATION);
-        this.setPassed(true);
-        if (this.playerBoardContainer.getAttribute('data-passed') !== 'true') {
-            banner.style.transition = `opacity ${Game.PASS_BANNER_SETTLE_DURATION}ms ease`;
-            banner.style.opacity = '0';
-        }
-        await this.game.bga.gameui.wait(Game.PASS_BANNER_SETTLE_DURATION);
-        banner.remove();
-    }
-    //every live score change goes through here: BGA's score counter is the player's largest group
-    setScore(score) {
-        this.game.bga.playerPanels.getScoreCounter(this.playerID)?.toValue(score);
-    }
-    //the one shared bounce (discs given back by a replacement land on this board), removed on animationend
-    bounceBoard() {
-        if (!this.game.bga.gameui.bgaAnimationsActive())
-            return;
-        this.boardElement.classList.remove(PlayerHandler.BOUNCE_CLASS);
-        void this.boardElement.offsetWidth; //restarts a bounce still playing
-        this.boardElement.classList.add(PlayerHandler.BOUNCE_CLASS);
-    }
-    //where towers leave from and replaced towers fly back to
-    getReserveIconElement() { return this.reserveIcon; }
-    getReserve() { return this.reserve; } //as tracked by setReserve()
-    isPassed() { return this.passed; }
-}
-PlayerHandler.BOUNCE_CLASS = 'bouncing-player-board'; //the one shared bounce class, its timing lives in Game.scss
 
 class LogMutationObserver {
     constructor(game) {
@@ -926,13 +1005,19 @@ class TooltipHandler {
     }
     addTooltipsToBoards() {
         for (const player_id in this.game.players) {
-            this.game.bga.gameui.addTooltip('reserve-indicator-' + player_id, _('Discs in reserve. Discs of a replaced tower come back here.'), '', TooltipHandler.TOOLTIP_DELAY);
+            this.updateReserveTooltip(parseInt(player_id), this.game.players[player_id].getReserve());
             this.game.bga.gameui.addTooltip('passed-stamp-' + player_id, _('No valid move on the last turn: passed automatically. Back in the game as soon as a move is possible.'), '', TooltipHandler.TOOLTIP_DELAY);
             //BGA's score: the largest group
             const scoreElement = document.getElementById('player_score_' + player_id);
             if (scoreElement)
                 this.game.bga.gameui.addTooltip(scoreElement.id, _('Score: the number of towers in your largest area of orthogonally connected towers'), '', TooltipHandler.TOOLTIP_DELAY);
         }
+    }
+    //the reserve stacks: the exact number of discs left, kept current by PlayerHandler on every change (adding a tooltip to the
+    //same id again replaces it, like Riviera's updateDieTooltip)
+    updateReserveTooltip(playerID, reserve) {
+        const countText = (reserve === 1) ? _('1 disc left') : _('${count} discs left').replace('${count}', reserve.toString());
+        this.game.bga.gameui.addTooltipHtml('reserve-stacks-' + playerID, `<b>${countText}</b><br>${_('Discs in reserve. Discs of a replaced tower come back here.')}`, TooltipHandler.TOOLTIP_DELAY);
     }
 }
 TooltipHandler.TOOLTIP_DELAY = 400;
@@ -1276,38 +1361,53 @@ class Game {
         return html;
     }
     getAttributesHTML(attributes) { return Object.entries(attributes || {}).map(([key, value]) => `${key}="${value}"`).join(' '); }
-    //a tower already on its spot (BoardHandler.createTowerDiv) flies in from `from` (a player board's reserve disc), one disc
-    //at a time: each disc flies on its own, bottom disc first and staggerMs apart, as a copy of the whole tower with every
-    //other disc hidden, so it starts and lands exactly where it sits in the tower. Each copy starts at the size `from` has on
-    //screen and lands at the tower's own size and place, so nothing jumps at the end. Each disc shows in the tower as it
-    //lands, the height number with the top one. Everything is measured on screen (getBoundingClientRect), and the copies
-    //(in <body>, outside BGA's mobile scaling of the game area) convert screen px with their measured zoom, so they match on
-    //desktop and mobile alike. Resolves once the top disc has landed. Everything before the first await runs synchronously
-    async animateTowerSlide(towerElement, from, durationMs, staggerMs = Game.TOWER_DISC_STAGGER, options = {}) {
-        const startRect = from.getBoundingClientRect();
+    //a tower already on its spot (BoardHandler.createTowerDiv) flies in from its player board's reserve stacks, one disc at a
+    //time: each disc flies on its own, bottom disc first and staggerMs apart, as a copy of the whole tower with every other disc
+    //hidden. Disc i starts exactly over the reserve disc it was taken from, fromDiscRects[i] (PlayerHandler.takeDiscs, already
+    //gone from the stacks: the copy takes its place), or with the whole copy over fallbackFromRect if it has none. Each copy
+    //lands at the tower's own size and place, so nothing jumps at the end. Each disc shows in the tower as it lands, the height
+    //number with the top one. Everything is measured on screen (getBoundingClientRect), and the copies (in <body>, outside
+    //BGA's mobile scaling of the game area) convert screen px with their measured zoom, so they match on desktop and mobile
+    //alike. Resolves once the top disc has landed. Everything before the first await runs synchronously
+    async animateTowerSlide(towerElement, fromDiscRects, fallbackFromRect, durationMs, staggerMs = Game.TOWER_DISC_STAGGER, options = {}) {
         const toRect = towerElement.getBoundingClientRect();
         const discParts = Game.getTowerDiscParts(towerElement);
         const slidingClones = discParts.map((_, discIndex) => this.createDiscSlidingClone(towerElement, discIndex)); //before the tower's own discs are hidden
+        const startRects = slidingClones.map((slidingClone, discIndex) => fromDiscRects[discIndex] ? this.getCloneRectOverDisc(slidingClone, discIndex, fromDiscRects[discIndex]) : fallbackFromRect);
         discParts.forEach(part => part.forEach(element => element.style.visibility = 'hidden'));
         await Promise.all(slidingClones.map(async (slidingClone, discIndex) => {
-            await this.moveSlidingClone(slidingClone, startRect, toRect, durationMs, { ...options, delayMs: (options.delayMs ?? 0) + discIndex * staggerMs });
+            await this.moveSlidingClone(slidingClone, startRects[discIndex], toRect, durationMs, { ...options, delayMs: (options.delayMs ?? 0) + discIndex * staggerMs });
             discParts[discIndex].forEach(element => element.style.visibility = null);
         }));
     }
-    //the other way round: a tower flies from its spot to toRect on screen (its owner's reserve disc) and disappears, one disc
-    //at a time: top disc first, staggerMs apart, each a copy of the whole tower with every other disc hidden (the height number
-    //leaves with the top one). The copies show at the opacity the tower shows at, which they don't inherit in <body>. The
-    //tower can be removed as soon as this is called
-    async animateTowerSlideAway(towerElement, toRect, durationMs, staggerMs = Game.TOWER_DISC_STAGGER, options = {}) {
+    //the other way round: a tower flies from its spot back to its owner's reserve stacks and disappears, one disc at a time: top
+    //disc first, staggerMs apart, each a copy of the whole tower with every other disc hidden (the height number leaves with
+    //the top one). Disc i lands exactly on landingDiscs[i] (PlayerHandler.addDiscs, hidden until then), which shows as it
+    //lands, or with the whole copy over fallbackToRect if it has none. The copies show at the opacity the tower shows at,
+    //which they don't inherit in <body>. The tower can be removed as soon as this is called
+    async animateTowerSlideAway(towerElement, landingDiscs, fallbackToRect, durationMs, staggerMs = Game.TOWER_DISC_STAGGER, options = {}) {
         const fromRect = towerElement.getBoundingClientRect();
         const shownOpacity = Game.getShownOpacity(towerElement);
         const discCount = Game.getTowerDiscParts(towerElement).length;
-        await Promise.all(Array.from({ length: discCount }, (_, discIndex) => {
+        await Promise.all(Array.from({ length: discCount }, async (_, discIndex) => {
             const slidingClone = this.createDiscSlidingClone(towerElement, discIndex);
             if (shownOpacity < 1)
                 slidingClone.style.opacity = shownOpacity.toString();
-            return this.moveSlidingClone(slidingClone, fromRect, toRect, durationMs, { ...options, delayMs: (options.delayMs ?? 0) + (discCount - 1 - discIndex) * staggerMs });
+            const landingDisc = landingDiscs[discIndex] ?? null;
+            const toRect = landingDisc ? this.getCloneRectOverDisc(slidingClone, discIndex, landingDisc.getBoundingClientRect()) : fallbackToRect;
+            await this.moveSlidingClone(slidingClone, fromRect, toRect, durationMs, { ...options, delayMs: (options.delayMs ?? 0) + (discCount - 1 - discIndex) * staggerMs });
+            if (landingDisc)
+                landingDisc.style.visibility = null;
         }));
+    }
+    //the on-screen rect the whole copy (a fresh createDiscSlidingClone, untransformed) must cover for its disc discIndex to lie
+    //exactly over discRect, a disc of the same art at any size (a reserve stack's): scaled by the discs' widths, aligned on their
+    //top-left corners, so the top faces match. Read by getSlidingCloneTransform, which scales by height and centres by width
+    getCloneRectOverDisc(slidingClone, discIndex, discRect) {
+        const boxRect = slidingClone.getBoundingClientRect();
+        const cloneDiscRect = Game.getTowerDiscParts(slidingClone)[discIndex][0].getBoundingClientRect();
+        const scale = (cloneDiscRect.width > 0) ? discRect.width / cloneDiscRect.width : 1;
+        return new DOMRect(discRect.left - (cloneDiscRect.left - boxRect.left) * scale, discRect.top - (cloneDiscRect.top - boxRect.top) * scale, boxRect.width * scale, boxRect.height * scale);
     }
     //a tower's discs, bottom first, each with what shows and goes with it: the top disc carries the height number
     static getTowerDiscParts(towerElement) {
@@ -1407,13 +1507,11 @@ class Game {
         });
     }
     // Add the notification handlers
-    //a confirmed turn: the player's discs leave their reserve, then spot by spot the replaced tower flies back to its owner's
-    //reserve while the new tower flies to its spot; then the reserves update, the boards that got discs back bounce, the
-    //scores update and the board re-centres
+    //a confirmed turn: spot by spot, the replaced tower flies back onto its owner's reserve stacks while the new tower's discs
+    //leave the player's stacks for its spot (BoardHandler.applyPlacements); then the reserves are checked against the server's
+    //count (rebuilt if they differ), the boards that got discs back bounce, the scores update and the board re-centres
     async notif_towersPlaced(args) {
-        const mover = this.players[args.player_id];
-        mover?.setReserve(args.reserves[args.player_id] ?? mover.getReserve());
-        mover?.setPassed(false);
+        this.players[args.player_id]?.setPassed(false);
         await this.boardHandler.applyPlacements(args.player_id, args.placements);
         const playerIDsGivenBack = new Set(args.placements.filter(placement => placement.kind === 'replace' && placement.replaced_player_id !== null).map(placement => placement.replaced_player_id));
         for (let player_id in args.reserves)

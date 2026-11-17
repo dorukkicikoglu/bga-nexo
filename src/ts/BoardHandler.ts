@@ -321,11 +321,11 @@ export class BoardHandler {
 
     /**
      * A confirmed turn, played one spot at a time in the order the turn was drafted (the payload's order): on each spot, the
-     * replaced enemy tower (if any) flies back to its owner's reserve on their player board, top disc first, while the new
-     * tower flies from the player's reserve onto it, bottom disc first (discs TOWER_DISC_STAGGER apart); once every disc has
-     * landed, the next spot starts. A tower I drafted is already in place: it stays drafted until its spot comes, then just
-     * becomes solid. With animations off nothing flies and nothing is awaited: every spot applies at once. Resolves once
-     * every tower has landed.
+     * replaced enemy tower (if any) flies back onto its owner's reserve stacks on their player board, top disc first, while
+     * the new tower's discs fly from the top of the player's stacks onto it, bottom disc first (discs TOWER_DISC_STAGGER
+     * apart); once every disc has landed, the next spot starts. A tower I drafted is already in place: it stays drafted
+     * until its spot comes, then just becomes solid (its discs leave my stacks then). With animations off nothing flies and
+     * nothing is awaited: every spot applies at once, stacks included. Resolves once every tower has landed.
      */
     public async applyPlacements(playerID: number, placements: NexoPlacement[]): Promise<void> {
         //the turn is over: no more clicks while it animates (the next PlaceTowers sets a handler again)
@@ -350,22 +350,34 @@ export class BoardHandler {
         this.renderSpots();
     }
 
-    //one spot of a confirmed turn: swaps its towers on the board and returns the flights to await (none with animations off,
-    //or for a tower I drafted that replaces nothing)
+    //one spot of a confirmed turn: swaps its towers on the board, moves their discs between the player boards' reserve stacks
+    //(with animations off too, so the stacks match the turn) and returns the flights to await (none with animations off, or for
+    //a tower I drafted that replaces nothing)
     private applyPlacement(playerID: number, placement: NexoPlacement, draftedElements: Map<string, HTMLDivElement>, animate: boolean): Promise<void>[] {
         const key = BoardRules.key(placement.x, placement.y);
         const flights: Promise<void>[] = [];
 
+        //the replaced tower's discs go back onto its owner's stacks, top disc first: the first disc placed is the top one's
         const replacedElement = this.towerElements.get(key);
         if(replacedElement){
             this.towerElements.delete(key);
             const owner = this.game.players[placement.replaced_player_id ?? 0];
-            if(animate && owner)
-                flights.push(this.game.animateTowerSlideAway(replacedElement, owner.getReserveIconElement().getBoundingClientRect(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }));
+            if(owner){
+                const replacedHeight = placement.replaced_height ?? parseInt(replacedElement.getAttribute('data-height'));
+                const placedDiscs = owner.addDiscs(replacedHeight, animate);
+                if(animate){
+                    const landingDiscs = Array.from({ length: replacedHeight }, (_, discIndex) => placedDiscs[replacedHeight - 1 - discIndex] ?? null);
+                    flights.push(this.game.animateTowerSlideAway(replacedElement, landingDiscs, owner.getReserveRect(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }));
+                }
+            }
             replacedElement.remove();
         }
 
         const towerElement = this.addBoardTower({ x: placement.x, y: placement.y, player_id: playerID, height: placement.height });
+
+        //the new tower's discs leave the player's stacks, bottom disc first: the first disc taken is the bottom one's
+        const mover = this.game.players[playerID];
+        const takenDiscRects = mover?.takeDiscs(placement.height) ?? [];
 
         const draftedElement = draftedElements.get(key);
         if(draftedElement){
@@ -374,9 +386,8 @@ export class BoardHandler {
             return flights;
         }
 
-        const mover = this.game.players[playerID];
         if(animate && mover)
-            flights.push(this.game.animateTowerSlide(towerElement, mover.getReserveIconElement(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }));
+            flights.push(this.game.animateTowerSlide(towerElement, takenDiscRects, mover.getReserveRect(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }));
         return flights;
     }
 

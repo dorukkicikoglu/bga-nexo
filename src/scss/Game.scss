@@ -18,22 +18,22 @@
 $cell-size: min(5.6vw, 72px); //one spot of the grid on desktop, the default; the board sets its own (BoardHandler.fitToViewport)
 $mobile-cell-size: 76px; //BGA lays the game out at 740px or more and scales it down on a phone (gameinfos game_interface_width)
 $log-snapshot-cell-size: 24px; //one spot of a log row's board snapshot (a 5x5 board: 5 of them across), scaled down only in a row too narrow for it
-$mini-cell-size: 26px; //the reserve disc on player boards
 
 //a tower's discs, as shares of --cell-size: each disc's width, its top face's height (a share of the disc's width: the
 //perspective), each disc's thickness, and the gap under the bottom disc. A 5-disc tower stays inside its own spot
 $disc-width-ratio: 0.78;
 $disc-face-ratio: 0.45;
-$disc-thickness-ratio: 0.09;
+$disc-thickness-ratio: 0.1;
 $tower-base-ratio: 0.08;
 
 //disc colors: face (its top), face-light (the highlight on the top), side and side-dark (the edge, lit in the middle), and the
 //seam between two stacked discs, like the real game's thin dark gaps: seam-above, a 1px line along the upper disc's lower edge,
 //and seam-below, a 1px line just under it, along the lower disc's rim. Red: a lighter edge over a maroon line. Black: a dark
-//line would not show on black, so a dark gap over a grey highlight on the lower disc's rim
+//line would not show on black, so a dark gap over a grey highlight on the lower disc's rim. The same seams on the board, the
+//log, the height menu and the player boards' reserve stacks
 $disc-colors: (
-    "red": (face: #d42a20, face-light: #ff6a5c, side: #a8150e, side-dark: #6a0905, number: #ffffff, seam-above: rgba(255, 140, 125, 0.55), seam-below: #3a0402),
-    "black": (face: #2b2c31, face-light: #63656e, side: #17181b, side-dark: #050506, number: #ffffff, seam-above: #000000, seam-below: rgba(150, 153, 164, 0.6)),
+    "red": (face: #d42a20, face-light: #ff6a5c, side: #a8150e, side-dark: #6a0905, number: #ffffff, seam-above: rgba(255, 150, 135, 0.75), seam-below: #240100),
+    "black": (face: #2b2c31, face-light: #63656e, side: #17181b, side-dark: #050506, number: #ffffff, seam-above: #000000, seam-below: rgba(178, 181, 192, 0.8)),
 );
 
 $pending-tower-opacity: 0.6; //a tower of the turn being drafted
@@ -108,6 +108,14 @@ $selected-spot-color: #ffc400; //the spot waiting for its height
 //player boards (BGA's .player-board) and log rows
 $panel-background: linear-gradient(160deg, $marble-white 0%, $marble-white-shade 100%);
 $panel-border-color: rgba($material-charcoal, 0.08);
+//the reserve on player boards (PlayerHandler): 5 stacks of up to 5 discs side by side, each a .nexo-tower box of this size
+//(5 x 28px + 4 x 1px = 144px, narrower than BGA's player board; about 32px tall)
+$reserve-stack-cell-size: 28px;
+$reserve-stack-disc-thickness-ratio: 0.14; //thicker than a board tower's ($disc-thickness-ratio): about 4px a disc, so each disc and its seam read at this size
+//a stack's box is taller than wide, just enough for 5 of these discs (a board tower's box is square)
+$reserve-stack-height-ratio: $tower-base-ratio + 5 * $reserve-stack-disc-thickness-ratio + $disc-width-ratio * $disc-face-ratio;
+$reserve-stack-gap: 1px; //between two stacks (a disc is narrower than its box, so they never touch)
+$reserve-slot-color: rgba($material-charcoal, 0.2); //an empty stack's dashed outline, where its bottom disc goes
 $log-text-color: #1f1f21; //near-black
 $log-background-default: linear-gradient(135deg, $marble-white, $marble-white-shade);
 $log-background-towers-placed: linear-gradient(90deg, rgba($marble-white, 0.97), rgba($marble-white-shade, 0.95));
@@ -253,10 +261,6 @@ $passed-banner-z-index: 1000;
         --disc-seam-above: #{map.get($colors, seam-above)}; --disc-seam-below: #{map.get($colors, seam-below)};
     }
 }
-//a single disc with no number: the reserve on player boards
-.nexo-tower.mini-tower{ --cell-size: #{$mini-cell-size};
-    .tower-height-number{ display: none; }
-}
 //the "Show stack heights" preference off (PrefHandler.applyStackHeights, a class on <html>): no number on any tower, on the
 //board, the flying copies, the height menu or the log rows. The numbers stay in the page, only hidden
 html.hide-stack-heights .tower-height-number{ display: none; }
@@ -375,14 +379,17 @@ $height-menu-z-index: 948;
 //BGA's own player boards, in the board's marble with a lighter slab shadow (#player_boards: beats BGA's .player-board)
 #player_boards .player-board{ background: $panel-background; border-color: $panel-border-color; box-shadow: $panel-shadow; }
 .nexo-player-board{ margin-top: 6px;
-    .player-board-reserve-row{ position: relative; display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 30px; }
-    .reserve-indicator{ display: flex; align-items: center; gap: 3px; font-size: 16px; font-weight: bold; color: #27271c;
-        .reserve-icon-slot{ display: flex; align-items: center; margin: -4px 0px; }
-        .reserve-times{ font-weight: normal; opacity: 0.7; }
+    .player-board-reserve-row{ position: relative; display: flex; align-items: center; min-height: 30px; }
+    //the reserve (PlayerHandler): the stacks side by side, each a tower box with its own size and disc thickness, its discs
+    //bottom first. Every stack shows a faint outline where its bottom disc goes, so an empty one keeps its place
+    .reserve-stacks{ display: flex; gap: $reserve-stack-gap; }
+    .nexo-tower.reserve-stack{ --cell-size: #{$reserve-stack-cell-size}; --disc-thickness: calc(var(--cell-size) * #{$reserve-stack-disc-thickness-ratio}); height: calc(var(--cell-size) * #{$reserve-stack-height-ratio});
+        &::before{ content: ""; position: absolute; box-sizing: border-box; left: calc((var(--cell-size) - var(--disc-width)) / 2); bottom: var(--tower-base); width: var(--disc-width); height: var(--disc-face-height);
+            border: 1px dashed $reserve-slot-color; border-radius: 50%; }
     }
-    &[data-empty-reserve="true"] .reserve-indicator{ opacity: 0.45; }
-    //PASSED: a tilted stamp, only while data-passed is true
-    .passed-stamp{ @include passed-stamp-look(1); rotate: -6deg;
+    //PASSED: a tilted stamp, only while data-passed is true. Out of the flow at the row's right end, so the row never gets
+    //wider than the stacks: on a narrow player board it lies over the last stacks, like a stamp
+    .passed-stamp{ @include passed-stamp-look(1); position: absolute; right: 0px; top: 50%; translate: 0px -50%; rotate: -6deg;
         opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s; }
     &[data-passed="true"] .passed-stamp{ opacity: 1; visibility: visible; }
 }

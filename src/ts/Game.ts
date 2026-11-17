@@ -167,42 +167,58 @@ export class Game {
     }
     private getAttributesHTML(attributes): string{ return Object.entries(attributes || {}).map(([key, value]) => `${key}="${value}"`).join(' '); }
 
-    //a tower already on its spot (BoardHandler.createTowerDiv) flies in from `from` (a player board's reserve disc), one disc
-    //at a time: each disc flies on its own, bottom disc first and staggerMs apart, as a copy of the whole tower with every
-    //other disc hidden, so it starts and lands exactly where it sits in the tower. Each copy starts at the size `from` has on
-    //screen and lands at the tower's own size and place, so nothing jumps at the end. Each disc shows in the tower as it
-    //lands, the height number with the top one. Everything is measured on screen (getBoundingClientRect), and the copies
-    //(in <body>, outside BGA's mobile scaling of the game area) convert screen px with their measured zoom, so they match on
-    //desktop and mobile alike. Resolves once the top disc has landed. Everything before the first await runs synchronously
-    public async animateTowerSlide(towerElement: HTMLDivElement, from: HTMLDivElement, durationMs: number, staggerMs: number = Game.TOWER_DISC_STAGGER, options: SlideOptions = {}): Promise<void> {
-        const startRect = from.getBoundingClientRect();
+    //a tower already on its spot (BoardHandler.createTowerDiv) flies in from its player board's reserve stacks, one disc at a
+    //time: each disc flies on its own, bottom disc first and staggerMs apart, as a copy of the whole tower with every other disc
+    //hidden. Disc i starts exactly over the reserve disc it was taken from, fromDiscRects[i] (PlayerHandler.takeDiscs, already
+    //gone from the stacks: the copy takes its place), or with the whole copy over fallbackFromRect if it has none. Each copy
+    //lands at the tower's own size and place, so nothing jumps at the end. Each disc shows in the tower as it lands, the height
+    //number with the top one. Everything is measured on screen (getBoundingClientRect), and the copies (in <body>, outside
+    //BGA's mobile scaling of the game area) convert screen px with their measured zoom, so they match on desktop and mobile
+    //alike. Resolves once the top disc has landed. Everything before the first await runs synchronously
+    public async animateTowerSlide(towerElement: HTMLDivElement, fromDiscRects: DOMRect[], fallbackFromRect: DOMRect, durationMs: number, staggerMs: number = Game.TOWER_DISC_STAGGER, options: SlideOptions = {}): Promise<void> {
         const toRect = towerElement.getBoundingClientRect();
         const discParts = Game.getTowerDiscParts(towerElement);
         const slidingClones = discParts.map((_, discIndex) => this.createDiscSlidingClone(towerElement, discIndex)); //before the tower's own discs are hidden
+        const startRects = slidingClones.map((slidingClone, discIndex) => fromDiscRects[discIndex] ? this.getCloneRectOverDisc(slidingClone, discIndex, fromDiscRects[discIndex]) : fallbackFromRect);
 
         discParts.forEach(part => part.forEach(element => element.style.visibility = 'hidden'));
 
         await Promise.all(slidingClones.map(async (slidingClone, discIndex) => {
-            await this.moveSlidingClone(slidingClone, startRect, toRect, durationMs, { ...options, delayMs: (options.delayMs ?? 0) + discIndex * staggerMs });
+            await this.moveSlidingClone(slidingClone, startRects[discIndex], toRect, durationMs, { ...options, delayMs: (options.delayMs ?? 0) + discIndex * staggerMs });
             discParts[discIndex].forEach(element => element.style.visibility = null);
         }));
     }
 
-    //the other way round: a tower flies from its spot to toRect on screen (its owner's reserve disc) and disappears, one disc
-    //at a time: top disc first, staggerMs apart, each a copy of the whole tower with every other disc hidden (the height number
-    //leaves with the top one). The copies show at the opacity the tower shows at, which they don't inherit in <body>. The
-    //tower can be removed as soon as this is called
-    public async animateTowerSlideAway(towerElement: HTMLDivElement, toRect: DOMRect, durationMs: number, staggerMs: number = Game.TOWER_DISC_STAGGER, options: SlideOptions = {}): Promise<void> {
+    //the other way round: a tower flies from its spot back to its owner's reserve stacks and disappears, one disc at a time: top
+    //disc first, staggerMs apart, each a copy of the whole tower with every other disc hidden (the height number leaves with
+    //the top one). Disc i lands exactly on landingDiscs[i] (PlayerHandler.addDiscs, hidden until then), which shows as it
+    //lands, or with the whole copy over fallbackToRect if it has none. The copies show at the opacity the tower shows at,
+    //which they don't inherit in <body>. The tower can be removed as soon as this is called
+    public async animateTowerSlideAway(towerElement: HTMLDivElement, landingDiscs: (HTMLDivElement | null)[], fallbackToRect: DOMRect, durationMs: number, staggerMs: number = Game.TOWER_DISC_STAGGER, options: SlideOptions = {}): Promise<void> {
         const fromRect = towerElement.getBoundingClientRect();
         const shownOpacity = Game.getShownOpacity(towerElement);
         const discCount = Game.getTowerDiscParts(towerElement).length;
 
-        await Promise.all(Array.from({ length: discCount }, (_, discIndex) => {
+        await Promise.all(Array.from({ length: discCount }, async (_, discIndex) => {
             const slidingClone = this.createDiscSlidingClone(towerElement, discIndex);
             if(shownOpacity < 1)
                 slidingClone.style.opacity = shownOpacity.toString();
-            return this.moveSlidingClone(slidingClone, fromRect, toRect, durationMs, { ...options, delayMs: (options.delayMs ?? 0) + (discCount - 1 - discIndex) * staggerMs });
+            const landingDisc = landingDiscs[discIndex] ?? null;
+            const toRect = landingDisc ? this.getCloneRectOverDisc(slidingClone, discIndex, landingDisc.getBoundingClientRect()) : fallbackToRect;
+            await this.moveSlidingClone(slidingClone, fromRect, toRect, durationMs, { ...options, delayMs: (options.delayMs ?? 0) + (discCount - 1 - discIndex) * staggerMs });
+            if(landingDisc)
+                landingDisc.style.visibility = null;
         }));
+    }
+
+    //the on-screen rect the whole copy (a fresh createDiscSlidingClone, untransformed) must cover for its disc discIndex to lie
+    //exactly over discRect, a disc of the same art at any size (a reserve stack's): scaled by the discs' widths, aligned on their
+    //top-left corners, so the top faces match. Read by getSlidingCloneTransform, which scales by height and centres by width
+    private getCloneRectOverDisc(slidingClone: HTMLDivElement, discIndex: number, discRect: DOMRect): DOMRect {
+        const boxRect = slidingClone.getBoundingClientRect();
+        const cloneDiscRect = Game.getTowerDiscParts(slidingClone)[discIndex][0].getBoundingClientRect();
+        const scale = (cloneDiscRect.width > 0) ? discRect.width / cloneDiscRect.width : 1;
+        return new DOMRect(discRect.left - (cloneDiscRect.left - boxRect.left) * scale, discRect.top - (cloneDiscRect.top - boxRect.top) * scale, boxRect.width * scale, boxRect.height * scale);
     }
 
     //a tower's discs, bottom first, each with what shows and goes with it: the top disc carries the height number
@@ -320,13 +336,11 @@ export class Game {
 
     // Add the notification handlers
 
-    //a confirmed turn: the player's discs leave their reserve, then spot by spot the replaced tower flies back to its owner's
-    //reserve while the new tower flies to its spot; then the reserves update, the boards that got discs back bounce, the
-    //scores update and the board re-centres
+    //a confirmed turn: spot by spot, the replaced tower flies back onto its owner's reserve stacks while the new tower's discs
+    //leave the player's stacks for its spot (BoardHandler.applyPlacements); then the reserves are checked against the server's
+    //count (rebuilt if they differ), the boards that got discs back bounce, the scores update and the board re-centres
     public async notif_towersPlaced(args: TowersPlacedArgs) {
-        const mover = this.players[args.player_id];
-        mover?.setReserve(args.reserves[args.player_id] ?? mover.getReserve());
-        mover?.setPassed(false);
+        this.players[args.player_id]?.setPassed(false);
 
         await this.boardHandler.applyPlacements(args.player_id, args.placements);
 

@@ -237,3 +237,29 @@ Deploy `modules/`, `nexo.css` and `img/bg_red_disc.png`; no schema change, an on
 - [ ] It stays clear of the "Discuss at this table" bar at the bottom; an open chat window, the log rows and the height menu all cover it.
 - [ ] Mobile (or a phone, portrait): bottom right under the board, the same size relative to the board's discs, partly cropped off the right edge at most, never shrunk to nothing. Landscape phone: still there, behind the board where it can't fit.
 - [ ] Light and dark BGA themes: the disc looks the same, the black disc in the bottom left is untouched.
+
+## After M1: reserve stacks
+
+Deploy `modules/` and `nexo.css`; no server or schema change, an ongoing table is fine (F5).
+
+- [ ] Start of a game: each player board shows 5 full stacks of 5 discs in the player's color, side by side, no "× 25". The player board is no wider than before; with a PASSED stamp showing, the stamp sits at the right end of the row (over the last stacks only if the board is narrow).
+- [ ] Hover the stacks: a tooltip "25 discs left" plus the reserve explanation; it follows every change ("1 disc left" at 1, "0 discs left" at 0).
+- [ ] Opponent's turn (as the passive player and as a spectator): each new tower's discs leave the top of the rightmost non-empty stack, one by one, bottom disc first, and the stack loses each disc as it leaves. A 3-disc tower from a reserve of 12 (5, 5, 2): the 2 discs of the third stack go first, then the top of the second stack.
+- [ ] A replacement: the replaced tower's discs fly back onto the owner's stacks, top disc first, each landing on the top of the leftmost stack with room (a reserve of 8 getting 3 back: 5, 3 becomes 5, 5, 1) and appearing there as it lands; the board then bounces.
+- [ ] Your own turn: after Confirm, your drafted towers stay put and your stacks lose their discs spot by spot; replaced enemy towers fly back onto the opponent's stacks.
+- [ ] Each flying disc starts exactly over its stack disc and lands exactly on its slot (no jump at either end), on desktop and on a phone.
+- [ ] Empty stacks show a faint dashed outline; a reserve of 0 shows 5 outlines. Use `debug_setReserves(0, 25)`, then F5: 5 outlines on your board, 5 full stacks on the other.
+- [ ] F5 mid-game, and a spectator joining: the stacks match the reserve (count them against the tooltip).
+- [ ] Replay from a log row: the same flights from and to the stacks. Fast replay, instantaneous mode: no flights, the stacks just update to the right count at each turn.
+- [ ] After `debug_setReserves` (no notification), the stacks only update on F5 or after the next turn, and then show the right count.
+- [ ] No errors in the browser console on load, during a turn, or on F5.
+
+## After M1: clearer disc seams
+
+Deploy `nexo.css` only; an ongoing table is fine (F5).
+
+- [ ] Board: in a 5-disc tower of each color, every disc is easy to count: a red tower shows a light edge over a dark maroon line between discs, a black tower a dark gap over a grey highlight. Not heavy: the towers still look like smooth stacks.
+- [ ] A 5-disc tower still stays inside its spot (its top face never covers the tower in the row above), on desktop and mobile.
+- [ ] Player boards: each stack's discs read as separate pieces at a glance on both colors (count a stack of 3 and a stack of 5). The row is a few px taller, no wider; the PASSED stamp is still centred on the row.
+- [ ] The log snapshots (24px spots) and the height menu: seams visible, nothing overflows its cell.
+- [ ] Flights between the stacks and the board still start and land without a jump.
