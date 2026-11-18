@@ -13,7 +13,8 @@
   --bg-log-default: linear-gradient(135deg, #fcfbf9, #f0eee9);
   --bg-log-towers-placed: linear-gradient(90deg, rgba(252, 251, 249, 0.97), rgba(240, 238, 233, 0.95));
   --bg-log-player-passed: linear-gradient(90deg, rgba(246, 246, 245, 0.97), rgba(232, 232, 230, 0.95));
-  --bg-log-game-end: linear-gradient(90deg, #ffffff, #f0eee9);
+  --bg-log-game-end: radial-gradient(ellipse at 20% 30%, rgba(255, 255, 255, 0.9) 0%, transparent 55%), radial-gradient(ellipse at 80% 70%, rgba(255, 255, 255, 0.7) 0%, transparent 50%), linear-gradient(115deg, transparent 61%, rgba(27, 27, 29, 0.07) 62.5%, transparent 64%), linear-gradient(115deg, #f4f4f2 0%, #d9d9d6 35%, #f7f7f5 50%, #c9c9c5 70%, #eeeeec 100%);
+  --bg-log-game-end-draw: radial-gradient(ellipse at 15% 35%, rgba(255, 255, 255, 0.85) 0%, transparent 55%), radial-gradient(ellipse at 85% 65%, rgba(27, 27, 29, 0.18) 0%, transparent 55%), linear-gradient(115deg, transparent 47%, rgba(255, 255, 255, 0.4) 48.5%, transparent 50%), linear-gradient(100deg, #f6f6f4 0%, #e7e7e4 30%, #cfcfcb 50%, #acaca8 75%, #93938f 100%);
   --bg-parallax-near-ratio: 0.042;
   --bg-parallax-near-cap: 90px;
   --bg-parallax-far-ratio: 0.0175;
@@ -752,6 +753,9 @@ body .passed-banner.passed-banner-flying .passed-banner-name {
 .log.game-end-log .roundedbox, .log.game-end-log.roundedbox, .log.gamelogreview.game-end-log, .gamelogreview.game-end-log .roundedbox, .gamelogreview.game-end-log.roundedbox, .gamelogreview.gamelogreview.game-end-log {
   background: var(--bg-log-game-end);
 }
+.log.game-end-draw-log .roundedbox, .log.game-end-draw-log.roundedbox, .log.gamelogreview.game-end-draw-log, .gamelogreview.game-end-draw-log .roundedbox, .gamelogreview.game-end-draw-log.roundedbox, .gamelogreview.gamelogreview.game-end-draw-log {
+  background: var(--bg-log-game-end-draw);
+}
 .log .towers-placed-row, .gamelogreview .towers-placed-row {
   display: flex;
   align-items: center;
@@ -821,8 +825,57 @@ body .passed-banner.passed-banner-flying .passed-banner-name {
   color: #5a5f6e;
   cursor: help;
 }
-.log .game-end-row, .gamelogreview .game-end-row {
+.log .nexo-log-result, .gamelogreview .nexo-log-result {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  column-gap: 8px;
+  padding: 2px 4px;
   color: #1f1f21;
+  text-align: center;
+  line-height: 1.25;
+}
+.log .nexo-log-result .nexo-log-result-icon, .gamelogreview .nexo-log-result .nexo-log-result-icon {
+  font-size: 20px;
+  line-height: 1;
+  color: #1b1b1d;
+}
+.log .nexo-log-result .nexo-log-result-lines, .gamelogreview .nexo-log-result .nexo-log-result-lines {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.log .nexo-log-result .nexo-log-result-title, .gamelogreview .nexo-log-result .nexo-log-result-title {
+  display: flex;
+  justify-content: center;
+  max-width: 100%;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.log .nexo-log-result .nexo-log-result-title .playername, .gamelogreview .nexo-log-result .nexo-log-result-title .playername {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: bold;
+}
+.log .nexo-log-result .nexo-log-result-title .nexo-log-result-text, .gamelogreview .nexo-log-result .nexo-log-result-title .nexo-log-result-text {
+  flex: none;
+  white-space: pre;
+}
+.log .nexo-log-result .nexo-log-result-title .nexo-log-result-draw, .gamelogreview .nexo-log-result .nexo-log-result-title .nexo-log-result-draw {
+  font-weight: bold;
+}
+.log .nexo-log-result .nexo-log-result-score, .gamelogreview .nexo-log-result .nexo-log-result-score {
+  font-size: 16px;
+  font-weight: 800;
+}
+.log.game-end-log .roundedbox, .log.game-end-log.roundedbox, .log.gamelogreview.game-end-log, .gamelogreview.game-end-log .roundedbox, .gamelogreview.game-end-log.roundedbox, .gamelogreview.gamelogreview.game-end-log {
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+.log .nexo-log-result-spacer, .gamelogreview .nexo-log-result-spacer {
+  display: none;
 }
 
 .dijitTooltip {

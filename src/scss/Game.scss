@@ -192,7 +192,25 @@ $log-text-color: #1f1f21; //near-black
 $log-background-default: linear-gradient(135deg, $marble-white, $marble-white-shade);
 $log-background-towers-placed: linear-gradient(90deg, rgba($marble-white, 0.97), rgba($marble-white-shade, 0.95));
 $log-background-player-passed: linear-gradient(90deg, rgba(246, 246, 245, 0.97), rgba(232, 232, 230, 0.95));
-$log-background-game-end: linear-gradient(90deg, #ffffff, $marble-white-shade);
+//the game end row (LogMutationObserver.createLogGameEnd), styled on the row itself: a win on a black-and-white marble (light
+//clouds over soft grey bands, one faint charcoal vein), a draw on a marble going evenly from light on the left to a soft dark
+//grey on the right. Both keep the near-black text readable in the middle, where the two lines sit
+$log-background-game-end:
+    radial-gradient(ellipse at 20% 30%, rgba(255, 255, 255, 0.9) 0%, transparent 55%),
+    radial-gradient(ellipse at 80% 70%, rgba(255, 255, 255, 0.7) 0%, transparent 50%),
+    linear-gradient(115deg, transparent 61%, rgba($material-charcoal, 0.07) 62.5%, transparent 64%),
+    linear-gradient(115deg, #f4f4f2 0%, #d9d9d6 35%, #f7f7f5 50%, #c9c9c5 70%, #eeeeec 100%);
+$log-background-game-end-draw:
+    radial-gradient(ellipse at 15% 35%, rgba(255, 255, 255, 0.85) 0%, transparent 55%),
+    radial-gradient(ellipse at 85% 65%, rgba($material-charcoal, 0.18) 0%, transparent 55%),
+    linear-gradient(115deg, transparent 47%, rgba(255, 255, 255, 0.4) 48.5%, transparent 50%),
+    linear-gradient(100deg, #f6f6f4 0%, #e7e7e4 30%, #cfcfcb 50%, #acaca8 75%, #93938f 100%);
+$log-result-icon-color: $material-charcoal; //trophies and handshakes: the game's dark stone
+$log-result-icon-size: 20px; //about the two lines' height
+$log-result-icon-inset: 4px; //between each icon and the row's edge (inside BGA's padding and the accent bar's)
+$log-result-row-padding-y: 5px; //the row's padding, the same above and below, so the content sits on its centre line
+$log-result-title-size: 14px; //line 1: "name wins" or "Draw"
+$log-result-score-size: 16px; //line 2: the score, a little larger and bolder than line 1
 $log-divider-color: rgba($material-charcoal, 0.08); //the soft line under each row
 $log-accent-width: 3px; //the bar on each row's left edge, in its player's color
 $log-accent-colors: ("red": $material-red, "black": $material-charcoal);
@@ -214,6 +232,7 @@ $log-snapshot-changed-fill: rgba($selected-spot-color, 0.22);
     --bg-log-towers-placed: #{$log-background-towers-placed};
     --bg-log-player-passed: #{$log-background-player-passed};
     --bg-log-game-end: #{$log-background-game-end};
+    --bg-log-game-end-draw: #{$log-background-game-end-draw};
 
     //the background's parallax ($bg-parallax-*): BackgroundHandler reads the ratios and caps here and sets --nexo-parallax (the
     //page's scroll offset, px, clamped where every layer has reached its cap). Each layer reaches past the window's right edge by
@@ -605,7 +624,7 @@ body .passed-banner{ position: fixed; inset: 0px; margin: auto; width: fit-conte
 #logs .log:not(.a-game-log), [id^="chatwindowlogs_zone_tablelog_"] .log:not(.a-game-log), [id^="replaylogs"] .gamelogreview:not(.a-game-log){ display: none !important; }
 
 $log-name-max-width: 110px; //longer names are cut with an ellipsis (full name on hover)
-$log-types: "towers-placed", "player-passed", "game-end";
+$log-types: "towers-placed", "player-passed", "game-end", "game-end-draw"; //game-end-draw after game-end: a draw row has both classes
 .log, .gamelogreview{
     //the &.…roundedbox selectors: the mobile table log's row is itself the .roundedbox (see the default background above)
     //our rows: a bar on the left edge in the row's player's color (--log-accent, from its *-disc-log class, see below) and a
@@ -646,7 +665,24 @@ $log-types: "towers-placed", "player-passed", "game-end";
         .playername{ display: block; min-width: 0; max-width: $log-name-max-width; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .player-passed-icon{ flex: none; font-size: 15px; line-height: 1; color: #5a5f6e; cursor: help; }
     }
-    .game-end-row{ color: $log-text-color; }
+    //"[icon] name wins / 13-9 [icon]" (a draw: "Draw / 11-11"): three columns, the icons at the row's edges and centred on the
+    //two lines, which stay centred between them. No box of its own: the row's background ($log-background-game-end*) is the look
+    .nexo-log-result{ display: grid; grid-template-columns: auto 1fr auto; align-items: center; column-gap: 8px; padding: 2px $log-result-icon-inset;
+        color: $log-text-color; text-align: center; line-height: 1.25;
+        .nexo-log-result-icon{ font-size: $log-result-icon-size; line-height: 1; color: $log-result-icon-color; }
+        .nexo-log-result-lines{ min-width: 0; display: flex; flex-direction: column; align-items: center; }
+        //line 1: the name bold, "wins" plain; only the name shrinks (an ellipsis), the words around it keep their spaces
+        .nexo-log-result-title{ display: flex; justify-content: center; max-width: 100%; font-size: $log-result-title-size; white-space: nowrap;
+            .playername{ min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: bold; }
+            .nexo-log-result-text{ flex: none; white-space: pre; }
+            .nexo-log-result-draw{ font-weight: bold; }
+        }
+        .nexo-log-result-score{ font-size: $log-result-score-size; font-weight: 800; }
+    }
+    //the row around it: the same padding above and below, and the trailing &nbsp; (LogMutationObserver) hidden, so the grid is
+    //the row's only content and sits in its vertical middle
+    &.game-end-log .roundedbox, &.game-end-log.roundedbox, &.gamelogreview.game-end-log{ padding-top: $log-result-row-padding-y; padding-bottom: $log-result-row-padding-y; }
+    .nexo-log-result-spacer{ display: none; }
 }
 //end logs
 

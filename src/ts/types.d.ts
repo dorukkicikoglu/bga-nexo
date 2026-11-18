@@ -106,5 +106,8 @@ interface PlayerPassedArgs {
 interface DisplayEndGameScoringArgs {
     winner_ids: number[];
     winning_score: number;
+    end_result?: 'win' | 'draw'; //missing in a game ended before the result row (an old replay)
+    winner_score?: number;
+    loser_score?: number; //the other player's largest group (a draw: the same as winner_score)
     endGameScoring: EndGameScoreData;
 }

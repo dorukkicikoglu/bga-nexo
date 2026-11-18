@@ -118,27 +118,42 @@ export class LogMutationObserver{
         return this.addLogClassTag(logHTML, 'player-passed-log');
     }
 
-    //the game ends: everyone at the top score wins (a tie shares the victory)
-    public createLogGameEnd(winner_ids: number[], winningScore: number): LogRowData {
-        const iWin = winner_ids.includes(this.game.getMyPlayerID());
-        const otherWinnersHTML = winner_ids.filter(player_id => player_id !== this.game.getMyPlayerID()).map(player_id => this.game.divColoredPlayer(player_id, {class: 'playername'}));
+    //the game ends: two centred lines between two icons at the row's edges. A win: [trophy] winner's name / "wins 13-9"
+    //[trophy], its row a light marble with the winner's accent bar. A draw (both at the top score): [handshake] "Draw" /
+    //"11-11" [handshake], its row (game-end-draw-log) a marble going from light to dark grey. The winner's own name even on
+    //their page (no "You", so "wins" always fits). The loser's score is loser_score; a game ended before it existed (an old
+    //replay) takes it from the notification's endGameScoring, else the loser's score counter (already their final largest
+    //group: passes never change it), so the row still reads "13-9". The trailing &nbsp; every row ends with is in a hidden span
+    //here: as plain text it took a line of its own under the two lines, which then sat at the top of a taller row
+    public createLogGameEnd(winner_ids: number[], winningScore: number, endResult?: 'win' | 'draw', loserScore?: number, endScores?: Record<number, number>): LogRowData {
+        const isDraw = (endResult ?? (winner_ids.length > 1 ? 'draw' : 'win')) === 'draw';
+        if(isDraw)
+            loserScore = winningScore;
+        else if(loserScore === undefined || loserScore === null){
+            const loserID = Object.keys(this.game.players).map(Number).find(player_id => !winner_ids.map(Number).includes(player_id));
+            loserScore = endScores?.[loserID] ?? this.game.players[loserID]?.getScore();
+        }
 
-        //one string per case, since other languages conjugate "you", one other player and several players differently
-        let gameEndText: string;
-        if(iWin)
-            gameEndText = (otherWinnersHTML.length === 0) ? _('${you} win with ${score} connected towers') : _('${you} and ${players} share the victory with ${score} connected towers');
-        else gameEndText = (otherWinnersHTML.length === 1) ? _('${player_name} wins with ${score} connected towers') : _('${players} share the victory with ${score} connected towers');
+        const scoreText = `${winningScore}${(loserScore === undefined || loserScore === null) ? '' : '-' + loserScore}`;
 
-        const gameEndHTML = gameEndText
-            .replace('${you}', iWin ? this.game.divYou({class: 'playername'}) : '')
-            .replace('${player_name}', otherWinnersHTML[0] ?? '')
-            .replace('${players}', otherWinnersHTML.join(', '))
-            .replace('${score}', `<b>${winningScore}</b>`);
+        //line 1: "Draw", or "name wins" as one string (other languages may put the name elsewhere). The words around the name
+        //keep their spaces (white-space: pre) and never shrink: only a long name is cut with an ellipsis
+        let titleHTML = `<span class="nexo-log-result-text nexo-log-result-draw">${_('Draw')}</span>`;
+        if(!isDraw){
+            const [beforeName, afterName] = _('${player_name} wins').split('${player_name}');
+            titleHTML = `<span class="nexo-log-result-text">${beforeName ?? ''}</span>${this.game.divColoredPlayer(winner_ids[0], {class: 'playername'}, false)}<span class="nexo-log-result-text">${afterName ?? ''}</span>`;
+        }
+        const iconHTML = `<i class="fa ${isDraw ? 'fa-handshake-o' : 'fa-trophy'} nexo-log-result-icon" aria-hidden="true"></i>`;
 
         let logHTML = `
-            <div class="game-end-row">
-                <i class="fa6 fa-trophy"></i>&nbsp;${gameEndHTML}
-            </div>` + (winner_ids.length === 1 ? this.getDiscColorTag(winner_ids[0]) : '') + ' &nbsp;';
+            <div class="game-end-row nexo-log-result">
+                ${iconHTML}
+                <div class="nexo-log-result-lines">
+                    <div class="nexo-log-result-title">${titleHTML}</div>
+                    <div class="nexo-log-result-score">${scoreText}</div>
+                </div>
+                ${iconHTML}
+            </div>` + (isDraw ? '<div log-class-tag="game-end-draw-log"></div>' : this.getDiscColorTag(winner_ids[0])) + '<span class="nexo-log-result-spacer"> &nbsp;</span>';
 
         return this.addLogClassTag(logHTML, 'game-end-log');
     }

@@ -419,7 +419,23 @@ Deploy `modules/` and `nexo.css`; no server change, an ongoing table is fine (F5
 
 - [ ] Force a pass (`debug_setReserves(0, 25)` while the opponent is active, then let them play): the log row shows only the passer's name and a grey ban sign, on the passer's color bar, no ">>" icon and no sentence.
 - [ ] Hover the ban sign: "No valid move, passes".
-- [ ] Both sides: on the passer's own page the name is theirs (hover: "You"); on the opponent's and a spectator's, the passer's name.
+- [ ] Both sides: on the passer's own page "You" in their color; on the opponent's and a spectator's, the passer's name.
 - [ ] A long player name is cut with an ellipsis, the ban sign stays visible after it.
 - [ ] Same row after F5, in the mobile table log and in a replay.
+- [ ] No errors in the browser console.
+
+## After M1: game result row
+
+Deploy `modules/` (PHP and JS) and `nexo.css`. The new args only reach games that end after the deploy. New strings to translate: "Draw" and "${player_name} wins" (the old "... win with ${score} connected towers" and "... share the victory ..." strings are no longer used).
+
+- [ ] Win (`debug_endGame()` on a board where one player's largest group is bigger): no box inside the row; the row itself is a black-and-white marble, a charcoal trophy at its left and right edges, centred on the two lines; line 1 "name wins", the name in their color and bold, "wins" plain; line 2 only the score, "13-9", a little larger and bolder than line 1, the winner's largest group first, the loser's second.
+- [ ] Red wins: the row's red bar on its left edge. Black wins: the black bar. The text reads easily over the marble.
+- [ ] On the winner's own page, the loser's and a spectator's: the winner's name (never "You"), so "wins" always fits.
+- [ ] Draw (`debug_fillBoard()` until both largest groups tie, then `debug_endGame()`): handshakes at both edges, "Draw" (bold) over "11-11" (larger), the row a marble going from light on the left to dark grey on the right, the neutral bar. It reads as different from a win at a glance.
+- [ ] A long winner name is cut with an ellipsis, "wins" stays after it; the trophies stay at the edges.
+- [ ] The trophies (handshakes) and the two lines share one centre line, in the vertical middle of the row: no empty band under them, in the desktop log, the mobile table log and the replay log. If BGA shows a timestamp in the row, it doesn't overlap the right icon.
+- [ ] The row is compact (about two text lines tall) and looks the same with BGA's dark mode on (the row keeps its own background).
+- [ ] F5 after the end, the mobile table log and a replay (from the first move and from near the end): the same box.
+- [ ] A table that ended before the PHP deploy (F5 on it, or its replay): still "wins 13-9", the loser's score taken from their score counter.
+- [ ] BGA's end-of-game result panel is unchanged and nothing in it shows raw HTML or the plain fallback text.
 - [ ] No errors in the browser console.

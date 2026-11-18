@@ -213,6 +213,11 @@ export class PlayerHandler{
         this.game.bga.playerPanels.getScoreCounter(this.playerID)?.toValue(score);
     }
 
+    //the score counter's value: the player's largest group (the game end row's fallback for the loser's score)
+    public getScore(): number | undefined {
+        return this.game.bga.playerPanels.getScoreCounter(this.playerID)?.getValue();
+    }
+
     //the one shared bounce (discs given back by a replacement land on this board), removed on animationend
     public bounceBoard(): void {
         if(!this.game.bga.gameui.bgaAnimationsActive())

@@ -146,7 +146,7 @@ export class Game {
                         else if(key == 'PASS_LOG_STR')
                             log = this.logMutationObserver.createLogPlayerPassed(args['player_id']).log_html;
                         else if(key == 'GAME_END_LOG_STR')
-                            log = this.logMutationObserver.createLogGameEnd(args['winner_ids'], args['winning_score']).log_html;
+                            log = this.logMutationObserver.createLogGameEnd(args['winner_ids'], args['winning_score'], args['end_result'], args['loser_score'], args['endGameScoring']?.scores).log_html;
                     }
                 }
             }

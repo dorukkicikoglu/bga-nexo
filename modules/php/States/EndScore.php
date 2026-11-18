@@ -47,13 +47,22 @@ class EndScore extends \Bga\GameFramework\States\GameState
             $this->game->bga->playerStats->set('towersAtEnd', count(array_filter($board, fn(array $tower) => $tower['player_id'] === $playerID)), $playerID);
         }
 
-        $winnerNames = array_map(fn(int $playerID) => $this->game->getPlayerNameById($playerID), $endGameScoring['winner_ids']);
+        //the result row: a win (one top score) shows "winner_score-loser_score", a draw (both at the top score) the tied score
+        $endResult = (count($endGameScoring['winner_ids']) > 1) ? 'draw' : 'win';
+        $winnerScore = (int) $endGameScoring['winning_score'];
+        $loserScore = (int) min($endGameScoring['scores']);
+        $score = $winnerScore.'-'.$loserScore;
+        $gameEndLogStr = ($endResult === 'draw') ? 'Draw '.$score : $this->game->getPlayerNameById($endGameScoring['winner_ids'][0]).' wins '.$score;
+
         $this->bga->notify->all('displayEndGameScoring', '${GAME_END_LOG_STR}', [
-            'preserve' => ['winner_ids', 'winning_score'],
+            'preserve' => ['winner_ids', 'winning_score', 'end_result', 'winner_score', 'loser_score'],
             'winner_ids' => $endGameScoring['winner_ids'],
             'winning_score' => $endGameScoring['winning_score'],
+            'end_result' => $endResult,
+            'winner_score' => $winnerScore,
+            'loser_score' => $loserScore,
             'endGameScoring' => $endGameScoring,
-            'GAME_END_LOG_STR' => implode(', ', $winnerNames).(count($winnerNames) > 1 ? ' share the victory with ' : ' wins with ').$endGameScoring['winning_score'].' connected towers', //plain fallback: the client builds the row from winner_ids
+            'GAME_END_LOG_STR' => $gameEndLogStr, //plain fallback: the client builds the row from end_result and the scores
         ]);
 
         return ST_END_GAME;
