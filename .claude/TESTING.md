@@ -439,3 +439,19 @@ Deploy `modules/` (PHP and JS) and `nexo.css`. The new args only reach games tha
 - [ ] A table that ended before the PHP deploy (F5 on it, or its replay): still "wins 13-9", the loser's score taken from their score counter.
 - [ ] BGA's end-of-game result panel is unchanged and nothing in it shows raw HTML or the plain fallback text.
 - [ ] No errors in the browser console.
+
+## After M1: disc icons in the status bar
+
+Deploy `modules/` and `nexo.css`; no server change, an ongoing table is fine (F5). New strings to translate: "${you} must place up to ${discs}" and "${actplayer} must place up to ${discs}" (the old "${you} must place 1 to ${count} discs (${left} more available)", "${you} must place 1 disc (${left} more available)" and "${actplayer} must place towers" are no longer used).
+
+- [ ] Start of my turn with 5 or more discs: "You must place up to" and 5 mini discs in my color, on the text line (not above or below it), each drawn like a board disc (face and edge), with no number on them.
+- [ ] Draft a 2-disc tower: the 2 rightmost icons dim (still visible), the 3 next to the text stay full. Add discs, cycle a tower past its highest, undo: the dimmed count always equals the discs drafted, dimming moves leftwards, and undo brightens the leftmost dimmed icon first.
+- [ ] Every disc drafted: all 5 icons dimmed. The title's width never changes while drafting, and the board never moves.
+- [ ] With 1 disc in reserve (`debug_setReserves(1, 25)`): "You must place up to" and a single icon. With 3: 3 icons.
+- [ ] Both colors: red icons when red drafts, black icons when black drafts; the dimmed black icons still read as discs.
+- [ ] Opponent's and a spectator's page during my turn: "[my name] must place up to" with the same number of icons, in my color, all full whatever I draft.
+- [ ] Phone (375px) and desktop: the title stays on one line (also with a long player name on the opponent's page), and the icons are crisp at BGA's mobile scaling.
+- [ ] BGA dark mode: the icons still show on the status bar.
+- [ ] The player boards' reserve stacks are unchanged: they don't move while I draft, only when the turn plays.
+- [ ] A refused confirm keeps the dimmed icons as they were. F5 during a draft: every icon full again.
+- [ ] No errors in the browser console.

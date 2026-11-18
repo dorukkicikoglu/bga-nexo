@@ -22,8 +22,8 @@ import { BoardRules } from "../BoardRules";
  * it, an undo button that takes it back (with any new tower that no longer reaches the board through the others) and a
  * confirm button, which sends the whole turn (actPlaceTowers, checked again by the server) and is disabled until the server
  * answers. Once the active tower is taken back (undo, or a click past its highest), the one clicked before it is active again. No action buttons in the status bar: they changed its height and moved the board. The status bar keeps
- * one sentence for the whole draft, with the discs still available (updateTitle); the confirm button's ring shows the same
- * count (BoardHandler.renderPendingControls). Everyone else only sees the status text. The draft lives on this page only: a reload starts it again.
+ * one sentence for the whole draft, with one disc icon per disc the turn may use, the drafted ones dimmed (updateTitle); the
+ * confirm button's ring shows the same count (BoardHandler.renderPendingControls). Everyone else only sees the status text. The draft lives on this page only: a reload starts it again.
  */
 export class PlaceTowers {
     private stateArgs: PlaceTowersArgs | null = null;
@@ -45,8 +45,9 @@ export class PlaceTowers {
         this.drafting = isCurrentPlayerActive;
         this.confirming = false;
 
-        if(!isCurrentPlayerActive){
-            this.bga.statusBar.setTitle(_('${actplayer} must place towers'));
+        if(!isCurrentPlayerActive){ //they can't see the draft: every icon stays full
+            const activePlayerID = this.bga.players.getActivePlayerId() ?? 0;
+            this.bga.statusBar.setTitle(_('${actplayer} must place up to ${discs}'), { discs: this.getDiscIconsHTML(this.game.getDiscColor(activePlayerID), args.discsThisTurn ?? 1, 0) });
             return;
         }
 
@@ -219,11 +220,22 @@ export class PlaceTowers {
         this.updateTitle();
     }
 
-    //the same sentence for the whole draft, with the discs still available: shown from the turn's start, so only its number
-    //changes while drafting and the status bar never changes height (which would move the board)
+    //the same sentence for the whole draft, with one disc icon per disc the turn may use, the drafted ones dimmed: only the
+    //icons change while drafting, so the status bar never changes width or height (which would move the board)
     private updateTitle(): void {
         const discsThisTurn = this.stateArgs?.discsThisTurn ?? 1;
-        const title = discsThisTurn > 1 ? _('${you} must place 1 to ${count} discs (${left} more available)') : _('${you} must place 1 disc (${left} more available)');
-        this.bga.statusBar.setTitle(title, { count: discsThisTurn, left: this.getDiscsLeft() });
+        const discColor = this.game.getDiscColor(this.game.getMyPlayerID());
+        this.bga.statusBar.setTitle(_('${you} must place up to ${discs}'), { discs: this.getDiscIconsHTML(discColor, discsThisTurn, Math.min(this.getDiscsUsed(), discsThisTurn)) });
+    }
+
+    //the status bar's allowance: count mini discs in the drafting player's color (Game.scss .status-disc, a one-disc .nexo-tower
+    //sized to the text line), the last usedCount dimmed (.used-status-disc): they dim from the right, so the full ones stay next to
+    //the text, and an undo brightens the leftmost dimmed one first. HTML for statusBar.setTitle's args, never part of
+    //the translated string
+    private getDiscIconsHTML(discColor: DiscColor, count: number, usedCount: number): string {
+        let discsHTML = '';
+        for(let discIndex = 0; discIndex < count; discIndex++)
+            discsHTML += `<span class="nexo-tower status-disc${discIndex >= count - usedCount ? ' used-status-disc' : ''}" data-disc-color="${discColor}"><span class="tower-disc" style="--disc-index: 0"></span></span>`;
+        return `<span class="status-discs">${discsHTML}</span>`;
     }
 }

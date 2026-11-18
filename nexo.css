@@ -221,6 +221,21 @@ body .sliding-clone {
   --disc-seam-below: rgba(178, 181, 192, 0.8);
 }
 
+.status-discs {
+  display: inline-flex;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.nexo-tower.status-disc {
+  --cell-size: 1.4em;
+  --disc-thickness: calc(var(--cell-size) * 0.14);
+  height: calc(var(--cell-size) * 0.571);
+}
+.nexo-tower.status-disc.used-status-disc {
+  opacity: 0.25;
+}
+
 html.hide-stack-heights .tower-height-number {
   display: none;
 }

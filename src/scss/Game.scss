@@ -187,6 +187,9 @@ $reserve-stack-disc-thickness-ratio: 0.14; //thicker than a board tower's ($disc
 //a stack's box is taller than wide, just enough for 5 of these discs (a board tower's box is square)
 $reserve-stack-height-ratio: $tower-base-ratio + 5 * $reserve-stack-disc-thickness-ratio + $disc-width-ratio * $disc-face-ratio;
 $reserve-stack-gap: 1px; //between two stacks (a disc is narrower than its box, so they never touch)
+$status-disc-cell-size: 1.4em; //the status bar's allowance icons (PlaceTowers.getDiscIconsHTML): one disc each, about 1.1em wide on the text line
+$status-disc-thickness-ratio: 0.14; //thicker than a board tower's, like the reserve stacks', so the edge reads at this size
+$status-disc-used-opacity: 0.25; //a disc already drafted this turn: dimmed, never removed, so the title keeps its width
 $reserve-slot-color: rgba($material-charcoal, 0.2); //an empty stack's dashed outline, where its bottom disc goes
 $log-text-color: #1f1f21; //near-black
 $log-background-default: linear-gradient(135deg, $marble-white, $marble-white-shade);
@@ -397,6 +400,14 @@ $passed-banner-flight-easing: ease-in-out;
         --disc-seam-above: #{map.get($colors, seam-above)}; --disc-seam-below: #{map.get($colors, seam-below)};
     }
 }
+//[BGA] the status bar's allowance (PlaceTowers.getDiscIconsHTML): one disc per disc the turn may use, inline on the text line,
+//a one-disc .nexo-tower box only as tall as its disc. The drafted ones dim (the opponent's view never does)
+.status-discs{ display: inline-flex; vertical-align: middle; white-space: nowrap; }
+.nexo-tower.status-disc{ --cell-size: #{$status-disc-cell-size}; --disc-thickness: calc(var(--cell-size) * #{$status-disc-thickness-ratio});
+    height: calc(var(--cell-size) * #{$tower-base-ratio + $status-disc-thickness-ratio + $disc-width-ratio * $disc-face-ratio});
+    &.used-status-disc{ opacity: $status-disc-used-opacity; }
+}
+
 //the "Always show stack heights" preference off (PrefHandler.applyStackHeights, a class on <html>): no number on any tower, on the
 //board, the flying copies or the log rows (a drafted tower's count badge stays). The numbers stay in the page, only hidden
 html.hide-stack-heights .tower-height-number{ display: none; }
