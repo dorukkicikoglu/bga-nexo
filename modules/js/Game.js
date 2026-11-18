@@ -784,6 +784,8 @@ class BoardHandler {
     //the replaceable enemy towers and the gold ring under the drafted tower clicked last. Empty spots and the grid's outline are never drawn
     renderSpots() {
         this.spotsLayer.innerHTML = '';
+        //every ring's dashes march on one clock (Game.scss: spot-ring-march): rebuilt spots carry on instead of starting over
+        this.spotsLayer.style.setProperty('--spot-ring-march-delay', `-${Math.round(performance.now())}ms`);
         this.boxLegalSpots = this.getBoxLegalSpots();
         if (this.draft && !this.game.isReplay()) {
             const legalKeys = new Set(this.draft.legalNewSpots.map(spot => BoardRules.key(spot.x, spot.y)));
@@ -803,6 +805,8 @@ class BoardHandler {
                     spot.classList.add('replaceable-spot', 'clickable-spot');
                 if (key === selectedKey)
                     spot.classList.add('selected-spot');
+                if (legalKeys.has(key) || replaceableKeys.has(key))
+                    spot.innerHTML = BoardHandler.SPOT_RING_SVG; //the dashed outline (the fill is the spot's ::before)
                 this.spotsLayer.appendChild(spot);
             });
         }
@@ -1047,6 +1051,10 @@ class BoardHandler {
 }
 //the undo button's icon: a curved arrow turning back counter-clockwise, drawn with currentColor
 BoardHandler.UNDO_ICON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12a7 7 0 1 0 2.05-4.95"/><path d="M11 7.05H7.05V3.1"/></svg>';
+//a target ring's dashed outline (legal spots and replaceable towers): Game.scss sizes the SVG to the ring and marches its
+//dashes. pathLength 100 makes the dash pattern a whole number around the ring; the attributes are a fallback for a browser
+//without CSS ellipse geometry (the stroke then centred on the box's edge)
+BoardHandler.SPOT_RING_SVG = '<svg class="spot-ring" aria-hidden="true" focusable="false"><ellipse cx="50%" cy="50%" rx="50%" ry="50%" pathLength="100"/></svg>';
 //the confirm button's icon: a tick
 BoardHandler.CONFIRM_ICON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 

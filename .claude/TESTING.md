@@ -526,3 +526,16 @@ Deploy `modules/`; no schema change, an ongoing table is fine (F5).
 - [ ] Your own turn: each placeholder disc still hides as its solid disc lands, even with the next tower already flying.
 - [ ] The board re-centres, and the next notification (pass banner, game end) plays, only after the last disc of the turn has landed.
 - [ ] Fast replay or F5: everything applies at once.
+
+## After M1: marching dashes
+
+Deploy `modules/` and `nexo.css`; no server change, an ongoing table is fine (F5). In the console (`window[0]` on Studio): `window[0].document.querySelectorAll('#nexo-board .spot-ring')` lists the rings' SVGs, `getComputedStyle(window[0].document.querySelector('#nexo-board .spot-ring ellipse')).animationName` gives `spot-ring-march`.
+
+- [ ] Your turn: every legal spot's and replaceable tower's ring looks as before (same size, place, color, 2px dashes, light fill), and its dashes slowly travel around it, about one full trip every 7 seconds, smoothly, with no jump anywhere on the ring and no tilt or change of shape.
+- [ ] Draft a tower, cycle it, undo: the rings are redrawn, and their dashes carry on where they were (no restart, all in step).
+- [ ] Hover a ring (an empty legal spot, a replaceable tower): it turns solid with the stronger fill and glow, as before.
+- [ ] A replaceable tower's ring is still under the tower (only its edge shows around the base), and a click on the tower still drafts on its spot; a click on an empty ring still drafts there.
+- [ ] Phone (375px): the rings look as before, the dashes march too, taps work.
+- [ ] Reduced motion (OS setting): the rings are dashed and still.
+- [ ] The opponent and spectators still see no rings.
+- [ ] No errors in the browser console.

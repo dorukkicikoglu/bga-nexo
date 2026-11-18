@@ -149,6 +149,16 @@ $board-background: radial-gradient(ellipse 70% 55% at 30% 20%, #ffffff 0%, trans
     linear-gradient(41deg, transparent 67%, rgba($marble-vein-color, 0.035) 67.6%, transparent 68.5%),
     linear-gradient(160deg, $marble-white 0%, $marble-white-shade 100%);
 $board-border-color: rgba($material-charcoal, 0.1);
+//the dashed target ring's dashes travel around it (BoardHandler.renderSpots: an SVG <ellipse> per legal spot and replaceable
+//tower). $spot-ring-march-duration is one trip all the way around; the dashes keep CSS's 2px dashed rhythm (about 6px dash,
+//2px gap at the default 80px spot), as a whole number around each ring (pathLength 100), so the loop has no seam. They
+//scale with the board like the rings. Still with prefers-reduced-motion
+$spot-ring-march-duration: math.div(70s, 1.2); //about 58.3s
+$spot-ring-march-mobile-duration: $spot-ring-march-duration * 0.85; //BGA's mobile layout (.mobile_version), about 48s
+$spot-ring-stroke-width: 2px;
+$spot-ring-dash-share: 0.75; //of each dash and gap
+$spot-ring-legal-dashes: 18;
+$spot-ring-replaceable-dashes: 21; //the replaceable ring is 1.2 times wider
 $selected-spot-color: #ffc400; //the gold ring under the active drafted tower
 //the draft's controls on each drafted tower (BoardHandler.renderPendingControls): a count badge on its top right corner and,
 //under the active tower only, round buttons side by side: undo and confirm. Shares of --cell-size, so they scale
@@ -508,17 +518,45 @@ html.hide-stack-heights .tower-height-number{ display: none; }
     --spot-ring-width: calc(var(--cell-size) * #{$disc-width-ratio});
     --spot-ring-height: calc(var(--spot-ring-width) * #{$disc-face-ratio});
     --spot-ring-bottom: calc(var(--cell-size) * #{$tower-base-ratio});
+    //the ring's box, shared by its fill (::before) and its dashed outline (.spot-ring): the bottom disc's ellipse
+    --ring-box-left: calc((var(--cell-size) - var(--spot-ring-width)) / 2);
+    --ring-box-bottom: var(--spot-ring-bottom);
+    --ring-box-width: var(--spot-ring-width);
+    --ring-box-height: var(--spot-ring-height);
     &.clickable-spot{ cursor: pointer; }
     &.clickable-spot, &.legal-spot, &.selected-spot{
-        &::before{ content: ""; position: absolute; box-sizing: border-box; left: calc((var(--cell-size) - var(--spot-ring-width)) / 2); bottom: var(--spot-ring-bottom); width: var(--spot-ring-width); height: var(--spot-ring-height); border-radius: 50%; transition: background-color 0.15s ease, box-shadow 0.15s ease; }
+        &::before{ content: ""; position: absolute; box-sizing: border-box; left: var(--ring-box-left); bottom: var(--ring-box-bottom); width: var(--ring-box-width); height: var(--ring-box-height); border-radius: 50%; transition: background-color 0.15s ease, box-shadow 0.15s ease; }
     }
     //a legal spot, and an enemy tower that can be replaced (a legal spot too): shown only to the player drafting, in their own
-    //disc color (--legal-spot-*, below); dashed, solid on hover
-    &.legal-spot::before, &.replaceable-spot::before{ border: 2px dashed var(--legal-spot-border); background-color: var(--legal-spot-fill); }
-    &.legal-spot.clickable-spot:hover::before, &.replaceable-spot:hover::before{ border-style: solid; background-color: var(--legal-spot-hover-fill); box-shadow: 0 0 8px var(--legal-spot-glow); }
+    //disc color (--legal-spot-*, below); the fill on ::before, the dashed outline an SVG ellipse over it (.spot-ring), solid
+    //on hover
+    &.legal-spot::before, &.replaceable-spot::before{ background-color: var(--legal-spot-fill); }
+    &.legal-spot.clickable-spot:hover::before, &.replaceable-spot:hover::before{ background-color: var(--legal-spot-hover-fill); box-shadow: 0 0 8px var(--legal-spot-glow); }
     //the replaceable tower's ring is a little wider, around its base, under the tower
-    &.replaceable-spot::before{ left: calc((var(--cell-size) - var(--spot-ring-width) * 1.2) / 2); bottom: calc(var(--spot-ring-bottom) - var(--spot-ring-height) * 0.1); width: calc(var(--spot-ring-width) * 1.2); height: calc(var(--spot-ring-height) * 1.2); }
+    &.replaceable-spot{ --ring-box-left: calc((var(--cell-size) - var(--spot-ring-width) * 1.2) / 2); --ring-box-bottom: calc(var(--spot-ring-bottom) - var(--spot-ring-height) * 0.1);
+        --ring-box-width: calc(var(--spot-ring-width) * 1.2); --ring-box-height: calc(var(--spot-ring-height) * 1.2); }
+
+    //the marching dashes: an <ellipse> in an SVG exactly the ring's box, no viewBox, so its units are the box's px and the
+    //stroke keeps 2px whatever the ring's size (BGA's phone scaling scales it like the old border). Its centre line 1px inside
+    //the box, like a 2px border. The ellipse never moves: only stroke-dashoffset does, one whole path length (pathLength 100)
+    //per $spot-ring-march-duration, every ring on one clock (--spot-ring-march-delay, set by renderSpots, so rebuilt spots
+    //carry on). Under the towers like the spot itself; no clicks: they go to the spot
+    .spot-ring{ position: absolute; left: var(--ring-box-left); bottom: var(--ring-box-bottom); width: var(--ring-box-width); height: var(--ring-box-height); overflow: visible; pointer-events: none;
+        ellipse{ cx: 50%; cy: 50%; rx: calc(50% - #{$spot-ring-stroke-width * 0.5}); ry: calc(50% - #{$spot-ring-stroke-width * 0.5}); fill: none; stroke: var(--legal-spot-border); stroke-width: $spot-ring-stroke-width;
+            stroke-dasharray: #{math.div(100 * $spot-ring-dash-share, $spot-ring-legal-dashes)} #{math.div(100 * (1 - $spot-ring-dash-share), $spot-ring-legal-dashes)};
+            animation: spot-ring-march $spot-ring-march-duration linear var(--spot-ring-march-delay, 0ms) infinite; }
+    }
+    &.replaceable-spot .spot-ring ellipse{ stroke-dasharray: #{math.div(100 * $spot-ring-dash-share, $spot-ring-replaceable-dashes)} #{math.div(100 * (1 - $spot-ring-dash-share), $spot-ring-replaceable-dashes)}; }
+    &.legal-spot.clickable-spot:hover .spot-ring ellipse, &.replaceable-spot:hover .spot-ring ellipse{ stroke-dasharray: none; }
     &.selected-spot::before{ border: 3px solid $selected-spot-color !important; background-color: rgba($selected-spot-color, 0.35) !important; box-shadow: 0 0 10px $selected-spot-color; }
+}
+@keyframes spot-ring-march{
+    from{ stroke-dashoffset: 0; }
+    to{ stroke-dashoffset: -100; } //one whole path length: the dashes are back where they started, no seam
+}
+.mobile_version .board-spot .spot-ring ellipse{ animation-duration: $spot-ring-march-mobile-duration; }
+@media (prefers-reduced-motion: reduce){
+    .board-spot .spot-ring ellipse{ animation: none; }
 }
 //the legal spots' color: the drafting player's disc color (BoardHandler.renderSpots)
 @each $name, $colors in $disc-colors {
