@@ -14,14 +14,22 @@
 //settings and does the moving; this only hands it the scroll offset, as --nexo-parallax on <html> (a plain number of px), clamped
 //where every layer has reached its cap so scrolling further writes nothing. Also puts in <body> the two layers a pseudo-element
 //can't hold (body's two are the surface and the black disc): the black disc's shadow, then the red disc, which moves on its own.
-//On mobile the red disc rises above BGA's floating buttons, so this also measures them (--floating-buttons-height), and keeps the
-//window's stable height, which ignores a mobile browser's address bar showing or hiding (getStableViewportHeight)
+//On mobile the red disc travels from behind the board (measureRedDiscStart) to a spot above BGA's floating buttons, so this also
+//measures those (--floating-buttons-height, --fixed-header-height, --red-disc-start-right / -bottom), and keeps the window's stable
+//height, which ignores a mobile browser's address bar showing or hiding (getStableViewportHeight)
+type RedDiscMeasurements = { buttons: number, header: number, start: { right: number, bottom: number } | null };
+
 export class BackgroundHandler{
     //custom properties on <html>: the scroll offset (set here) and the parallax's settings (set in Game.scss, :root)
     private static readonly PARALLAX_PROPERTY = '--nexo-parallax';
-    private static readonly PARALLAX_LAYERS = ['near', 'far', 'red-disc']; //the red disc's growth ends with the near layer
+    private static readonly PARALLAX_LAYERS = ['near', 'far', 'red-disc']; //each with its ratio and cap; the red disc's growth has its own end
     //on body: from the window's bottom to the top of BGA's floating buttons, px (measureFloatingButtons)
     private static readonly FLOATING_BUTTONS_PROPERTY = '--floating-buttons-height';
+    //on body: how far from the window's top BGA's fixed header reaches once the page scrolls, px (measureFixedHeader)
+    private static readonly FIXED_HEADER_PROPERTY = '--fixed-header-height';
+    //on body: where the red disc starts on mobile, its centre from the window's right and bottom edges, px (measureRedDiscStart)
+    private static readonly RED_DISC_START_RIGHT_PROPERTY = '--red-disc-start-right';
+    private static readonly RED_DISC_START_BOTTOM_PROPERTY = '--red-disc-start-bottom';
     //measureFloatingButtons(): the share of the window's width (from the right) and height (from the bottom) hit-tested for
     //BGA's floating buttons, every FLOATING_BUTTONS_SCAN_STEP screen px; anything fixed taller than the height share is not a
     //button (BGA's loading screen, an open chat window)
@@ -30,7 +38,7 @@ export class BackgroundHandler{
     private static readonly FLOATING_BUTTONS_SCAN_STEP = 12;
     private static readonly FLOATING_BUTTONS_MAX_HEIGHT_SHARE = 0.4;
     //ms after setup when the buttons are measured again, while BGA finishes laying out its page: all before a first scroll,
-    //usually, and any later change waits for the page's top (refreshFloatingButtons), so it never shows
+    //usually, and any later change waits for the page's top (refreshRedDiscPath), so it never shows
     private static readonly FLOATING_BUTTONS_REMEASURE_DELAYS = [300, 1000, 2500];
     //px: a resize that only changes the height, by at most this, is a mobile browser's address bar showing or hiding (the first
     //scroll down hides it), not a real resize: nothing is measured again
@@ -42,8 +50,13 @@ export class BackgroundHandler{
     private frame = 0;
     private stableWidth = 0; //the window's size at the last real resize (onResize)
     private stableHeight = 0;
-    private floatingButtonsHeight: number | null = null; //the value set on body
-    private pendingFloatingButtonsHeight: number | null = null; //a new value measured while scrolled, set back at the page's top
+    private redDiscElement: HTMLDivElement;
+    private redDiscMeasurements: RedDiscMeasurements = { buttons: 0, header: 0, start: null }; //the latest measured
+    private appliedRedDiscKey = ''; //the values set on body, as a string to compare
+    private redDiscPending = false; //measured while scrolled: set back at the page's top (update)
+    private layoutFrame = 0;
+    private observedBoard: HTMLElement | null = null;
+    private layoutObserver = new ResizeObserver(() => this.scheduleRedDiscStart());
 
     public static getInstance(): BackgroundHandler {
         return BackgroundHandler.instance ??= new BackgroundHandler();
@@ -53,24 +66,26 @@ export class BackgroundHandler{
         const arcShadow = document.createElement('div');
         arcShadow.classList.add('background-arc-shadow');
         document.body.insertAdjacentElement('afterbegin', arcShadow); //first in <body>: over body::before, under body::after
-        const redDisc = document.createElement('div');
-        redDisc.classList.add('background-red-disc');
-        arcShadow.insertAdjacentElement('afterend', redDisc); //over the shadow, under body::after
+        this.redDiscElement = document.createElement('div');
+        this.redDiscElement.classList.add('background-red-disc');
+        arcShadow.insertAdjacentElement('afterend', this.redDiscElement); //over the shadow, under body::after
 
         this.stableWidth = document.documentElement.clientWidth;
         this.stableHeight = document.documentElement.clientHeight;
         this.readParallaxSettings();
-        this.refreshFloatingButtons(true);
+        this.refreshRedDiscPath(true);
 
         //the settings change with the window's width (the mobile breakpoint) and prefers-reduced-motion: read them again then,
         //never while scrolling
         window.addEventListener('resize', () => this.onResize());
-        window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => { this.readParallaxSettings(); this.refreshFloatingButtons(true); this.scheduleUpdate(); });
+        window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => { this.readParallaxSettings(); this.refreshRedDiscPath(true); this.scheduleUpdate(); });
         window.addEventListener('scroll', () => this.scheduleUpdate(), { passive: true });
 
-        //measure BGA's floating buttons again while its page settles, and whenever its chat bubbles come and go in #chatbar
-        //(direct children only: on mobile the table log fills the chat windows inside it), which resizes nothing
-        const remeasure = () => this.refreshFloatingButtons(false);
+        //measure BGA's floating buttons again while its page settles (the first frame after setup: the board exists and has its
+        //size), and whenever its chat bubbles come and go in #chatbar (direct children only: on mobile the table log fills the
+        //chat windows inside it), which resizes nothing. The red disc's start follows the board's size and place: a ResizeObserver
+        //on the board (once it exists) and on body (the page above it settling)
+        const remeasure = () => this.refreshRedDiscPath(false);
         requestAnimationFrame(remeasure);
         for(const delay of BackgroundHandler.FLOATING_BUTTONS_REMEASURE_DELAYS)
             setTimeout(remeasure, delay);
@@ -80,6 +95,7 @@ export class BackgroundHandler{
         const chatBar = document.getElementById('chatbar');
         if(chatBar)
             new MutationObserver(remeasure).observe(chatBar, { childList: true, attributes: true, attributeFilter: ['style', 'class'] });
+        this.layoutObserver.observe(document.body);
 
         this.update();
     }
@@ -101,7 +117,7 @@ export class BackgroundHandler{
         this.stableWidth = width;
         this.stableHeight = height;
         this.readParallaxSettings();
-        this.refreshFloatingButtons(true);
+        this.refreshRedDiscPath(true);
         this.scheduleUpdate();
     }
 
@@ -115,27 +131,111 @@ export class BackgroundHandler{
             if(ratio > 0 && cap > 0)
                 this.maxScroll = Math.max(this.maxScroll, Math.ceil(cap / ratio));
         }
+        //the red disc's growth and rise have their own end; with prefers-reduced-motion they are held at their end, nothing to follow
+        const progressScroll = parseFloat(rootStyle.getPropertyValue('--bg-parallax-red-disc-progress-scroll'));
+        if(progressScroll > 0 && rootStyle.getPropertyValue('--bg-parallax-still').trim() !== '1')
+            this.maxScroll = Math.max(this.maxScroll, Math.ceil(progressScroll));
     }
 
-    //measures BGA's floating buttons and sets the result, at once if applyNow or the page is at its top (the red disc's rise is
-    //multiplied by the scroll's progress, 0 there, so a new value can't show); otherwise it waits for the top (update), so the
-    //disc never jumps mid-scroll
-    private refreshFloatingButtons(applyNow: boolean): void {
-        const height = this.measureFloatingButtons();
-        if(height === this.floatingButtonsHeight){
-            this.pendingFloatingButtonsHeight = null;
+    //measures what sets the red disc's path (BGA's floating buttons and fixed header, unless scanButtons is false: the start alone,
+    //for a layout change, without the corner's hit-test) and sets it, at once if applyNow or the page is at its top (the path is
+    //multiplied by the scroll's progress, 0 there, and the disc is behind the board then, so a new value can't show); otherwise it
+    //waits for the top (update), so the disc never jumps mid-scroll
+    private refreshRedDiscPath(applyNow: boolean, scanButtons: boolean = true): void {
+        if(scanButtons){
+            this.redDiscMeasurements.buttons = this.measureFloatingButtons();
+            this.redDiscMeasurements.header = this.measureFixedHeader();
+        }
+        this.redDiscMeasurements.start = this.measureRedDiscStart();
+
+        if(JSON.stringify(this.redDiscMeasurements) === this.appliedRedDiscKey){
+            this.redDiscPending = false;
             return;
         }
         if(applyNow || window.scrollY <= 0)
-            this.setFloatingButtonsHeight(height);
+            this.applyRedDiscMeasurements();
         else
-            this.pendingFloatingButtonsHeight = height;
+            this.redDiscPending = true;
     }
 
-    private setFloatingButtonsHeight(height: number): void {
-        this.floatingButtonsHeight = height;
-        this.pendingFloatingButtonsHeight = null;
-        document.body.style.setProperty(BackgroundHandler.FLOATING_BUTTONS_PROPERTY, height + 'px');
+    private applyRedDiscMeasurements(): void {
+        const { buttons, header, start } = this.redDiscMeasurements;
+        this.appliedRedDiscKey = JSON.stringify(this.redDiscMeasurements);
+        this.redDiscPending = false;
+        const bodyStyle = document.body.style;
+        bodyStyle.setProperty(BackgroundHandler.FLOATING_BUTTONS_PROPERTY, buttons + 'px');
+        bodyStyle.setProperty(BackgroundHandler.FIXED_HEADER_PROPERTY, header + 'px');
+        if(start){
+            bodyStyle.setProperty(BackgroundHandler.RED_DISC_START_RIGHT_PROPERTY, start.right + 'px');
+            bodyStyle.setProperty(BackgroundHandler.RED_DISC_START_BOTTOM_PROPERTY, start.bottom + 'px');
+        } else { //desktop, or no board: Game.scss starts the disc at its own place
+            bodyStyle.removeProperty(BackgroundHandler.RED_DISC_START_RIGHT_PROPERTY);
+            bodyStyle.removeProperty(BackgroundHandler.RED_DISC_START_BOTTOM_PROPERTY);
+        }
+    }
+
+    //a layout change (the board's size or place, the page above it): the start again, once per frame
+    private scheduleRedDiscStart(): void {
+        cancelAnimationFrame(this.layoutFrame);
+        this.layoutFrame = requestAnimationFrame(() => this.refreshRedDiscPath(false, false));
+    }
+
+    /**
+     * Under Game.scss's mobile breakpoint, where the red disc starts, at the page's top: its centre from the window's right and
+     * bottom edges, px, so that its whole image at its starting scale (--bg-parallax-red-disc-min-scale), shadow included
+     * (--bg-red-disc-footprint-*-share), sits --bg-red-disc-start-margin inside the board's bottom-right corner, hidden behind it
+     * (the board is opaque and over the disc). The board is measured with getBoundingClientRect() plus scrollY, so where it is with
+     * the page at its top, even if measured while scrolled; a corner past the window's right or bottom edge is taken at that edge
+     * instead (the board still covers it there). The disc's size is its box's, which is its full size (offsetWidth / offsetHeight
+     * ignore its transform). Null on desktop, without a board, or while the disc is hidden: Game.scss then starts it at its own
+     * place. Never called from the scroll handler
+     */
+    private measureRedDiscStart(): { right: number, bottom: number } | null {
+        const root = document.documentElement;
+        const rootStyle = getComputedStyle(root);
+        if(rootStyle.getPropertyValue('--bg-parallax-red-disc-rises').trim() !== '1')
+            return null;
+        const board = document.getElementById('nexo-board');
+        if(!board)
+            return null;
+        if(this.observedBoard !== board){
+            this.observedBoard = board;
+            this.layoutObserver.observe(board);
+        }
+
+        const width = this.redDiscElement.offsetWidth;
+        const height = this.redDiscElement.offsetHeight;
+        if(!(width > 0 && height > 0))
+            return null;
+
+        const read = (property: string) => parseFloat(rootStyle.getPropertyValue(property));
+        const scale = read('--bg-parallax-red-disc-min-scale');
+        const margin = read('--bg-red-disc-start-margin');
+        const reachRight = (read('--bg-red-disc-footprint-right-share') - read('--bg-red-disc-center-x-share')) * width * scale; //from the centre
+        const reachDown = (read('--bg-red-disc-footprint-bottom-share') - read('--bg-red-disc-center-y-share')) * height * scale;
+
+        const viewportWidth = root.clientWidth;
+        const viewportHeight = this.stableHeight;
+        const boardRect = board.getBoundingClientRect();
+        const cornerX = Math.min(boardRect.right, viewportWidth);
+        const cornerY = Math.min(boardRect.bottom + window.scrollY, viewportHeight); //with the page at its top
+        return {
+            right: Math.round(viewportWidth - (cornerX - margin - reachRight)),
+            bottom: Math.round(viewportHeight - (cornerY - margin - reachDown)),
+        };
+    }
+
+    //under Game.scss's mobile breakpoint, how far from the window's top BGA's header reaches once the page scrolls (the red disc's
+    //rise stays under it): the status bar (#page-title), which pins to the window's top, plus the top bar (#topbar) when it is fixed
+    //too (ConfirmPopover's check). Their heights, not where they are now: at the page's top the status bar is still in the flow
+    private measureFixedHeader(): number {
+        if(getComputedStyle(document.documentElement).getPropertyValue('--bg-parallax-red-disc-rises').trim() !== '1')
+            return 0;
+        const statusBar = document.getElementById('page-title');
+        const topBar = document.getElementById('topbar');
+        const statusBarHeight = statusBar ? statusBar.getBoundingClientRect().height : 0;
+        const topBarHeight = topBar && getComputedStyle(topBar).position === 'fixed' ? topBar.getBoundingClientRect().height : 0;
+        return Math.round(statusBarHeight + topBarHeight);
     }
 
     /**
@@ -208,7 +308,7 @@ export class BackgroundHandler{
         if(root.style.getPropertyValue(BackgroundHandler.PARALLAX_PROPERTY) !== offset)
             root.style.setProperty(BackgroundHandler.PARALLAX_PROPERTY, offset);
 
-        if(this.pendingFloatingButtonsHeight !== null && scrollY <= 0) //back at the top: the red disc's rise is 0 here
-            this.setFloatingButtonsHeight(this.pendingFloatingButtonsHeight);
+        if(this.redDiscPending && scrollY <= 0) //back at the top: the red disc's path is at its start here
+            this.applyRedDiscMeasurements();
     }
 }

@@ -569,3 +569,37 @@ Deploy `modules/` and `nexo.css`; no server change, an ongoing table is fine (F5
 - [ ] Reduced motion (OS setting): dashed, still rings.
 - [ ] `window[0].gameui.debug_ringStyle` is gone (undefined in the console).
 - [ ] No errors in the browser console.
+
+## After M1: faster black disc
+
+Deploy `nexo.css` and `modules/`; no schema change, an ongoing table is fine (F5).
+
+- [ ] Desktop, page at its top: the background exactly as before.
+- [ ] Scroll down: the black disc's edge, with its shadow, slides left clearly faster than before, still smoothly, and stops about 2140px down, 270px further left; no gap or edge ever shows on the right. Scroll back up: it returns.
+- [ ] The marble (40px at most) and the red disc (growth to full size about 2140px down, 60px drift) move exactly as before.
+- [ ] Everything over the black stays readable (board, log rows, player boards keep their own light backgrounds); nothing new ends up over the black.
+- [ ] Phone (or a window under 768px): the black disc drifts 68px at most (1.5 times before); the red disc grows and rises as before, finishing about 1290px down.
+
+## After M1: red disc starts higher on mobile
+
+Deploy `nexo.css` and `modules/`; no schema change, an ongoing table is fine (F5).
+
+- [ ] Phone, page at its top: the red disc (70%) sits about its own height higher than before, no longer behind BGA's round buttons; behind the board's bottom-right corner if the board ends close enough above it. Note how much of it shows under the board.
+- [ ] In the console: `document.querySelector('.background-red-disc').getBoundingClientRect()` and the board's (`#nexo-board`) bottom, to compare; the lift is the disc's height at 70% (about 39px on a typical phone).
+- [ ] Scroll down: it grows, drifts left and rises exactly as much as before, just from higher up; it ends inside the screen, never under BGA's header or the status bar pinned at the top.
+- [ ] Nothing of the disc shows through the board (the board's corner is rounded: a pixel or two may peek there).
+- [ ] Reduce motion on: parked at the new path's end, still, clear of the board.
+- [ ] Desktop: no change.
+
+## After M1: red disc starts behind the board on mobile
+
+Deploy `nexo.css` and `modules/`; no schema change, an ongoing table is fine (F5). Supersedes "red disc starts higher on mobile".
+
+- [ ] Phone, fresh load, page at its top: no red disc anywhere (hidden behind the board's bottom-right corner); at most a pixel or two at the board's rounded corner.
+- [ ] Scroll down slowly from a fresh load: the disc shows up from behind the board as it scrolls away, growing and drifting left smoothly, then (if the board ends low) rising to just above the round buttons; no jump, the first scroll included.
+- [ ] All the way down and back, the disc only ever moves left (or up), never right, whatever the board's height (also with `debug_fillBoard()`, and held sideways).
+- [ ] In the console: `document.body.style.getPropertyValue('--red-disc-start-right')` and `'--red-disc-start-bottom'` give the start (px from the window's right and bottom edges to the disc's centre).
+- [ ] Reload while scrolled down, then scroll to the top: the disc is behind the board there again.
+- [ ] Rotate the phone and back, and play a few turns: still hidden at the top every time.
+- [ ] Reduce motion on: the disc is parked at its end, still.
+- [ ] Desktop: no change.

@@ -16,13 +16,19 @@
   --bg-log-player-passed: linear-gradient(90deg, rgba(246, 246, 245, 0.97), rgba(232, 232, 230, 0.95));
   --bg-log-game-end: radial-gradient(ellipse at 20% 30%, rgba(255, 255, 255, 0.9) 0%, transparent 55%), radial-gradient(ellipse at 80% 70%, rgba(255, 255, 255, 0.7) 0%, transparent 50%), linear-gradient(115deg, transparent 61%, rgba(27, 27, 29, 0.07) 62.5%, transparent 64%), linear-gradient(115deg, #f4f4f2 0%, #d9d9d6 35%, #f7f7f5 50%, #c9c9c5 70%, #eeeeec 100%);
   --bg-log-game-end-draw: radial-gradient(ellipse at 15% 35%, rgba(255, 255, 255, 0.85) 0%, transparent 55%), radial-gradient(ellipse at 85% 65%, rgba(27, 27, 29, 0.18) 0%, transparent 55%), linear-gradient(115deg, transparent 47%, rgba(255, 255, 255, 0.4) 48.5%, transparent 50%), linear-gradient(100deg, #f6f6f4 0%, #e7e7e4 30%, #cfcfcb 50%, #acaca8 75%, #93938f 100%);
-  --bg-parallax-near-ratio: 0.042;
-  --bg-parallax-near-cap: 90;
+  --bg-parallax-near-ratio: 0.126;
+  --bg-parallax-near-cap: 270;
   --bg-parallax-far-ratio: 0.0175;
   --bg-parallax-far-cap: 40;
   --bg-parallax-red-disc-ratio: 0.032;
   --bg-parallax-red-disc-cap: 60;
   --bg-parallax-red-disc-min-scale: 0.7;
+  --bg-red-disc-start-margin: 12;
+  --bg-red-disc-center-x-share: 0.2764705882;
+  --bg-red-disc-center-y-share: 0.5393258427;
+  --bg-red-disc-footprint-right-share: 0.9647058824;
+  --bg-red-disc-footprint-bottom-share: 1;
+  --bg-parallax-red-disc-progress-scroll: 2143;
   --bg-parallax-red-disc-rises: 0;
   --bg-parallax-still: 0;
   --bg-parallax-near-overscan: calc(var(--bg-parallax-near-cap) * 1px + 2px);
@@ -30,18 +36,19 @@
   --bg-parallax-near-shift: calc(-1px * min(var(--nexo-parallax, 0) * var(--bg-parallax-near-ratio), var(--bg-parallax-near-cap)));
   --bg-parallax-far-shift: calc(-1px * min(var(--nexo-parallax, 0) * var(--bg-parallax-far-ratio), var(--bg-parallax-far-cap)));
   --bg-parallax-red-disc-shift: calc(-1px * min(var(--nexo-parallax, 0) * var(--bg-parallax-red-disc-ratio), var(--bg-parallax-red-disc-cap)));
-  --bg-parallax-red-disc-progress: max(var(--bg-parallax-still), min(1, var(--nexo-parallax, 0) * var(--bg-parallax-near-ratio) / var(--bg-parallax-near-cap)));
+  --bg-parallax-red-disc-progress: max(var(--bg-parallax-still), min(1, var(--nexo-parallax, 0) / var(--bg-parallax-red-disc-progress-scroll)));
   --bg-parallax-red-disc-scale: calc(var(--bg-parallax-red-disc-min-scale) + (1 - var(--bg-parallax-red-disc-min-scale)) * var(--bg-parallax-red-disc-progress));
 }
 
 @media (max-width: 767.98px) {
   :root {
-    --bg-parallax-near-ratio: 0.035;
-    --bg-parallax-near-cap: 45;
+    --bg-parallax-near-ratio: 0.0525;
+    --bg-parallax-near-cap: 68;
     --bg-parallax-far-ratio: 0.015;
     --bg-parallax-far-cap: 20;
     --bg-parallax-red-disc-ratio: 0.024;
     --bg-parallax-red-disc-cap: 32;
+    --bg-parallax-red-disc-progress-scroll: 1286;
     --bg-parallax-red-disc-rises: 1;
   }
 }
@@ -85,10 +92,15 @@ body.mobile_version {
 body {
   --bg-red-disc-rise-needed: calc(var(--floating-buttons-height, 0px) + 8px
       + var(--bg-red-disc-height) * 0.4269662921 - var(--bg-red-disc-bottom));
-  --bg-red-disc-rise-room: calc(var(--bg-viewport-height) - var(--bg-red-disc-bottom) - var(--bg-red-disc-height) * 0.5393258427);
+  --bg-red-disc-rise-room: calc(var(--bg-viewport-height) - var(--fixed-header-height, 0px) - var(--bg-red-disc-bottom)
+      - var(--bg-red-disc-height) * 0.5393258427);
   --bg-red-disc-rise-board-room: calc(var(--board-bottom-gap, 0px) - 16px - var(--bg-red-disc-bottom)
       - var(--bg-red-disc-height) * 0.4269662921 + (1 - var(--bg-parallax-still)) * 100000px);
   --bg-red-disc-rise: calc(var(--bg-parallax-red-disc-rises) * max(0px, min(var(--bg-red-disc-rise-needed) * 2, var(--bg-red-disc-rise-room), var(--bg-red-disc-rise-board-room))));
+  --bg-red-disc-start-right: var(--red-disc-start-right, var(--bg-red-disc-right));
+  --bg-red-disc-start-bottom: var(--red-disc-start-bottom, var(--bg-red-disc-bottom));
+  --bg-red-disc-end-bottom: calc(var(--bg-red-disc-bottom) + var(--bg-red-disc-rise));
+  --bg-red-disc-travel-up: max(0px, var(--bg-red-disc-end-bottom) - var(--bg-red-disc-start-bottom));
   --bg-viewport-height: 100vh;
 }
 @supports (height: 100svh) {
@@ -137,13 +149,13 @@ body .background-red-disc {
   z-index: -1;
   pointer-events: none;
   will-change: transform;
-  right: calc(var(--bg-red-disc-right) - var(--bg-red-disc-width) * 0.7235294118);
-  bottom: calc(var(--bg-red-disc-bottom) - var(--bg-red-disc-height) * 0.4606741573);
+  right: calc(var(--bg-red-disc-start-right) - var(--bg-red-disc-width) * 0.7235294118);
+  bottom: calc(var(--bg-red-disc-start-bottom) - var(--bg-red-disc-height) * 0.4606741573);
   width: var(--bg-red-disc-width);
   height: var(--bg-red-disc-height);
   background: url(img/bg_red_disc.png) 0px 0px/100% 100% no-repeat;
   transform-origin: 27.6470588235% 53.9325842697%;
-  transform: translate3d(var(--bg-parallax-red-disc-shift), calc(-1 * var(--bg-red-disc-rise) * var(--bg-parallax-red-disc-progress)), 0) scale(var(--bg-parallax-red-disc-scale));
+  transform: translate3d(var(--bg-parallax-red-disc-shift), calc(-1 * var(--bg-red-disc-travel-up) * var(--bg-parallax-red-disc-progress)), 0) scale(var(--bg-parallax-red-disc-scale));
 }
 
 @media (orientation: portrait) {
