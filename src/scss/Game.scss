@@ -189,6 +189,24 @@ $pending-confirm-ring-pop-scale: 1.1;
 $pending-confirm-pulse-scale: 1.14; //the one pulse when every disc is drafted
 $pending-confirm-pulse-duration: 0.45s;
 $draft-controls-z-index: 2000; //over every tower (1000 + its row)
+//"Confirm anyway?" (ConfirmPopover): a small card under the confirm button when discs are still placeable. Fixed in <body>,
+//outside BGA's mobile scaling, so these are real screen px. ConfirmPopover reads the anchor gap and the edge margin from the
+//custom properties, so every size lives here. z-index 948 and later in <body>: over the board and BGA's status bar, under
+//its popins (949)
+$confirm-popover-width: 250px;
+$confirm-popover-padding: 10px 12px;
+$confirm-popover-radius: 10px;
+$confirm-popover-background: linear-gradient(160deg, #ffffff 0%, $marble-white 100%);
+$confirm-popover-border-color: rgba($material-charcoal, 0.12);
+$confirm-popover-shadow: 0 1px 3px rgba($slab-shadow-color, 0.2), 0 6px 18px -4px rgba($slab-shadow-color, 0.32);
+$confirm-popover-font-size: 14px;
+$confirm-popover-button-height: 36px; //a comfortable tap target
+$confirm-popover-anchor-gap: 18px; //from the confirm button to the card: past its ring (10px), room for the arrow
+$confirm-popover-edge-margin: 8px; //from the viewport's and the game area's edges
+$confirm-popover-arrow-size: 12px; //a square turned 45 degrees, half of it out of the card
+$confirm-popover-slide: 6px; //the fade-in comes from this far towards the button
+$confirm-popover-duration: 150ms;
+$confirm-popover-z-index: 948;
 
 //player boards (BGA's .player-board) and log rows
 $panel-background: linear-gradient(160deg, $marble-white 0%, $marble-white-shade 100%);
@@ -615,6 +633,37 @@ html.hide-stack-heights .tower-height-number{ display: none; }
 //no pop, no stagger, no pulse: the ring and the button just change state
 @media (prefers-reduced-motion: reduce){
     .pending-confirm-button.confirm-full-pulse, .confirm-ring-segment, .confirm-ring-segment::before{ animation: none !important; }
+}
+
+//"Confirm anyway?" (ConfirmPopover): the board's light marble card, then one line of two buttons sharing its width: "Cancel"
+//(left) like the undo button, "Confirm" (right) in the confirm button's green. A longer translation wraps inside its button. Placed by ConfirmPopover.reposition (left, top, data-placement, --confirm-popover-arrow-offset)
+body .confirm-popover{ position: fixed; left: 0px; top: 0px; z-index: $confirm-popover-z-index; box-sizing: border-box; width: $confirm-popover-width; max-width: calc(100vw - #{2 * $confirm-popover-edge-margin});
+    padding: $confirm-popover-padding; border: 1px solid $confirm-popover-border-color; border-radius: $confirm-popover-radius; background: $confirm-popover-background; box-shadow: $confirm-popover-shadow;
+    color: $log-text-color; font-size: $confirm-popover-font-size; line-height: 1.3; text-align: center; text-wrap: balance; //even lines, not a lone "5)" on the second
+    --confirm-popover-anchor-gap: #{$confirm-popover-anchor-gap}; --confirm-popover-edge-margin: #{$confirm-popover-edge-margin};
+    --confirm-popover-slide-from: #{-$confirm-popover-slide}; //below the button: comes down from it
+    &[data-placement="above"]{ --confirm-popover-slide-from: #{$confirm-popover-slide}; }
+    animation: confirm-popover-in $confirm-popover-duration ease-out; @include non-selectable();
+
+    .confirm-popover-buttons{ display: flex; gap: 8px; margin-top: 9px; }
+    .confirm-popover-button{ flex: 1 1 0px; min-width: 0px; box-sizing: border-box; min-height: $confirm-popover-button-height; margin: 0px; padding: 4px 10px; border-radius: calc(#{$confirm-popover-button-height} / 2);
+        font: inherit; font-weight: bold; line-height: 1.15; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: box-shadow 0.15s ease, border-color 0.15s ease; }
+    .confirm-popover-confirm{ border: 1px solid $pending-confirm-border-color; background: $pending-confirm-background; color: #ffffff; box-shadow: $pending-button-shadow;
+        &:hover, &:focus-visible{ background: $pending-confirm-hover-background; box-shadow: $pending-button-shadow, 0 0 8px $pending-confirm-glow; outline: none; }
+    }
+    .confirm-popover-cancel{ border: 1px solid $board-border-color; background: $pending-undo-background; color: $material-charcoal; box-shadow: $pending-button-shadow;
+        &:hover, &:focus-visible{ border-color: rgba($material-charcoal, 0.35); outline: none; }
+    }
+
+    //the arrow on the side facing the button, at --confirm-popover-arrow-offset along it
+    .confirm-popover-arrow{ position: absolute; left: var(--confirm-popover-arrow-offset, 50%); width: $confirm-popover-arrow-size; height: $confirm-popover-arrow-size; box-sizing: border-box;
+        background: #ffffff; rotate: 45deg; translate: -50% -50%; pointer-events: none; }
+    &[data-placement="below"] .confirm-popover-arrow{ top: 0%; border-left: 1px solid $confirm-popover-border-color; border-top: 1px solid $confirm-popover-border-color; }
+    &[data-placement="above"] .confirm-popover-arrow{ top: 100%; background: $marble-white; border-right: 1px solid $confirm-popover-border-color; border-bottom: 1px solid $confirm-popover-border-color; }
+}
+@keyframes confirm-popover-in{ from{ opacity: 0; translate: 0px var(--confirm-popover-slide-from); } }
+@media (prefers-reduced-motion: reduce){
+    body .confirm-popover{ animation: none; }
 }
 
 //end of the game (BoardHandler.highlightLargestGroups): each player's largest group glows under its base, every other tower dims

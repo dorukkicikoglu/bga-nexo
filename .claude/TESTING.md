@@ -501,3 +501,18 @@ Deploy `nexo.css`; no server change, an ongoing table is fine (F5). Checked only
 - [ ] Game over (BGA's end state, its own buttons if any) and spectator view: buttons wrap to a new line only when they don't fit, never overflow the bar.
 - [ ] 768px (tablet or narrow window) and desktop width: the title and anything in `#generalactions` on one line, as before.
 - [ ] No errors in the browser console.
+
+## After M1: confirm anyway
+
+Deploy `modules/` and `nexo.css`; no server change, an ongoing table is fine (F5). New strings to translate: "You haven't placed all your discs. Confirm anyway?" and "Cancel" ("Confirm" already exists).
+
+- [ ] Your turn with 5 discs: draft a 3-disc tower and press the confirm button: nothing is sent; a small light card fades in just under it, its arrow pointing at the button: "You haven't placed all your discs. Confirm anyway?", then one line with a neutral "Cancel" on the left and a green "Confirm" on the right. The board doesn't move.
+- [ ] "Cancel": the card closes, nothing is sent, the draft is untouched. Open it again and press "Confirm": the turn is sent (the buttons grey out, then the towers fly in).
+- [ ] Open it, then press the board's confirm button again: the turn is sent.
+- [ ] Open it, then each of: click or tap outside it (the board, the page), Escape, undo, a click on a legal spot, a click on a drafted tower: it closes (and the click still does its own thing). Typing Escape in the chat doesn't close it.
+- [ ] Draft all 5 discs: the confirm button sends at once, no card. Same with discs left but nowhere to put them (`debug_fillBoard` with 1 empty spot: fill it with a 1, then confirm with discs left).
+- [ ] Placement: on a tower in the bottom row (the buttons sit above it) or with the page scrolled so the button is near the window's bottom, the card opens above the button, arrow pointing down at it. Near the board's left or right edge, the card stays whole inside the game area and the window, its arrow still at the button.
+- [ ] Phone (375px): the card is whole on screen, its buttons easy to tap, over the board's towers and the status bar; it follows the button when the page scrolls.
+- [ ] Reduced motion (OS setting): the card appears without fading or sliding.
+- [ ] Only one card at a time; none left behind after the turn is sent, after F5, or when the turn passes (zombie, timeout).
+- [ ] No errors in the browser console.

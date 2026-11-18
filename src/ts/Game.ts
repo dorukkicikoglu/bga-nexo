@@ -19,6 +19,7 @@ import { TooltipHandler } from "./TooltipHandler";
 import { EndGameScoringHandler } from "./EndGameScoringHandler";
 import { PrefHandler } from "./PrefHandler";
 import { BackgroundHandler } from "./BackgroundHandler";
+import { ConfirmPopover } from "./ConfirmPopover";
 
 //optional settings of Game.animateTowerSlide / animateTowerSlideAway
 export type SlideOptions = {
@@ -56,6 +57,7 @@ export class Game {
     public tooltipHandler: TooltipHandler;
     public prefHandler: PrefHandler;
     public backgroundHandler: BackgroundHandler;
+    public confirmPopover: ConfirmPopover;
     private endGameScoringHandler: EndGameScoringHandler;
 
     constructor(bga: Bga<NexoPlayer, NexoGamedatas>) {
@@ -105,6 +107,7 @@ export class Game {
         this.updatePassedStamps();
 
         this.boardHandler = new BoardHandler(this, gamedatas.towers);
+        this.confirmPopover = new ConfirmPopover(this);
         this.logMutationObserver = new LogMutationObserver(this);
         this.tooltipHandler = new TooltipHandler(this);
         this.prefHandler = new PrefHandler(this, gamedatas.pref_names);

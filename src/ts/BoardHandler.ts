@@ -199,6 +199,9 @@ export class BoardHandler {
         return this.spotsLayer.querySelector(`.board-spot[data-x="${spot.x}"][data-y="${spot.y}"]`);
     }
 
+    //the confirm button under the active drafted tower, null when none shows (renderPendingControls rebuilds it on every draft change)
+    public getConfirmButton(): HTMLButtonElement | null { return this.controlsLayer.querySelector('.pending-confirm-button'); }
+
     public getTowers(): NexoTower[] { return Array.from(this.towers.values()); }
     public getTowerMap(): Map<string, NexoTower> { return new Map(this.towers); }
 

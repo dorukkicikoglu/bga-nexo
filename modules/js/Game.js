@@ -137,7 +137,7 @@ class PlaceTowers {
         this.game.boardHandler.setDraftClickHandlers({
             spotClicked: spot => this.spotClicked(spot),
             undoClicked: spot => this.undoClicked(spot),
-            confirmClicked: () => this.confirmTurn(),
+            confirmClicked: () => this.confirmClicked(),
         });
         this.update();
     }
@@ -149,6 +149,7 @@ class PlaceTowers {
         this.confirming = false;
         this.pending = [];
         this.clickHistory = [];
+        this.game.confirmPopover.close();
         this.game.boardHandler.setDraftClickHandlers(null);
         this.game.boardHandler.setDraft(null);
     }
@@ -245,8 +246,28 @@ class PlaceTowers {
         this.pending = BoardRules.keepConnectedPending(this.game.boardHandler.getTowerMap(), remaining);
         this.update();
     }
-    //the board's confirm button: sent once (the buttons are disabled until the server answers). A refused turn (BGA shows the
-    //server's message) is editable again; an accepted one ends with towersPlaced and the state change, which clear the draft
+    //[BGA] the board's confirm button: sends the turn at once when no more disc can be placed this turn, else asks first
+    //(ConfirmPopover: "Confirm anyway?"). Pressed again while the card is open, it confirms
+    confirmClicked() {
+        if (!this.canDraft() || this.pending.length === 0)
+            return;
+        const popover = this.game.confirmPopover;
+        if (popover.isOpen())
+            popover.confirm();
+        else if (!this.canPlaceMore())
+            this.confirmTurn();
+        else
+            popover.open(() => this.confirmTurn());
+    }
+    //whether a disc can still go somewhere this turn: discs left, and a legal spot, a replaceable tower, or a drafted tower one
+    //more click would raise. Every disc drafted, or none placeable (a full board, enemy towers too high), sends the turn at once
+    canPlaceMore() {
+        if (this.getDiscsLeft() === 0)
+            return false;
+        return this.getLegalNewSpots().length > 0 || this.getReplaceableTowers().length > 0 || this.pending.some(tower => this.getCycleHeights(tower).includes(tower.height + 1));
+    }
+    //sends the turn once (the buttons are disabled until the server answers). A refused turn (BGA shows the server's message)
+    //is editable again; an accepted one ends with towersPlaced and the state change, which clear the draft
     confirmTurn() {
         if (!this.canDraft() || this.pending.length === 0)
             return;
@@ -265,6 +286,7 @@ class PlaceTowers {
     update() {
         if (!this.drafting)
             return;
+        this.game.confirmPopover.close(); //any change to the draft (and sending it) closes "Confirm anyway?"
         //towers taken back leave the history: the last one clicked that is still drafted is active
         this.clickHistory = this.clickHistory.filter(clicked => this.getPendingAt(clicked));
         this.game.boardHandler.setDraft({
@@ -679,6 +701,8 @@ class BoardHandler {
     getSpotElement(spot) {
         return this.spotsLayer.querySelector(`.board-spot[data-x="${spot.x}"][data-y="${spot.y}"]`);
     }
+    //the confirm button under the active drafted tower, null when none shows (renderPendingControls rebuilds it on every draft change)
+    getConfirmButton() { return this.controlsLayer.querySelector('.pending-confirm-button'); }
     getTowers() { return Array.from(this.towers.values()); }
     getTowerMap() { return new Map(this.towers); }
     addBoardTower(tower) {
@@ -1459,6 +1483,169 @@ BackgroundHandler.ADDRESS_BAR_MAX_HEIGHT = 160;
 BackgroundHandler.instance = null; //guards against second layers if the game sets its UI up again
 
 /**
+ * [BGA] "Confirm anyway?" (PlaceTowers.confirmClicked): when the player confirms a turn with discs still placeable, a small card
+ * opens under the board's confirm button instead of sending it: "You haven't placed all your discs. Confirm anyway?", then
+ * one line of two buttons, "Cancel" (closes) on the left and "Confirm" (sends the turn) on the right. Our own card, not BGA's confirmationDialog. It lives in <body>,
+ * position fixed, outside BGA's mobile scaling (real screen px), over the board's discs and over the status bar (z-index 948,
+ * later in <body>), and never moves the page's layout. Its place is measured on screen from the confirm button (found again
+ * by BoardHandler.getConfirmButton, the board rebuilds its controls on every draft change): below it, else above it, and
+ * kept inside the game area and the viewport (below a fixed BGA top bar), with an arrow at the button; measured again on
+ * scroll and resize. Closed by "Cancel", a pointer down outside it (not on the confirm button: a second press of it
+ * confirms), Escape, and by PlaceTowers on any draft change, on sending the turn and on leaving the state. One at a time.
+ * The anchor gap and the edge margin come from Game.scss (--confirm-popover-anchor-gap, --confirm-popover-edge-margin)
+ */
+class ConfirmPopover {
+    constructor(game) {
+        this.game = game;
+        this.popoverElement = null;
+        this.onConfirm = null;
+        this.repositionFrame = 0;
+        this.pointerDownListener = (event) => this.onDocumentPointerDown(event);
+        this.keyDownListener = (event) => this.onDocumentKeyDown(event);
+        this.viewportChangeListener = () => this.scheduleReposition();
+    }
+    isOpen() { return !!this.popoverElement; }
+    //opens the card under the confirm button (closing any other first); onConfirm sends the turn
+    open(onConfirm) {
+        this.close();
+        this.onConfirm = onConfirm;
+        const popover = document.createElement('div');
+        popover.className = 'confirm-popover';
+        popover.setAttribute('role', 'dialog');
+        const text = document.createElement('div');
+        text.className = 'confirm-popover-text';
+        text.textContent = _("You haven't placed all your discs. Confirm anyway?");
+        popover.setAttribute('aria-label', text.textContent);
+        const buttons = document.createElement('div');
+        buttons.className = 'confirm-popover-buttons';
+        buttons.append(//Cancel on the left, Confirm on the right, on one line
+        this.createButton('confirm-popover-cancel', _('Cancel'), () => this.close()), this.createButton('confirm-popover-confirm', _('Confirm'), () => this.confirm()));
+        const arrow = document.createElement('div');
+        arrow.className = 'confirm-popover-arrow';
+        arrow.setAttribute('aria-hidden', 'true');
+        popover.append(text, buttons, arrow);
+        this.popoverElement = popover;
+        document.body.appendChild(popover);
+        this.addListeners();
+        this.reposition();
+    }
+    //closes without confirming (also what "Cancel" does)
+    close() {
+        if (this.repositionFrame) {
+            cancelAnimationFrame(this.repositionFrame);
+            this.repositionFrame = 0;
+        }
+        this.removeListeners();
+        this.popoverElement?.remove();
+        this.popoverElement = null;
+        this.onConfirm = null;
+    }
+    //"Confirm", or a second press of the board's confirm button while open (PlaceTowers)
+    confirm() {
+        const onConfirm = this.onConfirm;
+        this.close();
+        onConfirm?.();
+    }
+    createButton(className, label, onClick) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'confirm-popover-button ' + className;
+        button.textContent = label;
+        button.addEventListener('click', (event) => {
+            event.stopPropagation();
+            onClick();
+        });
+        return button;
+    }
+    addListeners() {
+        document.addEventListener('pointerdown', this.pointerDownListener, true);
+        document.addEventListener('keydown', this.keyDownListener);
+        window.addEventListener('scroll', this.viewportChangeListener, true); //capture: any scrolling ancestor, not only the page
+        window.addEventListener('resize', this.viewportChangeListener);
+    }
+    removeListeners() {
+        document.removeEventListener('pointerdown', this.pointerDownListener, true);
+        document.removeEventListener('keydown', this.keyDownListener);
+        window.removeEventListener('scroll', this.viewportChangeListener, true);
+        window.removeEventListener('resize', this.viewportChangeListener);
+    }
+    //outside the card: closed. Not on the board's confirm button, whose click (after this pointer down) confirms
+    onDocumentPointerDown(event) {
+        const target = event.target;
+        if (!this.popoverElement || this.popoverElement.contains(target) || target.closest?.('#nexo-board .pending-confirm-button'))
+            return;
+        this.close();
+    }
+    //never while typing (BGA's chat)
+    onDocumentKeyDown(event) {
+        const target = event.target;
+        if (event.key !== 'Escape' || target?.closest?.('input, textarea, select, [contenteditable="true"]'))
+            return;
+        event.preventDefault();
+        this.close();
+    }
+    scheduleReposition() {
+        if (!this.popoverElement || this.repositionFrame)
+            return;
+        this.repositionFrame = requestAnimationFrame(() => {
+            this.repositionFrame = 0;
+            this.reposition();
+        });
+    }
+    //below the confirm button when the card fits there, else above it (else wherever has more room), then kept inside the game
+    //area and the viewport across (the viewport alone when the game area is narrower than the card) and inside the viewport
+    //down (below a fixed BGA top bar). The arrow keeps pointing at the button's centre
+    reposition() {
+        if (!this.popoverElement)
+            return;
+        const anchor = this.game.boardHandler.getConfirmButton();
+        if (!anchor) {
+            this.close(); //the button is gone (never expected while open: PlaceTowers closes the card first)
+            return;
+        }
+        const popoverStyle = getComputedStyle(this.popoverElement);
+        const gap = parseFloat(popoverStyle.getPropertyValue('--confirm-popover-anchor-gap')) || 0;
+        const margin = parseFloat(popoverStyle.getPropertyValue('--confirm-popover-edge-margin')) || 0;
+        const anchorRect = anchor.getBoundingClientRect();
+        const width = this.popoverElement.offsetWidth;
+        const height = this.popoverElement.offsetHeight;
+        const viewportWidth = document.documentElement.clientWidth; //leaves out a vertical scrollbar, which innerWidth counts
+        const viewportHeight = window.innerHeight;
+        const minTop = this.getMinTop(margin);
+        const belowTop = anchorRect.bottom + gap;
+        const aboveTop = anchorRect.top - gap - height;
+        const roomBelow = viewportHeight - margin - belowTop;
+        const roomAbove = aboveTop - minTop;
+        const placement = (roomBelow >= height || roomBelow >= roomAbove + height) ? 'below' : 'above';
+        const top = Math.max(minTop, Math.min(placement === 'below' ? belowTop : aboveTop, viewportHeight - margin - height));
+        let minLeft = margin;
+        let maxLeft = viewportWidth - margin - width;
+        const gameAreaRect = this.game.bga.gameArea.getElement()?.getBoundingClientRect();
+        if (gameAreaRect) {
+            const areaMinLeft = Math.max(minLeft, gameAreaRect.left + margin);
+            const areaMaxLeft = Math.min(maxLeft, gameAreaRect.right - margin - width);
+            if (areaMinLeft <= areaMaxLeft) {
+                minLeft = areaMinLeft;
+                maxLeft = areaMaxLeft;
+            }
+        }
+        const centerX = anchorRect.left + anchorRect.width / 2;
+        const left = Math.max(minLeft, Math.min(centerX - width / 2, maxLeft));
+        this.popoverElement.style.left = `${left}px`;
+        this.popoverElement.style.top = `${top}px`;
+        this.popoverElement.setAttribute('data-placement', placement);
+        this.popoverElement.style.setProperty('--confirm-popover-arrow-offset', `${Math.max(16, Math.min(width - 16, centerX - left))}px`);
+    }
+    //the card never goes under BGA's top bar when it is fixed (it paints over everything on mobile)
+    getMinTop(margin) {
+        const topBar = document.getElementById('topbar');
+        if (!topBar || getComputedStyle(topBar).position !== 'fixed')
+            return margin;
+        return Math.max(margin, topBar.getBoundingClientRect().bottom + margin);
+    }
+}
+
+/**
  *------
  * BGA framework: Gregory Isabelli & Emmanuel Colin & BoardGameArena
  * Nexo implementation : © Doruk Kicikoglu <doruk.kicikoglu@gmail.com>
@@ -1510,6 +1697,7 @@ class Game {
         }
         this.updatePassedStamps();
         this.boardHandler = new BoardHandler(this, gamedatas.towers);
+        this.confirmPopover = new ConfirmPopover(this);
         this.logMutationObserver = new LogMutationObserver(this);
         this.tooltipHandler = new TooltipHandler(this);
         this.prefHandler = new PrefHandler(this, gamedatas.pref_names);

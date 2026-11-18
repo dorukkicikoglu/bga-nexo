@@ -54,7 +54,7 @@ export class PlaceTowers {
         this.game.boardHandler.setDraftClickHandlers({
             spotClicked: spot => this.spotClicked(spot),
             undoClicked: spot => this.undoClicked(spot),
-            confirmClicked: () => this.confirmTurn(),
+            confirmClicked: () => this.confirmClicked(),
         });
         this.update();
     }
@@ -67,6 +67,7 @@ export class PlaceTowers {
         this.confirming = false;
         this.pending = [];
         this.clickHistory = [];
+        this.game.confirmPopover.close();
         this.game.boardHandler.setDraftClickHandlers(null);
         this.game.boardHandler.setDraft(null);
     }
@@ -181,8 +182,30 @@ export class PlaceTowers {
         this.update();
     }
 
-    //the board's confirm button: sent once (the buttons are disabled until the server answers). A refused turn (BGA shows the
-    //server's message) is editable again; an accepted one ends with towersPlaced and the state change, which clear the draft
+    //[BGA] the board's confirm button: sends the turn at once when no more disc can be placed this turn, else asks first
+    //(ConfirmPopover: "Confirm anyway?"). Pressed again while the card is open, it confirms
+    private confirmClicked(): void {
+        if(!this.canDraft() || this.pending.length === 0)
+            return;
+
+        const popover = this.game.confirmPopover;
+        if(popover.isOpen())
+            popover.confirm();
+        else if(!this.canPlaceMore())
+            this.confirmTurn();
+        else popover.open(() => this.confirmTurn());
+    }
+
+    //whether a disc can still go somewhere this turn: discs left, and a legal spot, a replaceable tower, or a drafted tower one
+    //more click would raise. Every disc drafted, or none placeable (a full board, enemy towers too high), sends the turn at once
+    private canPlaceMore(): boolean {
+        if(this.getDiscsLeft() === 0)
+            return false;
+        return this.getLegalNewSpots().length > 0 || this.getReplaceableTowers().length > 0 || this.pending.some(tower => this.getCycleHeights(tower).includes(tower.height + 1));
+    }
+
+    //sends the turn once (the buttons are disabled until the server answers). A refused turn (BGA shows the server's message)
+    //is editable again; an accepted one ends with towersPlaced and the state change, which clear the draft
     private confirmTurn(): void {
         if(!this.canDraft() || this.pending.length === 0)
             return;
@@ -203,6 +226,8 @@ export class PlaceTowers {
     private update(): void {
         if(!this.drafting)
             return;
+
+        this.game.confirmPopover.close(); //any change to the draft (and sending it) closes "Confirm anyway?"
 
         //towers taken back leave the history: the last one clicked that is still drafted is active
         this.clickHistory = this.clickHistory.filter(clicked => this.getPendingAt(clicked));
