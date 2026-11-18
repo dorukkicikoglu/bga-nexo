@@ -104,17 +104,15 @@ export class LogMutationObserver{
         return this.addLogClassTag(logHTML, 'towers-placed-log');
     }
 
-    //[BGA] the automatic pass: "[forward] name has no valid move and passes" (the server's PASS_LOG_STR is the plain-text fallback)
+    //[BGA] the automatic pass, icons only like Riviera's skipped power: "name [ban]", the ban sign titled with its meaning (the
+    //server's PASS_LOG_STR is the plain-text fallback)
     public createLogPlayerPassed(player_id: number): LogRowData {
-        const passText = (player_id === this.game.getMyPlayerID()) ? _('${you} have no valid move and pass') : _('${player_name} has no valid move and passes');
-        const passHTML = passText
-            .replace('${you}', this.game.divYou({class: 'playername'}))
-            .replace('${player_name}', this.game.divColoredPlayer(player_id, {class: 'playername'}));
+        const passTitle = _('No valid move, passes').replace(/"/g, '&quot;');
 
         let logHTML = `
             <div class="player-passed-row">
-                <i class="fa6 fa-forward player-passed-icon" aria-hidden="true"></i>
-                <span>${passHTML}</span>
+                ${this.getCutPlayerNameHTML(player_id)}
+                <i class="fa6 fa-ban player-passed-icon" title="${passTitle}" aria-label="${passTitle}" role="img"></i>
             </div>` + this.getDiscColorTag(player_id) + ' &nbsp;';
 
         return this.addLogClassTag(logHTML, 'player-passed-log');

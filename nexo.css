@@ -806,8 +806,20 @@ body .passed-banner.passed-banner-flying .passed-banner-name {
   gap: 6px;
   color: #1f1f21;
 }
+.log .player-passed-row .playername, .gamelogreview .player-passed-row .playername {
+  display: block;
+  min-width: 0;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .log .player-passed-row .player-passed-icon, .gamelogreview .player-passed-row .player-passed-icon {
+  flex: none;
+  font-size: 15px;
+  line-height: 1;
   color: #5a5f6e;
+  cursor: help;
 }
 .log .game-end-row, .gamelogreview .game-end-row {
   color: #1f1f21;

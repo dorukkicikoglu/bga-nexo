@@ -641,8 +641,10 @@ $log-types: "towers-placed", "player-passed", "game-end";
         //the board's towers at snapshot size: a larger number, readable on a small face
         .snapshot-tower .tower-height-number{ font-size: calc(var(--cell-size) * 0.36); }
     }
+    //"name [ban]": the name cut like the turn row's, then a grey ban sign (hover: what it means)
     .player-passed-row{ display: flex; align-items: center; gap: 6px; color: $log-text-color;
-        .player-passed-icon{ color: #5a5f6e; }
+        .playername{ display: block; min-width: 0; max-width: $log-name-max-width; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .player-passed-icon{ flex: none; font-size: 15px; line-height: 1; color: #5a5f6e; cursor: help; }
     }
     .game-end-row{ color: $log-text-color; }
 }

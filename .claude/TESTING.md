@@ -412,3 +412,14 @@ Deploy `modules/` and `nexo.css`; no server change, an ongoing table is fine (F5
 - [ ] Phone (375px) and desktop: the ring's segments are readable, it never touches the undo button, and stays inside the board at its edges (rightmost column, bottom row). The status bar never changes height while drafting (the board doesn't move).
 - [ ] Reduced motion (OS setting) or BGA animations off: no pop, no stagger, no pulse; the ring and the button still change state.
 - [ ] No errors in the browser console.
+
+## After M1: short pass log
+
+Deploy `modules/` and `nexo.css`; no server change, an ongoing table is fine (F5). New string to translate: "No valid move, passes" (the old "${you} have no valid move and pass" and "${player_name} has no valid move and passes" are no longer used).
+
+- [ ] Force a pass (`debug_setReserves(0, 25)` while the opponent is active, then let them play): the log row shows only the passer's name and a grey ban sign, on the passer's color bar, no ">>" icon and no sentence.
+- [ ] Hover the ban sign: "No valid move, passes".
+- [ ] Both sides: on the passer's own page the name is theirs (hover: "You"); on the opponent's and a spectator's, the passer's name.
+- [ ] A long player name is cut with an ellipsis, the ban sign stays visible after it.
+- [ ] Same row after F5, in the mobile table log and in a replay.
+- [ ] No errors in the browser console.
