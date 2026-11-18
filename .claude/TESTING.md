@@ -603,3 +603,15 @@ Deploy `nexo.css` and `modules/`; no schema change, an ongoing table is fine (F5
 - [ ] Rotate the phone and back, and play a few turns: still hidden at the top every time.
 - [ ] Reduce motion on: the disc is parked at its end, still.
 - [ ] Desktop: no change.
+
+## After M1: board no longer shakes
+
+Deploy `modules/` and `nexo.css`; no server change, an ongoing table is fine (F5). Best on Windows or Linux (classic scrollbars; macOS and phones use overlay scrollbars, which never took any width).
+
+- [ ] End of the game (`debug_endGame()`), F5 and live: the board keeps one size, no shaking; resize the window slowly in width and height across the size where the page starts to scroll: the board resizes smoothly and never flips back and forth.
+- [ ] Windows/Linux: the page's right edge keeps a scrollbar's room even when nothing scrolls (`scrollbar-gutter: stable`); the layout is otherwise as before.
+- [ ] Load (F5): the board still ends up as big as the window allows once BGA has laid out the page (not about 200px short).
+- [ ] The status bar's height changes (a long title on a narrow window, the game end message): the board resizes to fit under it.
+- [ ] Switch between BGA's desktop and mobile layouts (narrow the window): the board refits and re-centres at once.
+- [ ] During a turn's flights and the pass banner, the board doesn't resize.
+- [ ] Phone (375px): the board fits the width as before.

@@ -38,6 +38,8 @@ export class Game {
     public static readonly BOARD_RECENTER_EASING = 'ease-out';
     public static readonly BOARD_VIEWPORT_MARGIN = 10; //screen px from the board to the window's bottom (BoardHandler.fitToViewport); the status bar's gap is #nexo-board-container's padding
     public static readonly MIN_BOARD_CELL_SIZE = 40; //px of a spot, however short the window
+    public static readonly FIT_ROOM_THRESHOLD = 4; //px the room for the board must change by before its spot size is computed again (BoardHandler.fitToViewport)
+    public static readonly FIT_GROW_BACK_WINDOW = 1000; //ms after a shrink during which the board doesn't grow straight back into the room it shrank from, unless the window is resized
     //[BGA] a pass (PlayerHandler.animatePass): the big PASSED stamp pops in at the centre, holds, flies onto the player
     //board's stamp, then settles there (or fades out when both players have passed). About 1.5s in all
     public static readonly PASS_BANNER_POP_DURATION = 150;
@@ -296,7 +298,7 @@ export class Game {
         };
     }
     public onScreenWidthChange(): void { //BGA's resize hook (window resize, including orientation changes, and BGA's own relayout); also fires once at load
-        this.boardHandler?.fitToViewport();
+        this.boardHandler?.requestFit(); //batched with the resize and layout observers' fits: one per frame
     }
     public isReplay(): boolean { return typeof g_replayFrom != 'undefined' || g_archive_mode; } //"replay from this move" in an ongoing game, or an archived game
     public isInterfaceLocked(): boolean { return document.body.classList.contains('lockedInterface'); } //gameui.isInterfaceLocked() is not in this framework version

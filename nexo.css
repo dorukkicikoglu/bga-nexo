@@ -65,6 +65,10 @@
   --nexo-disc-scale: 1.11;
 }
 
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   background: #f6f3ed;
   isolation: isolate;

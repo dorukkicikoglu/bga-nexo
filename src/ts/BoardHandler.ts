@@ -50,6 +50,13 @@ export class BoardHandler {
     private towersLayer: HTMLDivElement;
     private controlsLayer: HTMLDivElement;
     private boardSize: number; //in spots (readBoardSize)
+    private fitFrame: number = 0; //the one pending fit (requestFit), 0 when none
+    //what the spot size was last computed from (fitToViewport): the room for the board, in the board's own px, and its span
+    private fittedRoom: { width: number; height: number; boardSize: number; } | null = null;
+    //the last time the fit shrank the board for lack of width alone, and the room it had just before: growing straight back into
+    //that room soon after, with no window resize between, is the board answering its own shrink (a scrollbar going away), so it doesn't
+    private lastShrink: { at: number; roomBefore: { width: number; height: number; boardSize: number; }; } | null = null;
+    private lastWindowResizeAt: number = 0;
     private contentsCenterX: number | null = null; //the middle of the towers' and legal spots' bounding box, in spots, once centred
     private contentsCenterY: number | null = null;
     //[BGA] while my draft has towers, the centre is frozen where it was when the first one was drafted (centerContents), until
@@ -97,22 +104,75 @@ export class BoardHandler {
         this.centerContents(false); //on load (F5, a replay's start): no slide
 
         //BGA's onScreenWidthChange (Game) only follows the width, and the page above the board is still being laid out when
-        //setup measures it (a board measured too low stayed too small): fit again on every window resize and whenever the page's
-        //layout changes (body's size: BGA's bars, the status bar, the columns settling). Fitting again where nothing moved
-        //changes nothing, so this never loops
-        let fitFrame = 0;
-        const scheduleFit = () => {
-            cancelAnimationFrame(fitFrame);
-            fitFrame = requestAnimationFrame(() => this.fitToViewport());
-        };
-        window.addEventListener('resize', scheduleFit);
-        const layoutObserver = new ResizeObserver(scheduleFit);
-        layoutObserver.observe(document.body);
-        const statusBar = document.getElementById('page-title');
-        if(statusBar)
-            layoutObserver.observe(statusBar);
+        //setup measures it (a board measured too low stayed too small): fit again on every window resize and whenever the
+        //layout around the board changes, one fit per frame (requestFit). Never on anything whose size follows the board's (body,
+        //the page's height, the container's height): a fit there would answer its own resize. So: the container's width only
+        //(the columns settling), and everything laid out before the board, whose height moves the board's top (BGA's bars,
+        //the status bar, panels above the game area; observeLayoutAboveBoard)
+        window.addEventListener('resize', () => {
+            this.lastWindowResizeAt = performance.now();
+            this.requestFit();
+        });
+        let observedContainerWidth = -1;
+        const widthObserver = new ResizeObserver(entries => {
+            const width = entries[entries.length - 1].contentRect.width;
+            if(width !== observedContainerWidth){
+                observedContainerWidth = width;
+                this.requestFit();
+            }
+        });
+        if(this.boardElement.parentElement)
+            widthObserver.observe(this.boardElement.parentElement);
+        this.observeLayoutAboveBoard(new ResizeObserver(() => this.requestFit()));
 
         this.layerElement.addEventListener('click', (event: MouseEvent) => this.onBoardClick(event));
+    }
+
+    //fits the board on the next frame, once, however many times it is asked for before then (resize, BGA's onScreenWidthChange,
+    //the layout observers)
+    public requestFit(): void {
+        if(this.fitFrame)
+            return;
+        this.fitFrame = requestAnimationFrame(() => {
+            this.fitFrame = 0;
+            this.fitToViewport();
+        });
+    }
+
+    //observes every element laid out before the board: the earlier siblings of the board's container and of each of its
+    //ancestors up to body (BGA's top bar, the status bar, anything above the game area). Their size moves the board's top, never
+    //the other way round. One added before the board later (or removed from there) is observed and fits again; anything added
+    //after it (the flying copies, popins and dialogs at the end of body) is ignored
+    private observeLayoutAboveBoard(observer: ResizeObserver): void {
+        const ancestors: Element[] = [];
+        for(let node: Element | null = this.boardElement.parentElement; node && node !== document.documentElement; node = node.parentElement)
+            ancestors.push(node);
+        for(const ancestor of ancestors)
+            for(let sibling = ancestor.previousElementSibling; sibling; sibling = sibling.previousElementSibling)
+                observer.observe(sibling);
+        const statusBar = document.getElementById('page-title');
+        if(statusBar)
+            observer.observe(statusBar); //already among them in BGA's layout; observing it twice does nothing
+
+        //a node at or before the board in the page's order: it holds the board, or the board comes after it
+        const isAboveBoard = (node: Node | null): boolean => !!node && (node.contains(this.boardElement) || !!(node.compareDocumentPosition(this.boardElement) & Node.DOCUMENT_POSITION_FOLLOWING));
+        const childrenObserver = new MutationObserver(mutations => {
+            let moved = false;
+            for(const mutation of mutations){
+                mutation.addedNodes.forEach(node => {
+                    if(node instanceof Element && isAboveBoard(node) && !node.contains(this.boardElement)){
+                        observer.observe(node);
+                        moved = true;
+                    }
+                });
+                if(mutation.removedNodes.length > 0 && isAboveBoard(mutation.nextSibling))
+                    moved = true;
+            }
+            if(moved)
+                this.requestFit();
+        });
+        for(const ancestor of ancestors)
+            childrenObserver.observe(ancestor, { childList: true });
     }
 
     /**
@@ -120,7 +180,12 @@ export class BoardHandler {
      * BOARD_VIEWPORT_MARGIN above the window's bottom when the page is at its top (then the gap under it, $below-board-gap-*,
      * and BGA's settings below), never wider than the game area, nor smaller than MIN_BOARD_CELL_SIZE spots. Sized through --cell-size
      * on #nexo-board, so the towers, spots and the layer's translate scale with it. Measured on screen, converted with the
-     * container's measured zoom (BGA scales the game area down on a phone)
+     * container's measured zoom (BGA scales the game area down on a phone). The room is measured from what doesn't follow the
+     * board's size: the container's width (html's scrollbar-gutter keeps a scrollbar from changing it), and the window's height
+     * under the board's top edge. The spot size is only computed again when that room changed by FIT_ROOM_THRESHOLD or more
+     * since the last time (or the board no longer fits across), so a few px of jitter can never make it flip between two sizes;
+     * and right after a shrink, it never grows straight back into the room it shrank from unless the window was resized (a
+     * board whose own size made a scrollbar come and go would otherwise flip between two sizes forever)
      */
     public fitToViewport(): void {
         const container = this.boardElement.parentElement;
@@ -146,7 +211,24 @@ export class BoardHandler {
         const maxHeight = (window.innerHeight - boardTop - Game.BOARD_VIEWPORT_MARGIN) / zoom - borders;
         const maxWidth = containerWidth - borders;
 
-        const cellSize = Math.max(Game.MIN_BOARD_CELL_SIZE, Math.floor(Math.min(maxHeight, maxWidth) / this.boardSize));
+        const currentCellSize = parseFloat(this.boardElement.style.getPropertyValue('--cell-size'));
+        const fitted = this.fittedRoom;
+        const roomUnchanged = !!fitted && fitted.boardSize === this.boardSize && currentCellSize > 0
+            && Math.abs(maxWidth - fitted.width) < Game.FIT_ROOM_THRESHOLD && Math.abs(maxHeight - fitted.height) < Game.FIT_ROOM_THRESHOLD
+            && (currentCellSize * this.boardSize <= maxWidth + 0.5 || currentCellSize <= Game.MIN_BOARD_CELL_SIZE); //a board too wide for the container always shrinks
+        let cellSize = roomUnchanged ? currentCellSize : Math.max(Game.MIN_BOARD_CELL_SIZE, Math.floor(Math.min(maxHeight, maxWidth) / this.boardSize));
+        if(!roomUnchanged){
+            const now = performance.now();
+            const shrink = this.lastShrink;
+            const growsBack = cellSize > currentCellSize && !!shrink && now - shrink.at < Game.FIT_GROW_BACK_WINDOW && this.lastWindowResizeAt < shrink.at
+                && shrink.roomBefore.boardSize === this.boardSize
+                && Math.abs(maxWidth - shrink.roomBefore.width) < Game.FIT_ROOM_THRESHOLD && Math.abs(maxHeight - shrink.roomBefore.height) < Game.FIT_ROOM_THRESHOLD;
+            if(growsBack)
+                cellSize = currentCellSize; //stays at the smaller size, which fits both rooms
+            else if(cellSize < currentCellSize && fitted && Math.abs(maxHeight - fitted.height) < Game.FIT_ROOM_THRESHOLD)
+                this.lastShrink = { at: now, roomBefore: fitted }; //only a shrink the width alone caused (a scrollbar): never the status bar's height flickering
+            this.fittedRoom = { width: maxWidth, height: maxHeight, boardSize: this.boardSize };
+        }
         if(this.boardElement.style.getPropertyValue('--cell-size') !== cellSize + 'px')
             this.boardElement.style.setProperty('--cell-size', cellSize + 'px');
         //the draft's controls keep a minimum size on screen (Game.scss: $pending-undo-min-size), whatever BGA's scaling

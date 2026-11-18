@@ -372,6 +372,9 @@ $log-snapshot-changed-fill: rgba($selected-spot-color, 0.22);
 //radial-gradient mask with a 1px soft edge (a crisp curve without jagged pixels); the disc's shadow is a third layer between
 //them (.background-arc-shadow), then the red disc (.background-red-disc). All drift left as the page scrolls ($bg-parallax-*),
 //the three wide ones reaching past the window's right edge by their overscan
+//a classic scrollbar (Windows, Linux) appearing or going would change the page's width, so the board's (BoardHandler.fitToViewport):
+//its room is always kept. No effect with overlay scrollbars (macOS, phones)
+html{ scrollbar-gutter: stable; }
 body{ background: $bg-surface-color; isolation: isolate;
     --bg-arc-radius: #{$bg-arc-radius}; --bg-arc-center-x: #{$bg-arc-center-x}; --bg-arc-center-y: #{$bg-arc-center-y};
     --bg-arc-center: var(--bg-arc-center-x) calc(100% + var(--bg-arc-center-y));
