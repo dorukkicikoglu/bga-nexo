@@ -496,7 +496,7 @@ export class BoardHandler {
      * A confirmed turn, played one spot at a time in the order the turn was drafted (the payload's order): on each spot, the
      * replaced enemy tower (if any) flies back onto its owner's reserve stacks on their player board, top disc first, while
      * the new tower's discs fly from the top of the player's stacks onto it, bottom disc first (discs TOWER_DISC_STAGGER
-     * apart); once every disc has landed, the next spot starts. Every viewer sees the same flights, the player who drafted
+     * apart); the next spot starts TOWER_SPOT_DELAY_SHARE (0.3) of the way through this one's flight. Every viewer sees the same flights, the player who drafted
      * the turn included: their drafted towers only stay as placeholders until their spot's turn, then fly in from their
      * stacks like anyone's. With animations off nothing flies and nothing is awaited: every spot applies at once, stacks
      * included. Resolves once every tower has landed.
@@ -515,12 +515,22 @@ export class BoardHandler {
             this.towerElements.get(key)?.classList.add('being-replaced'); //the enemy tower it replaces stays faded until then
         });
 
+        //each spot's flights start TOWER_SPOT_DELAY_SHARE of the previous spot's flight time after it (or once it has landed,
+        //if that comes first); the turn ends once every disc has landed
         const animate = this.game.bga.gameui.bgaAnimationsActive();
+        const allFlights: Promise<void>[] = [];
         for(const placement of placements){
             const flights = this.applyPlacement(playerID, placement, draftedElements, animate);
-            if(flights.length > 0)
-                await Promise.all(flights);
+            if(flights.length === 0)
+                continue;
+
+            allFlights.push(...flights);
+            const spotDiscCount = Math.max(placement.height, placement.replaced_height ?? 0);
+            const spotFlightMs = Game.TOWER_SLIDE_DURATION + (spotDiscCount - 1) * Game.TOWER_DISC_STAGGER;
+            await Promise.race([Promise.all(flights), this.game.bga.gameui.wait(spotFlightMs * Game.TOWER_SPOT_DELAY_SHARE)]);
         }
+        if(allFlights.length > 0)
+            await Promise.all(allFlights);
 
         draftedElements.forEach(element => element.remove()); //never expected: the server keeps every drafted tower
         this.renderSpots();

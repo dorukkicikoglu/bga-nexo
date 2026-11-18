@@ -516,3 +516,13 @@ Deploy `modules/` and `nexo.css`; no server change, an ongoing table is fine (F5
 - [ ] Reduced motion (OS setting): the card appears without fading or sliding.
 - [ ] Only one card at a time; none left behind after the turn is sent, after F5, or when the turn passes (zombie, timeout).
 - [ ] No errors in the browser console.
+
+## After M1: shorter delay between towers
+
+Deploy `modules/`; no schema change, an ongoing table is fine (F5).
+
+- [ ] Opponent's turn with 3 or more towers: each tower's discs start leaving about 30% of the way through the previous tower's flight, so the towers overlap instead of waiting for each other; within a tower the discs still leave 50ms apart, at the same speed as before.
+- [ ] A turn with a replacement: the next spot still starts 30% of the way through, the replaced discs land on their owner's stacks and the mover's discs leave their stacks without any disc going to the wrong place.
+- [ ] Your own turn: each placeholder disc still hides as its solid disc lands, even with the next tower already flying.
+- [ ] The board re-centres, and the next notification (pass banner, game end) plays, only after the last disc of the turn has landed.
+- [ ] Fast replay or F5: everything applies at once.

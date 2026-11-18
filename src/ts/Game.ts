@@ -30,6 +30,7 @@ export type SlideOptions = {
 export class Game {
     //every board animation's timing, in one place to tune them together (BoardHandler reads them too)
     public static readonly TOWER_SLIDE_DURATION = 520; //ms of a disc flying between a player board's reserve and its spot; a turn plays its spots one after the other
+    public static readonly TOWER_SPOT_DELAY_SHARE = 0.3; //share of a spot's flight time (TOWER_SLIDE_DURATION plus its disc staggers) before the next spot's discs leave; 1: the next spot waits until every disc has landed (until 2026-11-18), then 0.5, then 0.4
     public static readonly CONFIRM_RING_STAGGER = 50; //ms between two segments of the confirm button's ring filling when it first shows (BoardHandler.createConfirmRing)
     public static readonly TOWER_DISC_STAGGER = 50; //ms between two discs of the same tower leaving (bottom disc first onto the board, top disc first off it); a spot takes TOWER_SLIDE_DURATION plus this much per disc above the first
     public static readonly TOWER_SLIDE_EASING = 'ease-in-out';
