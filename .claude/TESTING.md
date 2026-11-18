@@ -557,3 +557,15 @@ Deploy `modules/` and `nexo.css`; no server change, an ongoing table is fine (F5
 - [ ] Resize a desktop window down until BGA switches to its mobile layout and back: the board re-centres at once, nothing cut off.
 - [ ] The background's red disc is a little bigger than before the change (1.6 board discs), still clear of the board and the player boards on desktop.
 - [ ] The log snapshots and the reserve stacks look as before.
+
+## After M1: slower marching dashes
+
+Deploy `modules/` and `nexo.css`; no server change, an ongoing table is fine (F5).
+
+- [ ] Your turn: the dashes travel around every legal spot's and replaceable tower's ring clearly slower than before (one trip in about 97s on desktop, 83s on a phone), smoothly, all in step, no seam.
+- [ ] Draft, cycle and undo towers: the new rings (spots your draft opens) march in step with the others, never starting over.
+- [ ] The drafted tower, its count badge, the gold ring under it, the undo and confirm buttons (and the confirm ring) and the towers don't move.
+- [ ] Hover a ring: it turns solid with the stronger fill and glow; a click drafts as before.
+- [ ] Reduced motion (OS setting): dashed, still rings.
+- [ ] `window[0].gameui.debug_ringStyle` is gone (undefined in the console).
+- [ ] No errors in the browser console.

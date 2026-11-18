@@ -168,12 +168,13 @@ $board-background: radial-gradient(ellipse 70% 55% at 30% 20%, #ffffff 0%, trans
     linear-gradient(41deg, transparent 67%, rgba($marble-vein-color, 0.035) 67.6%, transparent 68.5%),
     linear-gradient(160deg, $marble-white 0%, $marble-white-shade 100%);
 $board-border-color: rgba($material-charcoal, 0.1);
-//the dashed target ring's dashes travel around it (BoardHandler.renderSpots: an SVG <ellipse> per legal spot and replaceable
-//tower). $spot-ring-march-duration is one trip all the way around; the dashes keep CSS's 2px dashed rhythm (about 6px dash,
-//2px gap at the default 80px spot), as a whole number around each ring (pathLength 100), so the loop has no seam. They
-//scale with the board like the rings. Still with prefers-reduced-motion
-$spot-ring-march-duration: math.div(70s, 1.2); //about 58.3s
-$spot-ring-march-mobile-duration: $spot-ring-march-duration * 0.85; //BGA's mobile layout (.mobile_version), about 48s
+//the dashed target rings (BoardHandler.renderSpots: an SVG <ellipse> per legal spot and replaceable tower). The dashes keep
+//CSS's 2px dashed rhythm (about 6px dash, 2px gap at the default 80px spot), as a whole number around each ring (pathLength
+//100), so a loop has no seam, and scale with the board like the rings. The dashes travel around the ring,
+//$spot-ring-march-duration for one trip all the way around, every ring on one clock (--spot-ring-march-delay,
+//BoardHandler.renderSpots). Still with prefers-reduced-motion
+$spot-ring-march-duration: math.div(70s, 1.2 * 0.6); //about 97.2s: 60% of the speed until 2026-11-18 (58.3s)
+$spot-ring-march-mobile-share: 0.85; //BGA's mobile layout (.mobile_version) a little faster: about 82.6s (49.6s until 2026-11-18)
 $spot-ring-stroke-width: 2px;
 $spot-ring-dash-share: 0.75; //of each dash and gap
 $spot-ring-legal-dashes: 18;
@@ -563,27 +564,33 @@ html.hide-stack-heights .tower-height-number{ display: none; }
     &.replaceable-spot{ --ring-box-width: calc(var(--spot-ring-width) * #{$spot-ring-tower-ratio}); --ring-box-height: calc(var(--spot-ring-height) * #{$spot-ring-tower-ratio});
         --ring-box-left: calc((var(--cell-size) - var(--ring-box-width)) / 2); --ring-box-bottom: calc(var(--spot-ring-bottom) - var(--spot-ring-height) * #{($spot-ring-tower-ratio - 1) * 0.5}); }
 
-    //the marching dashes: an <ellipse> in an SVG exactly the ring's box, no viewBox, so its units are the box's px and the
+    //the dashed outline: an <ellipse> in an SVG exactly the ring's box, no viewBox, so its units are the box's px and the
     //stroke keeps 2px whatever the ring's size (BGA's phone scaling scales it like the old border). Its centre line 1px inside
-    //the box, like a 2px border. The ellipse never moves: only stroke-dashoffset does, one whole path length (pathLength 100)
-    //per $spot-ring-march-duration, every ring on one clock (--spot-ring-march-delay, set by renderSpots, so rebuilt spots
-    //carry on). Under the towers like the spot itself; no clicks: they go to the spot
+    //the box, like a 2px border. The ellipse never moves: only its dashes march (below the spot's rules). Under the towers
+    //like the spot itself; no clicks: they go to the spot
     .spot-ring{ position: absolute; left: var(--ring-box-left); bottom: var(--ring-box-bottom); width: var(--ring-box-width); height: var(--ring-box-height); overflow: visible; pointer-events: none;
         ellipse{ cx: 50%; cy: 50%; rx: calc(50% - #{$spot-ring-stroke-width * 0.5}); ry: calc(50% - #{$spot-ring-stroke-width * 0.5}); fill: none; stroke: var(--legal-spot-border); stroke-width: $spot-ring-stroke-width;
-            stroke-dasharray: #{math.div(100 * $spot-ring-dash-share, $spot-ring-legal-dashes)} #{math.div(100 * (1 - $spot-ring-dash-share), $spot-ring-legal-dashes)};
-            animation: spot-ring-march $spot-ring-march-duration linear var(--spot-ring-march-delay, 0ms) infinite; }
+            stroke-dasharray: #{math.div(100 * $spot-ring-dash-share, $spot-ring-legal-dashes)} #{math.div(100 * (1 - $spot-ring-dash-share), $spot-ring-legal-dashes)}; }
     }
     &.replaceable-spot .spot-ring ellipse{ stroke-dasharray: #{math.div(100 * $spot-ring-dash-share, $spot-ring-replaceable-dashes)} #{math.div(100 * (1 - $spot-ring-dash-share), $spot-ring-replaceable-dashes)}; }
     &.legal-spot.clickable-spot:hover .spot-ring ellipse, &.replaceable-spot:hover .spot-ring ellipse{ stroke-dasharray: none; }
     &.selected-spot::before{ border: 3px solid $selected-spot-color !important; background-color: rgba($selected-spot-color, 0.35) !important; box-shadow: 0 0 10px $selected-spot-color; }
 }
+//the marching dashes: only the legal spots' and replaceable towers' rings, never the gold ring under the active drafted
+//tower, nor anything in the towers or controls layers (drafted towers, badges, buttons). Only stroke-dashoffset moves, one
+//whole path length (pathLength 100) per --spot-ring-march-duration, every ring on one clock: --spot-ring-march-delay
+//(renderSpots, on .spots-layer) is minus the page's time when the spots were built, so a ring built mid-turn takes up the
+//same phase as the others instead of starting over
+#nexo-board{ --spot-ring-march-duration: #{$spot-ring-march-duration}; }
+.mobile_version #nexo-board{ --spot-ring-march-duration: #{$spot-ring-march-duration * $spot-ring-march-mobile-share}; }
+#nexo-board .board-spot:is(.legal-spot, .replaceable-spot):not(.selected-spot) .spot-ring ellipse{
+    animation: spot-ring-march var(--spot-ring-march-duration) linear var(--spot-ring-march-delay, 0ms) infinite; }
 @keyframes spot-ring-march{
     from{ stroke-dashoffset: 0; }
     to{ stroke-dashoffset: -100; } //one whole path length: the dashes are back where they started, no seam
 }
-.mobile_version .board-spot .spot-ring ellipse{ animation-duration: $spot-ring-march-mobile-duration; }
-@media (prefers-reduced-motion: reduce){
-    .board-spot .spot-ring ellipse{ animation: none; }
+@media (prefers-reduced-motion: reduce){ //the same selector as the march's, later, so it wins
+    #nexo-board .board-spot:is(.legal-spot, .replaceable-spot):not(.selected-spot) .spot-ring ellipse{ animation: none; }
 }
 //the legal spots' color: the drafting player's disc color (BoardHandler.renderSpots)
 @each $name, $colors in $disc-colors {
