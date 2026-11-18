@@ -539,3 +539,21 @@ Deploy `modules/` and `nexo.css`; no server change, an ongoing table is fine (F5
 - [ ] Reduced motion (OS setting): the rings are dashed and still.
 - [ ] The opponent and spectators still see no rings.
 - [ ] No errors in the browser console.
+
+## After M1: bigger discs on the board
+
+Deploy `modules/` and `nexo.css`; no server change, an ongoing table is fine (F5). Tune live in the console (`window[0]` on Studio): `window[0].document.documentElement.style.setProperty('--nexo-disc-scale', '1.05')` on desktop (on mobile set it on `window[0].document.body`; above 1.11 it is capped); the edge is `--board-edge-padding` on `#nexo-board` (read again on the next resize).
+
+- [ ] Desktop: discs bigger than before the change (about 15%), with a small, clear gap between side-by-side towers (about 15px on a large window); the outer targets have room between them and the board's left and right edges.
+- [ ] 3- and 4-disc towers stay below the tower behind them; a 5-disc tower doesn't reach it either.
+- [ ] The height numbers are centred on the top faces and in proportion; the "Always show stack heights" preference still hides them.
+- [ ] Your turn: an empty target ring is exactly the size, shape and place of the disc you then draft on it (the drafted disc covers it).
+- [ ] A replaceable enemy tower's ring follows its base: the same ellipse a little larger, showing evenly left, right and in front (about 5px beside on desktop, 3px on a phone), never touching a neighbour's ring.
+- [ ] Draft a tower: its badge, gold ring, undo and confirm buttons (with the progress ring) are in proportion, on the board, nudged sideways at the left and right edges, above the tower on the bottom row.
+- [ ] The largest possible box (4 columns of towers with legal spots on both sides, `debug_fillBoard` then free a column): nothing is cut off; draft a 5-disc tower on the top row of legal spots: its top face is not cut off.
+- [ ] Turn animation: every disc flies from the reserve stacks and lands exactly on the board's tower, no jump in size at the end; a replaced tower flies back the same way.
+- [ ] End of the game: the largest groups' glows sit under their towers like the replaceable rings and don't run into each other.
+- [ ] Phone (375px): the board fits the width, no horizontal scroll; discs a little smaller than the first try (0.87 of a spot instead of 0.94), still a gap between them; rings and buttons tappable.
+- [ ] Resize a desktop window down until BGA switches to its mobile layout and back: the board re-centres at once, nothing cut off.
+- [ ] The background's red disc is a little bigger than before the change (1.6 board discs), still clear of the board and the player boards on desktop.
+- [ ] The log snapshots and the reserve stacks look as before.

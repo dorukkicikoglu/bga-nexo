@@ -38,9 +38,10 @@ export type DraftClickHandlers = {
  * a tower's grid position never changes. Only the layer moves: like Yaxha's centerCubesContainer(), its translate centres the
  * bounding box of the towers plus the legal spots in the board (centerContents), sliding over BOARD_RECENTER_DURATION when
  * that box changes, at once on load. The legal spots count in the box for everyone but only the player drafting sees them.
- * Nothing else is drawn: no empty spots, no grid outline. The board is (gridSize + 2) spots across and down: the largest
- * box is gridSize + 1 (4 columns of towers with a legal spot on each side; with 5, no spot beyond them is legal), plus half
- * a spot on each side.
+ * Nothing else is drawn: no empty spots, no grid outline. The board is (gridSize + 1 + 2 * --board-edge-padding) spots across
+ * and down (readBoardSize): the largest box is gridSize + 1 (4 columns of towers with a legal spot on each side; with 5, no spot
+ * beyond them is legal), plus Game.scss's $board-edge-padding on each side (smaller on BGA's mobile layout). Its spot size
+ * (--cell-size) comes from the window, never from the box.
  */
 export class BoardHandler {
     private boardElement: HTMLDivElement;
@@ -48,7 +49,7 @@ export class BoardHandler {
     private spotsLayer: HTMLDivElement;
     private towersLayer: HTMLDivElement;
     private controlsLayer: HTMLDivElement;
-    private boardSize: number;
+    private boardSize: number; //in spots (readBoardSize)
     private contentsCenterX: number | null = null; //the middle of the towers' and legal spots' bounding box, in spots, once centred
     private contentsCenterY: number | null = null;
     //[BGA] while my draft has towers, the centre is frozen where it was when the first one was drafted (centerContents), until
@@ -73,9 +74,8 @@ export class BoardHandler {
     private static readonly CONFIRM_ICON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 
     constructor(private game: Game, towers: NexoTower[]) {
-        this.boardSize = this.game.getRules().gridSize + 2;
-
         this.boardElement = document.getElementById('nexo-board') as HTMLDivElement;
+        this.boardSize = this.readBoardSize();
         this.boardElement.style.setProperty('--board-size', this.boardSize.toString());
         this.boardElement.innerHTML = `
             <div class="board-layer">
@@ -127,6 +127,14 @@ export class BoardHandler {
         if(!container)
             return;
 
+        //BGA switches to and from its mobile layout as the window changes, and the edge padding with it: centre again at once
+        const boardSize = this.readBoardSize();
+        const boardSizeChanged = boardSize !== this.boardSize;
+        if(boardSizeChanged){
+            this.boardSize = boardSize;
+            this.boardElement.style.setProperty('--board-size', boardSize.toString());
+        }
+
         const containerRect = container.getBoundingClientRect();
         const containerWidth = parseFloat(getComputedStyle(container).width); //unrounded, unlike offsetWidth
         if(!(containerWidth > 0))
@@ -151,6 +159,18 @@ export class BoardHandler {
         if(container.style.getPropertyValue('--board-page-bottom') !== boardPageBottom)
             container.style.setProperty('--board-page-bottom', boardPageBottom);
         this.measureForBackgroundDisc(cellSize * zoom);
+
+        if(boardSizeChanged && this.contentsCenterX !== null){
+            this.contentsCenterX = null; //applies again, without a slide
+            this.contentsCenterY = null;
+            this.centerContents(false);
+        }
+    }
+
+    //the board's span in spots: the largest box (gridSize + 1) plus Game.scss's --board-edge-padding on each side
+    private readBoardSize(): number {
+        const padding = parseFloat(getComputedStyle(this.boardElement).getPropertyValue('--board-edge-padding'));
+        return this.game.getRules().gridSize + 1 + 2 * (padding >= 0 ? padding : 0.5);
     }
 
     /**

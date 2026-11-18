@@ -566,9 +566,10 @@ PlayerHandler.RESERVE_STACK_SIZE = 5;
  * a tower's grid position never changes. Only the layer moves: like Yaxha's centerCubesContainer(), its translate centres the
  * bounding box of the towers plus the legal spots in the board (centerContents), sliding over BOARD_RECENTER_DURATION when
  * that box changes, at once on load. The legal spots count in the box for everyone but only the player drafting sees them.
- * Nothing else is drawn: no empty spots, no grid outline. The board is (gridSize + 2) spots across and down: the largest
- * box is gridSize + 1 (4 columns of towers with a legal spot on each side; with 5, no spot beyond them is legal), plus half
- * a spot on each side.
+ * Nothing else is drawn: no empty spots, no grid outline. The board is (gridSize + 1 + 2 * --board-edge-padding) spots across
+ * and down (readBoardSize): the largest box is gridSize + 1 (4 columns of towers with a legal spot on each side; with 5, no spot
+ * beyond them is legal), plus Game.scss's $board-edge-padding on each side (smaller on BGA's mobile layout). Its spot size
+ * (--cell-size) comes from the window, never from the box.
  */
 class BoardHandler {
     constructor(game, towers) {
@@ -586,8 +587,8 @@ class BoardHandler {
         this.draftClickHandlers = null;
         this.confirmWasFull = false; //every disc of the turn was drafted at the last render: the confirm button pulses once on reaching it
         this.ringWasFilled = null; //the confirm ring's filled segments at the last render, null when no confirm button showed
-        this.boardSize = this.game.getRules().gridSize + 2;
         this.boardElement = document.getElementById('nexo-board');
+        this.boardSize = this.readBoardSize();
         this.boardElement.style.setProperty('--board-size', this.boardSize.toString());
         this.boardElement.innerHTML = `
             <div class="board-layer">
@@ -633,6 +634,13 @@ class BoardHandler {
         const container = this.boardElement.parentElement;
         if (!container)
             return;
+        //BGA switches to and from its mobile layout as the window changes, and the edge padding with it: centre again at once
+        const boardSize = this.readBoardSize();
+        const boardSizeChanged = boardSize !== this.boardSize;
+        if (boardSizeChanged) {
+            this.boardSize = boardSize;
+            this.boardElement.style.setProperty('--board-size', boardSize.toString());
+        }
         const containerRect = container.getBoundingClientRect();
         const containerWidth = parseFloat(getComputedStyle(container).width); //unrounded, unlike offsetWidth
         if (!(containerWidth > 0))
@@ -655,6 +663,16 @@ class BoardHandler {
         if (container.style.getPropertyValue('--board-page-bottom') !== boardPageBottom)
             container.style.setProperty('--board-page-bottom', boardPageBottom);
         this.measureForBackgroundDisc(cellSize * zoom);
+        if (boardSizeChanged && this.contentsCenterX !== null) {
+            this.contentsCenterX = null; //applies again, without a slide
+            this.contentsCenterY = null;
+            this.centerContents(false);
+        }
+    }
+    //the board's span in spots: the largest box (gridSize + 1) plus Game.scss's --board-edge-padding on each side
+    readBoardSize() {
+        const padding = parseFloat(getComputedStyle(this.boardElement).getPropertyValue('--board-edge-padding'));
+        return this.game.getRules().gridSize + 1 + 2 * (padding >= 0 ? padding : 0.5);
     }
     /**
      * The page background's red disc ($bg-red-disc-* in Game.scss) is outside the board and can't read its --cell-size: hand

@@ -10,6 +10,7 @@
  */
 :root {
   --cell-size: min(5.6vw, 72px);
+  --nexo-disc-scale: 1.1;
   --bg-log-default: linear-gradient(135deg, #fcfbf9, #f0eee9);
   --bg-log-towers-placed: linear-gradient(90deg, rgba(252, 251, 249, 0.97), rgba(240, 238, 233, 0.95));
   --bg-log-player-passed: linear-gradient(90deg, rgba(246, 246, 245, 0.97), rgba(232, 232, 230, 0.95));
@@ -54,6 +55,7 @@
 }
 .mobile_version {
   --cell-size: 76px;
+  --nexo-disc-scale: 1.11;
 }
 
 body {
@@ -64,7 +66,7 @@ body {
   --bg-arc-center-y: 5vw;
   --bg-arc-center: var(--bg-arc-center-x) calc(100% + var(--bg-arc-center-y));
   --bg-red-disc-right: 16vw;
-  --bg-red-disc-wanted-width: calc(var(--board-cell-screen-size, clamp(160px, 16vw, 320px) * 0.3707893414) * 2.6969491525);
+  --bg-red-disc-wanted-width: calc(var(--board-cell-screen-size, clamp(160px, 16vw, 320px) * 0.3707893414 / min(var(--nexo-disc-scale), 1.1103479853)) * 2.6969491525 * min(var(--nexo-disc-scale), 1.1103479853));
   --bg-red-disc-wanted-half-height: calc(var(--bg-red-disc-wanted-width) * 0.1490196078);
   --bg-red-disc-wanted-top: calc(max(16vh, 48px + var(--bg-red-disc-wanted-half-height)) + var(--bg-red-disc-wanted-half-height));
   --bg-red-disc-board-room: calc(var(--board-right-gap, 100vw) - var(--bg-red-disc-right) - 16px);
@@ -180,9 +182,9 @@ body .sliding-clone {
   -moz-user-select: none;
   -ms-user-select: none;
   user-select: none;
-  --disc-width: calc(var(--cell-size) * 0.78);
+  --disc-width: calc(var(--cell-size) * 0.78 * var(--disc-scale, 1));
   --disc-face-height: calc(var(--disc-width) * 0.45);
-  --disc-thickness: calc(var(--cell-size) * 0.1);
+  --disc-thickness: calc(var(--cell-size) * 0.1 * var(--disc-scale, 1));
   --tower-base: calc(var(--cell-size) * 0.08);
 }
 .nexo-tower .tower-disc {
@@ -228,7 +230,7 @@ body .sliding-clone {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: calc(var(--cell-size) * 0.27);
+  font-size: calc(var(--disc-width) * 0.3461538462);
   font-weight: bold;
   line-height: 1;
   color: var(--disc-number);
@@ -306,6 +308,18 @@ html.hide-stack-heights .tower-height-number {
   user-select: none;
 }
 
+#nexo-board, .board-tower {
+  --disc-scale: min(var(--nexo-disc-scale), 1.1103479853);
+}
+
+#nexo-board {
+  --board-edge-padding: 0.35;
+}
+
+.mobile_version #nexo-board {
+  --board-edge-padding: 0.15;
+}
+
 .board-layer {
   position: absolute;
   left: 0px;
@@ -328,7 +342,7 @@ html.hide-stack-heights .tower-height-number {
   top: calc(var(--y) * var(--cell-size));
   width: var(--cell-size);
   height: var(--cell-size);
-  --spot-ring-width: calc(var(--cell-size) * 0.78);
+  --spot-ring-width: calc(var(--cell-size) * 0.78 * var(--disc-scale, 1));
   --spot-ring-height: calc(var(--spot-ring-width) * 0.45);
   --spot-ring-bottom: calc(var(--cell-size) * 0.08);
   --ring-box-left: calc((var(--cell-size) - var(--spot-ring-width)) / 2);
@@ -358,10 +372,10 @@ html.hide-stack-heights .tower-height-number {
   box-shadow: 0 0 8px var(--legal-spot-glow);
 }
 .board-spot.replaceable-spot {
-  --ring-box-left: calc((var(--cell-size) - var(--spot-ring-width) * 1.2) / 2);
-  --ring-box-bottom: calc(var(--spot-ring-bottom) - var(--spot-ring-height) * 0.1);
-  --ring-box-width: calc(var(--spot-ring-width) * 1.2);
-  --ring-box-height: calc(var(--spot-ring-height) * 1.2);
+  --ring-box-width: calc(var(--spot-ring-width) * 1.12);
+  --ring-box-height: calc(var(--spot-ring-height) * 1.12);
+  --ring-box-left: calc((var(--cell-size) - var(--ring-box-width)) / 2);
+  --ring-box-bottom: calc(var(--spot-ring-bottom) - var(--spot-ring-height) * 0.06);
 }
 .board-spot .spot-ring {
   position: absolute;
@@ -465,8 +479,8 @@ html.hide-stack-heights .tower-height-number {
   width: var(--cell-size);
   height: var(--cell-size);
   pointer-events: none;
-  --pending-badge-size: max(calc(18px / var(--board-zoom, 1)), calc(var(--cell-size) * 0.26));
-  --pending-button-size: max(calc(32px / var(--board-zoom, 1)), calc(var(--cell-size) * 0.38));
+  --pending-badge-size: max(calc(18px / var(--board-zoom, 1)), calc(var(--cell-size) * 0.26 * var(--disc-scale, 1)));
+  --pending-button-size: max(calc(32px / var(--board-zoom, 1)), calc(var(--cell-size) * 0.38 * var(--disc-scale, 1)));
 }
 .pending-controls .pending-count-badge {
   position: absolute;
@@ -776,10 +790,10 @@ body .confirm-popover[data-placement=above] .confirm-popover-arrow {
 .board-tower.largest-group-tower::before {
   content: "";
   position: absolute;
-  left: calc((var(--cell-size) - var(--disc-width) * 1.15) / 2);
-  bottom: calc(var(--tower-base) - var(--disc-face-height) * 0.1);
-  width: calc(var(--disc-width) * 1.15);
-  height: calc(var(--disc-face-height) * 1.2);
+  left: calc((var(--cell-size) - var(--disc-width) * 1.12) / 2);
+  bottom: calc(var(--tower-base) - var(--disc-face-height) * 0.06);
+  width: calc(var(--disc-width) * 1.12);
+  height: calc(var(--disc-face-height) * 1.12);
   border-radius: 50%;
   background: var(--group-glow);
   box-shadow: 0 0 10px 3px var(--group-glow);
@@ -1089,5 +1103,3 @@ body .passed-banner.passed-banner-flying .passed-banner-name {
 .dijitTooltipLeft, .dijitTooltipRight {
   max-width: calc(100vw - 30px);
 }
-
-/*# sourceMappingURL=nexo.css.map */

@@ -25,6 +25,25 @@ $disc-width-ratio: 0.78;
 $disc-face-ratio: 0.45;
 $disc-thickness-ratio: 0.1;
 $tower-base-ratio: 0.08;
+//[BGA] the board's discs against the spot pitch (--nexo-disc-scale, the one knob to tune them): the disc's width, face and
+//thickness times this on the board and its flying copies; the log snapshots, reserve stacks and status bar icons keep 1.
+//Everything on the board sized from a disc follows it: the height number, the target rings, the end-game glow, the draft's
+//badge and buttons. Desktop, then BGA's mobile layout (body.mobile_version). At 1.1 a disc is 0.86 of a spot (0.14 spot between
+//neighbours); at 1.11, 0.87. A 5-disc tower stays clear of the tower behind it up to 1.17
+$board-disc-scale: 1.1;
+$board-disc-mobile-scale: 1.11;
+//a ring around a tower's base (a replaceable tower's, the end-game glow): the bottom disc's own ellipse (same ratio, same centre),
+//this many times as big, so it shows evenly around the base like a footprint. Never wider than $spot-ring-max-share of a spot, so
+//neighbouring rings never touch: rather than squeeze the ring, the disc scale is capped at $board-disc-max-scale (1.11 with these)
+$spot-ring-tower-ratio: 1.12;
+$spot-ring-max-share: 0.97;
+$board-disc-max-scale: math.div($spot-ring-max-share, $spot-ring-tower-ratio * $disc-width-ratio);
+//[BGA] empty board between the largest box the contents can take (GRID_SIZE + 1 spots: a legal spot on each side of 4 columns of
+//towers) and the board's edges, in spots, on each side (BoardHandler reads --board-edge-padding: the board is GRID_SIZE + 1 + 2 *
+//this spots across). Room for the outer targets to breathe; on mobile, at least a 5-disc tower's top over its spot. Until
+//2026-11-18 the board was GRID_SIZE + 2 spots across (0.5)
+$board-edge-padding: 0.35;
+$board-edge-mobile-padding: 0.15;
 
 //disc colors: face (its top), face-light (the highlight on the top), side and side-dark (the edge, lit in the middle), and the
 //seam between two stacked discs, like the real game's thin dark gaps: seam-above, a 1px line along the upper disc's lower edge,
@@ -161,8 +180,8 @@ $spot-ring-legal-dashes: 18;
 $spot-ring-replaceable-dashes: 21; //the replaceable ring is 1.2 times wider
 $selected-spot-color: #ffc400; //the gold ring under the active drafted tower
 //the draft's controls on each drafted tower (BoardHandler.renderPendingControls): a count badge on its top right corner and,
-//under the active tower only, round buttons side by side: undo and confirm. Shares of --cell-size, so they scale
-//with the board, but never smaller on screen than the minimums, which are screen px (divided by --board-zoom: BGA scales the
+//under the active tower only, round buttons side by side: undo and confirm. Shares of --cell-size times the disc
+//scale ($board-disc-scale), so they scale with the board and its discs, but never smaller on screen than the minimums, which are screen px (divided by --board-zoom: BGA scales the
 //game area down on a phone)
 $pending-badge-size-ratio: 0.26;
 $pending-badge-min-size: 18px;
@@ -270,6 +289,7 @@ $log-snapshot-changed-fill: rgba($selected-spot-color, 0.22);
 
 :root{
     --cell-size: #{$cell-size};
+    --nexo-disc-scale: #{$board-disc-scale}; //the board's discs against the spot pitch ($board-disc-scale, $board-disc-mobile-scale)
 
     //one background per log type ($log-background-*), all the board's white marble: the row's player shows in its accent bar
     --bg-log-default: #{$log-background-default};
@@ -323,7 +343,7 @@ $log-snapshot-changed-fill: rgba($selected-spot-color, 0.22);
 
 //mobile: BGA lays the game out at least 740px wide and scales it down to the phone, so the board needs a large
 //logical size to stay readable once scaled
-.mobile_version{ --cell-size: #{$mobile-cell-size}; }
+.mobile_version{ --cell-size: #{$mobile-cell-size}; --nexo-disc-scale: #{$board-disc-mobile-scale}; }
 
 //page background, like Riviera's: two position: fixed layers under the whole page, so it never scrolls or tiles with the page's
 //height. This stylesheet only loads on Nexo's pages, so styling body here affects no other page. isolation: body is its own
@@ -344,7 +364,7 @@ body{ background: $bg-surface-color; isolation: isolate;
     //that room endless. The disc takes the widest size that keeps $bg-red-disc-clearance from both; under the minimum, the last
     //max(0px, ...) * 1000 step gives 0: hidden
     --bg-red-disc-right: #{$bg-red-disc-right};
-    --bg-red-disc-wanted-width: calc(var(--board-cell-screen-size, #{$bg-red-disc-fallback-width} * #{math.div($bg-red-disc-disc-share, $disc-width-ratio * $bg-red-disc-token-ratio)}) * #{math.div($disc-width-ratio * $bg-red-disc-token-ratio, $bg-red-disc-disc-share)});
+    --bg-red-disc-wanted-width: calc(var(--board-cell-screen-size, #{$bg-red-disc-fallback-width} * #{math.div($bg-red-disc-disc-share, $disc-width-ratio * $bg-red-disc-token-ratio)} / min(var(--nexo-disc-scale), #{$board-disc-max-scale})) * #{math.div($disc-width-ratio * $bg-red-disc-token-ratio, $bg-red-disc-disc-share)} * min(var(--nexo-disc-scale), #{$board-disc-max-scale}));
     --bg-red-disc-wanted-half-height: calc(var(--bg-red-disc-wanted-width) * #{$bg-red-disc-image-ratio * $bg-red-disc-half-height-share});
     --bg-red-disc-wanted-top: calc(max(#{$bg-red-disc-bottom}, #{$bg-red-disc-chatbar-clearance} + var(--bg-red-disc-wanted-half-height)) + var(--bg-red-disc-wanted-half-height));
     --bg-red-disc-board-room: calc(var(--board-right-gap, 100vw) - var(--bg-red-disc-right) - #{$bg-red-disc-clearance});
@@ -450,11 +470,11 @@ $passed-banner-flight-easing: ease-in-out;
 //curve an ellipse (::after), both behind the face (z-index -1 inside the disc's own stacking context). Each disc sits one
 //thickness above the one under it, so only the top face and a band of every disc's edge show. The box is one spot, whatever
 //the height, so a tower always measures the same (Game.getSlidingCloneTransform scales by height). Never a transform on a tower: it is
-//cloned to fly (Game.createSlidingClone)
+//cloned to fly (Game.createSlidingClone). --disc-scale: 1 unless on the board ($board-disc-scale)
 .nexo-tower{ position: relative; flex-shrink: 0; box-sizing: border-box; width: var(--cell-size); height: var(--cell-size); pointer-events: none; @include non-selectable();
-    --disc-width: calc(var(--cell-size) * #{$disc-width-ratio});
+    --disc-width: calc(var(--cell-size) * #{$disc-width-ratio} * var(--disc-scale, 1));
     --disc-face-height: calc(var(--disc-width) * #{$disc-face-ratio});
-    --disc-thickness: calc(var(--cell-size) * #{$disc-thickness-ratio});
+    --disc-thickness: calc(var(--cell-size) * #{$disc-thickness-ratio} * var(--disc-scale, 1));
     --tower-base: calc(var(--cell-size) * #{$tower-base-ratio});
 
     .tower-disc{ position: absolute; isolation: isolate; left: calc((var(--cell-size) - var(--disc-width)) / 2); bottom: calc(var(--tower-base) + var(--disc-thickness) * var(--disc-index));
@@ -469,7 +489,7 @@ $passed-banner-flight-easing: ease-in-out;
     }
     //the height, on the top face
     .tower-height-number{ position: absolute; left: 0px; right: 0px; bottom: calc(var(--tower-base) + var(--disc-thickness) * var(--tower-height)); height: var(--disc-face-height);
-        display: flex; align-items: center; justify-content: center; font-size: calc(var(--cell-size) * 0.27); font-weight: bold; line-height: 1; color: var(--disc-number); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+        display: flex; align-items: center; justify-content: center; font-size: calc(var(--disc-width) * #{math.div(0.27, $disc-width-ratio)}); font-weight: bold; line-height: 1; color: var(--disc-number); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
 }
 @each $name, $colors in $disc-colors {
     .nexo-tower[data-disc-color="#{$name}"]{
@@ -507,6 +527,11 @@ html.hide-stack-heights .tower-height-number{ display: none; }
 #nexo-board{ position: relative; box-sizing: content-box; width: calc(var(--board-size) * var(--cell-size)); height: calc(var(--board-size) * var(--cell-size)); overflow: hidden;
     border: 1px solid $board-border-color; border-radius: $board-radius; background: $board-background; box-shadow: $slab-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.9); @include non-selectable();
 }
+//the board's discs against its spot pitch: every tower, spot and control on the board, and a board tower's flying copies in
+//<body> (they keep its class). Capped so a ring around a tower's base always fits its spot ($board-disc-max-scale)
+#nexo-board, .board-tower{ --disc-scale: min(var(--nexo-disc-scale), #{$board-disc-max-scale}); }
+#nexo-board{ --board-edge-padding: #{$board-edge-padding}; }
+.mobile_version #nexo-board{ --board-edge-padding: #{$board-edge-mobile-padding}; }
 .board-layer{ position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
 .spots-layer, .towers-layer, .draft-controls-layer{ position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
 
@@ -515,7 +540,7 @@ html.hide-stack-heights .tower-height-number{ display: none; }
 
 //a spot with something to show (BoardHandler.renderSpots draws no other): an ellipse ring where the bottom disc of a tower would sit
 .board-spot{ @include board-place();
-    --spot-ring-width: calc(var(--cell-size) * #{$disc-width-ratio});
+    --spot-ring-width: calc(var(--cell-size) * #{$disc-width-ratio} * var(--disc-scale, 1));
     --spot-ring-height: calc(var(--spot-ring-width) * #{$disc-face-ratio});
     --spot-ring-bottom: calc(var(--cell-size) * #{$tower-base-ratio});
     //the ring's box, shared by its fill (::before) and its dashed outline (.spot-ring): the bottom disc's ellipse
@@ -532,9 +557,11 @@ html.hide-stack-heights .tower-height-number{ display: none; }
     //on hover
     &.legal-spot::before, &.replaceable-spot::before{ background-color: var(--legal-spot-fill); }
     &.legal-spot.clickable-spot:hover::before, &.replaceable-spot:hover::before{ background-color: var(--legal-spot-hover-fill); box-shadow: 0 0 8px var(--legal-spot-glow); }
-    //the replaceable tower's ring is a little wider, around its base, under the tower
-    &.replaceable-spot{ --ring-box-left: calc((var(--cell-size) - var(--spot-ring-width) * 1.2) / 2); --ring-box-bottom: calc(var(--spot-ring-bottom) - var(--spot-ring-height) * 0.1);
-        --ring-box-width: calc(var(--spot-ring-width) * 1.2); --ring-box-height: calc(var(--spot-ring-height) * 1.2); }
+    //the replaceable tower's ring, around its base, under the tower: the bottom disc's ellipse $spot-ring-tower-ratio times as
+    //big, on the same centre, so it shows evenly around the disc (wider at the sides, as the ellipse is). The disc scale's cap
+    //($board-disc-max-scale) keeps it within $spot-ring-max-share of the spot
+    &.replaceable-spot{ --ring-box-width: calc(var(--spot-ring-width) * #{$spot-ring-tower-ratio}); --ring-box-height: calc(var(--spot-ring-height) * #{$spot-ring-tower-ratio});
+        --ring-box-left: calc((var(--cell-size) - var(--ring-box-width)) / 2); --ring-box-bottom: calc(var(--spot-ring-bottom) - var(--spot-ring-height) * #{($spot-ring-tower-ratio - 1) * 0.5}); }
 
     //the marching dashes: an <ellipse> in an SVG exactly the ring's box, no viewBox, so its units are the box's px and the
     //stroke keeps 2px whatever the ring's size (BGA's phone scaling scales it like the old border). Its centre line 1px inside
@@ -577,8 +604,8 @@ html.hide-stack-heights .tower-height-number{ display: none; }
 //buttons, which hang into the row below, are never under a tower. A click on the badge goes to the drafted tower under it
 .draft-controls-layer{ z-index: $draft-controls-z-index; }
 .pending-controls{ @include board-place(); pointer-events: none;
-    --pending-badge-size: max(calc(#{$pending-badge-min-size} / var(--board-zoom, 1)), calc(var(--cell-size) * #{$pending-badge-size-ratio}));
-    --pending-button-size: max(calc(#{$pending-button-min-size} / var(--board-zoom, 1)), calc(var(--cell-size) * #{$pending-button-size-ratio}));
+    --pending-badge-size: max(calc(#{$pending-badge-min-size} / var(--board-zoom, 1)), calc(var(--cell-size) * #{$pending-badge-size-ratio} * var(--disc-scale, 1)));
+    --pending-button-size: max(calc(#{$pending-button-min-size} / var(--board-zoom, 1)), calc(var(--cell-size) * #{$pending-button-size-ratio} * var(--disc-scale, 1)));
 
     .pending-count-badge{ position: absolute; top: 0px; right: 0px; box-sizing: border-box; min-width: var(--pending-badge-size); height: var(--pending-badge-size); padding: 0px 3px;
         display: flex; align-items: center; justify-content: center; border: 2px solid var(--legal-spot-border); border-radius: calc(var(--pending-badge-size) / 2);
@@ -709,7 +736,9 @@ body .confirm-popover{ position: fixed; left: 0px; top: 0px; z-index: $confirm-p
 @each $name, $glow in $largest-group-glow {
     .board-tower.largest-group-tower[data-disc-color="#{$name}"]{ --group-glow: #{$glow}; }
 }
-.board-tower.largest-group-tower::before{ content: ""; position: absolute; left: calc((var(--cell-size) - var(--disc-width) * 1.15) / 2); bottom: calc(var(--tower-base) - var(--disc-face-height) * 0.1); width: calc(var(--disc-width) * 1.15); height: calc(var(--disc-face-height) * 1.2);
+//the replaceable ring's ellipse ($spot-ring-tower-ratio times the bottom disc's, same centre)
+.board-tower.largest-group-tower::before{ content: ""; position: absolute; left: calc((var(--cell-size) - var(--disc-width) * #{$spot-ring-tower-ratio}) / 2);
+    bottom: calc(var(--tower-base) - var(--disc-face-height) * #{($spot-ring-tower-ratio - 1) * 0.5}); width: calc(var(--disc-width) * #{$spot-ring-tower-ratio}); height: calc(var(--disc-face-height) * #{$spot-ring-tower-ratio});
     border-radius: 50%; background: var(--group-glow); box-shadow: 0 0 10px 3px var(--group-glow); opacity: 0.9; }
 //end board
 
