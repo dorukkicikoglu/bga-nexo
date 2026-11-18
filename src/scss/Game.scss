@@ -149,7 +149,7 @@ $pending-button-icon-ratio: 0.6; //the icon, a share of the button
 $pending-button-shadow: 0 1px 2px rgba($slab-shadow-color, 0.25), 0 3px 8px -2px rgba($slab-shadow-color, 0.35);
 $pending-button-disabled-filter: grayscale(1) contrast(0.55) brightness(1.2); //the turn is on its way to the server: greyed, still opaque over the tower under it
 $pending-actions-offset: 6px; //from the bottom disc down to the buttons (or, above the tower, from the buttons down to the spot)
-$pending-actions-gap: 6px; //between the two buttons
+$pending-actions-gap: 14px; //screen px between the two buttons: room for the confirm button's ring
 $pending-actions-edge-margin: 4px; //screen px kept between the buttons and the board's edges
 $pending-undo-background: linear-gradient(160deg, #ffffff 0%, $marble-white-shade 100%);
 //confirm: a green "go" fill with a white tick, apart from the neutral undo and from both players' colors
@@ -157,6 +157,24 @@ $pending-confirm-background: linear-gradient(160deg, #4cae5b 0%, #2f8a3e 100%);
 $pending-confirm-hover-background: linear-gradient(160deg, #5cc06b 0%, #36994a 100%);
 $pending-confirm-border-color: #2a7a37;
 $pending-confirm-glow: rgba(60, 170, 80, 0.55);
+//while discs are left this turn: a light green fill, a green border and tick. Still a live button (a turn may stop early),
+//never greyed like a disabled one
+$pending-confirm-partial-background: linear-gradient(160deg, #f6fcf7 0%, #dcefdf 100%);
+$pending-confirm-partial-hover-background: linear-gradient(160deg, #e8f7ea 0%, #c8e6cd 100%);
+$pending-confirm-partial-color: #2f8a3e;
+//the confirm button's ring: one segment per disc the turn may use, filled for each drafted disc. Screen px
+$pending-confirm-ring-width: 6px;
+$pending-confirm-ring-offset: 2px; //between the button's edge and the ring
+$pending-confirm-ring-gap: 12deg; //between two segments, so each reads as its own step
+$pending-confirm-ring-filled-color: #2f8a3e; //the button's green
+$pending-confirm-ring-empty-color: rgba($material-charcoal, 0.2); //a pale neutral grey over the backing
+$pending-confirm-ring-backing: rgba(255, 255, 255, 0.9); //under every segment, so the ring reads over a tower under the buttons
+//a segment changing state: a quick fade with a slight pop (a fill, an undo, and the stagger when the button appears,
+//Game.CONFIRM_RING_STAGGER apart). On change only, never looping
+$pending-confirm-ring-pop-duration: 180ms;
+$pending-confirm-ring-pop-scale: 1.1;
+$pending-confirm-pulse-scale: 1.14; //the one pulse when every disc is drafted
+$pending-confirm-pulse-duration: 0.45s;
 $draft-controls-z-index: 2000; //over every tower (1000 + its row)
 
 //player boards (BGA's .player-board) and log rows
@@ -437,9 +455,11 @@ html.hide-stack-heights .tower-height-number{ display: none; }
     //BoardHandler.centerContents), the spot (--x, --y) and --board-size, all in spots. CSS has no condition, so the flip is
     //the overflow below (a length, 0 when it fits) times 1000, capped at the distance from below to above. The container takes
     //clicks too, so a click in the gap never reaches the tower under it (BoardHandler.onBoardClick ignores it)
-    .pending-actions{ position: absolute; z-index: 1; display: flex; gap: $pending-actions-gap; pointer-events: auto; //z-index: over the other towers' badges
-        --actions-width: calc(var(--pending-actions-count) * var(--pending-button-size) + (var(--pending-actions-count) - 1) * #{$pending-actions-gap});
-        --actions-margin: calc(#{$pending-actions-edge-margin} / var(--board-zoom, 1));
+    //The confirm button's ring reaches past its box: the margin from the board's edges counts it
+    .pending-actions{ position: absolute; z-index: 1; display: flex; gap: var(--actions-gap); pointer-events: auto; //z-index: over the other towers' badges
+        --actions-gap: calc(#{$pending-actions-gap} / var(--board-zoom, 1));
+        --actions-width: calc(var(--pending-actions-count) * var(--pending-button-size) + (var(--pending-actions-count) - 1) * var(--actions-gap));
+        --actions-margin: calc(#{$pending-actions-edge-margin + $pending-confirm-ring-offset + $pending-confirm-ring-width} / var(--board-zoom, 1));
         --actions-below-top: calc(var(--cell-size) * #{1 - $tower-base-ratio} + #{$pending-actions-offset});
         --actions-above-top: calc(-1 * var(--pending-button-size) - #{$pending-actions-offset});
         --actions-room-below: calc((var(--board-size) - var(--layer-offset-y, 0) - var(--y)) * var(--cell-size) - var(--actions-margin));
@@ -460,10 +480,62 @@ html.hide-stack-heights .tower-height-number{ display: none; }
     .pending-undo-button{ border: 1px solid $board-border-color; background: $pending-undo-background; color: $material-charcoal;
         &:not(:disabled):hover, &:not(:disabled):focus-visible{ border-color: var(--legal-spot-border); box-shadow: $pending-button-shadow, 0 0 8px var(--legal-spot-glow); outline: none; }
     }
-    .pending-confirm-button{ border: 1px solid $pending-confirm-border-color; background: $pending-confirm-background; color: #ffffff;
+    //confirm: solid green once every disc is drafted (data-full="true"), light green while discs are left
+    .pending-confirm-button{ position: relative; --confirm-border: 1px; border: var(--confirm-border) solid $pending-confirm-border-color; background: $pending-confirm-background; color: #ffffff;
         svg{ stroke-width: 3; }
         &:not(:disabled):hover, &:not(:disabled):focus-visible{ background: $pending-confirm-hover-background; box-shadow: $pending-button-shadow, 0 0 8px $pending-confirm-glow; outline: none; }
+        &[data-full="false"]{ --confirm-border: 2px; background: $pending-confirm-partial-background; color: $pending-confirm-partial-color;
+            &:not(:disabled):hover, &:not(:disabled):focus-visible{ background: $pending-confirm-partial-hover-background; }
+        }
+
+        //the ring (BoardHandler.renderPendingControls): one .confirm-ring-segment per disc the turn may use (--ring-segments),
+        //each the ring's whole box cut to its own arc by two masks: a radial one for the ring, a conic one for its arc
+        //(--segment-index, $pending-confirm-ring-gap between two arcs, soft 0.75deg ends). Each arc is a white backing with
+        //its color on ::before: pale grey, or the button's green once .filled. Outside the button (inset from the padding box,
+        //so past the border too), so it never covers the tick and keeps its place whatever the border; no clicks
+        --ring-width: calc(#{$pending-confirm-ring-width} / var(--board-zoom, 1));
+        --ring-segment: calc(360deg / var(--ring-segments, 1));
+        .confirm-ring-segment{ position: absolute; inset: calc(-1 * (var(--ring-width) + #{$pending-confirm-ring-offset} / var(--board-zoom, 1) + var(--confirm-border))); border-radius: 50%; pointer-events: none;
+            background-color: $pending-confirm-ring-backing;
+            --segment-start: calc(var(--segment-index, 0) * var(--ring-segment) + #{$pending-confirm-ring-gap * 0.5});
+            --segment-span: calc(var(--ring-segment) - #{$pending-confirm-ring-gap});
+            --segment-ring: radial-gradient(farthest-side, transparent calc(100% - var(--ring-width) - 0.5px), #000000 calc(100% - var(--ring-width)), #000000 calc(100% - 0.5px), transparent 100%);
+            --segment-arc: conic-gradient(from var(--segment-start), transparent 0deg, #000000 0.75deg, #000000 calc(var(--segment-span) - 0.75deg), transparent var(--segment-span));
+            -webkit-mask-image: var(--segment-ring), var(--segment-arc); -webkit-mask-composite: source-in;
+            mask-image: var(--segment-ring), var(--segment-arc); mask-composite: intersect;
+            &::before{ content: ""; position: absolute; inset: 0px; border-radius: 50%; background-color: $pending-confirm-ring-empty-color; }
+            &.filled::before{ background-color: $pending-confirm-ring-filled-color; }
+            //one-shot classes (BoardHandler, removed on animationend): grey to green, or back, with a slight pop. backwards: a
+            //staggered segment stays grey until its turn (--segment-delay)
+            &.ring-segment-fill, &.ring-segment-empty{ animation: confirm-ring-segment-pop $pending-confirm-ring-pop-duration ease-out var(--segment-delay, 0ms) 1 backwards; }
+            &.ring-segment-fill::before{ animation: confirm-ring-segment-fill $pending-confirm-ring-pop-duration ease-out var(--segment-delay, 0ms) 1 backwards; }
+            &.ring-segment-empty::before{ animation: confirm-ring-segment-empty $pending-confirm-ring-pop-duration ease-out var(--segment-delay, 0ms) 1 backwards; }
+        }
+        //every disc drafted: one short pulse (a one-shot class, removed on animationend)
+        &.confirm-full-pulse{ animation: confirm-full-pulse $pending-confirm-pulse-duration ease-out 1; }
     }
+}
+@keyframes confirm-full-pulse{
+    0%{ scale: 1; }
+    40%{ scale: $pending-confirm-pulse-scale; box-shadow: $pending-button-shadow, 0 0 12px $pending-confirm-glow; }
+    100%{ scale: 1; }
+}
+@keyframes confirm-ring-segment-pop{
+    0%{ scale: 1; }
+    45%{ scale: $pending-confirm-ring-pop-scale; }
+    100%{ scale: 1; }
+}
+@keyframes confirm-ring-segment-fill{
+    from{ background-color: $pending-confirm-ring-empty-color; }
+    to{ background-color: $pending-confirm-ring-filled-color; }
+}
+@keyframes confirm-ring-segment-empty{
+    from{ background-color: $pending-confirm-ring-filled-color; }
+    to{ background-color: $pending-confirm-ring-empty-color; }
+}
+//no pop, no stagger, no pulse: the ring and the button just change state
+@media (prefers-reduced-motion: reduce){
+    .pending-confirm-button.confirm-full-pulse, .confirm-ring-segment, .confirm-ring-segment::before{ animation: none !important; }
 }
 
 //end of the game (BoardHandler.highlightLargestGroups): each player's largest group glows under its base, every other tower dims

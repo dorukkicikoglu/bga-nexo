@@ -107,7 +107,8 @@ class BoardRules {
  * it, an undo button that takes it back (with any new tower that no longer reaches the board through the others) and a
  * confirm button, which sends the whole turn (actPlaceTowers, checked again by the server) and is disabled until the server
  * answers. Once the active tower is taken back (undo, or a click past its highest), the one clicked before it is active again. No action buttons in the status bar: they changed its height and moved the board. The status bar keeps
- * one title for the whole draft. Everyone else only sees the status text. The draft lives on this page only: a reload starts it again.
+ * one sentence for the whole draft, with the discs still available (updateTitle); the confirm button's ring shows the same
+ * count (BoardHandler.renderPendingControls). Everyone else only sees the status text. The draft lives on this page only: a reload starts it again.
  */
 class PlaceTowers {
     constructor(game, bga) {
@@ -132,9 +133,6 @@ class PlaceTowers {
             this.bga.statusBar.setTitle(_('${actplayer} must place towers'));
             return;
         }
-        const discsThisTurn = args.discsThisTurn ?? 1;
-        const title = discsThisTurn > 1 ? _('${you} must place 1 to ${count} discs') : _('${you} must place 1 disc');
-        this.bga.statusBar.setTitle(title, { count: discsThisTurn });
         this.game.boardHandler.setDraftClickHandlers({
             spotClicked: spot => this.spotClicked(spot),
             undoClicked: spot => this.undoClicked(spot),
@@ -275,7 +273,17 @@ class PlaceTowers {
             selectedSpot: this.getActiveSpot(),
             discColor: this.game.getDiscColor(this.game.getMyPlayerID()),
             confirming: this.confirming,
+            discsUsed: this.getDiscsUsed(),
+            discsThisTurn: this.stateArgs?.discsThisTurn ?? 1,
         });
+        this.updateTitle();
+    }
+    //the same sentence for the whole draft, with the discs still available: shown from the turn's start, so only its number
+    //changes while drafting and the status bar never changes height (which would move the board)
+    updateTitle() {
+        const discsThisTurn = this.stateArgs?.discsThisTurn ?? 1;
+        const title = discsThisTurn > 1 ? _('${you} must place 1 to ${count} discs (${left} more available)') : _('${you} must place 1 disc (${left} more available)');
+        this.bga.statusBar.setTitle(title, { count: discsThisTurn, left: this.getDiscsLeft() });
     }
 }
 
@@ -539,6 +547,8 @@ class BoardHandler {
         this.pendingElements = new Map();
         this.draft = null;
         this.draftClickHandlers = null;
+        this.confirmWasFull = false; //every disc of the turn was drafted at the last render: the confirm button pulses once on reaching it
+        this.ringWasFilled = null; //the confirm ring's filled segments at the last render, null when no confirm button showed
         this.boardSize = this.game.getRules().gridSize + 2;
         this.boardElement = document.getElementById('nexo-board');
         this.boardElement.style.setProperty('--board-size', this.boardSize.toString());
@@ -791,10 +801,19 @@ class BoardHandler {
     //on each drafted tower, in a layer over every tower: a badge with its height (the discs it adds) on its top right corner.
     //Under the active tower only, round buttons side by side: undo (takes it back) and confirm (sends the whole turn).
     //Game.scss keeps them inside the board (nudged sideways, or above the tower on the bottom row). Their clicks never reach
-    //the tower or spot underneath. While the turn is on its way to the server, both are disabled
+    //the tower or spot underneath. While the turn is on its way to the server, both are disabled. The confirm button wears a
+    //ring of one segment per disc the turn may use, filled for each drafted disc (createConfirmRing): light green while discs
+    //are left (still a live button: a turn may stop early), solid green once every disc is drafted, with one pulse when it
+    //gets there (not on a render that was already full, nor with animations off or reduced motion)
     renderPendingControls() {
         this.controlsLayer.innerHTML = '';
         const draft = this.draft;
+        const full = !!draft && draft.discsThisTurn > 0 && draft.discsUsed >= draft.discsThisTurn;
+        const animate = this.game.bga.gameui.bgaAnimationsActive() && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const pulse = full && !this.confirmWasFull && animate;
+        this.confirmWasFull = full;
+        const ringWasFilled = this.ringWasFilled;
+        this.ringWasFilled = null; //set again below if the confirm button shows
         if (!draft)
             return;
         const activeKey = draft.selectedSpot ? BoardRules.key(draft.selectedSpot.x, draft.selectedSpot.y) : null;
@@ -811,10 +830,57 @@ class BoardHandler {
                 const actions = document.createElement('div');
                 actions.className = 'pending-actions';
                 actions.style.setProperty('--pending-actions-count', '2');
-                actions.append(this.createPendingButton('pending-undo-button', _('Take this tower back'), BoardHandler.UNDO_ICON_SVG, draft.confirming, () => this.draftClickHandlers?.undoClicked(spot)), this.createPendingButton('pending-confirm-button', _('Confirm'), BoardHandler.CONFIRM_ICON_SVG, draft.confirming, () => this.draftClickHandlers?.confirmClicked()));
+                const confirmButton = this.createPendingButton('pending-confirm-button', _('Confirm'), BoardHandler.CONFIRM_ICON_SVG, draft.confirming, () => this.draftClickHandlers?.confirmClicked());
+                confirmButton.setAttribute('data-full', full.toString());
+                const ringFilled = Math.min(draft.discsUsed, draft.discsThisTurn);
+                this.createConfirmRing(confirmButton, draft.discsThisTurn, ringFilled, animate ? ringWasFilled : ringFilled);
+                this.ringWasFilled = ringFilled;
+                if (pulse) {
+                    confirmButton.classList.add('confirm-full-pulse');
+                    confirmButton.addEventListener('animationend', (event) => {
+                        if (event.target === confirmButton)
+                            confirmButton.classList.remove('confirm-full-pulse');
+                    });
+                }
+                actions.append(this.createPendingButton('pending-undo-button', _('Take this tower back'), BoardHandler.UNDO_ICON_SVG, draft.confirming, () => this.draftClickHandlers?.undoClicked(spot)), confirmButton);
                 controls.appendChild(actions);
             }
             this.controlsLayer.appendChild(controls);
+        }
+    }
+    /**
+     * The confirm button's ring: one .confirm-ring-segment per disc the turn may use, the first `filled` green (Game.scss draws
+     * and colors them). The board redraws its controls on every draft change, so a CSS transition would never run: the
+     * segments that changed since the last render (`wasFilled`) get a one-shot class instead, removed once it has played.
+     * The ring follows the turn's total, wherever the buttons are, so moving them to another tower changes nothing: a drafted
+     * disc fills its segment (ring-segment-fill), an undo empties its own (ring-segment-empty). When the button first shows
+     * (`wasFilled` null), its filled segments fill one after another, CONFIRM_RING_STAGGER apart. `wasFilled` equal to
+     * `filled`: nothing plays (animations off, reduced motion)
+     */
+    createConfirmRing(confirmButton, segments, filled, wasFilled) {
+        confirmButton.style.setProperty('--ring-segments', segments.toString());
+        for (let segmentIndex = 0; segmentIndex < segments; segmentIndex++) {
+            const segment = document.createElement('div');
+            segment.className = 'confirm-ring-segment';
+            segment.style.setProperty('--segment-index', segmentIndex.toString());
+            segment.classList.toggle('filled', segmentIndex < filled);
+            let changeClass = null;
+            if (wasFilled === null && segmentIndex < filled) {
+                changeClass = 'ring-segment-fill';
+                segment.style.setProperty('--segment-delay', `${segmentIndex * Game.CONFIRM_RING_STAGGER}ms`);
+            }
+            else if (wasFilled !== null && segmentIndex >= wasFilled && segmentIndex < filled)
+                changeClass = 'ring-segment-fill';
+            else if (wasFilled !== null && segmentIndex >= filled && segmentIndex < wasFilled)
+                changeClass = 'ring-segment-empty';
+            if (changeClass) {
+                segment.classList.add(changeClass);
+                segment.addEventListener('animationend', (event) => {
+                    if (event.target === segment && !event.pseudoElement) //its own pop, not its ::before's color fade (same length)
+                        segment.classList.remove(changeClass);
+                });
+            }
+            confirmButton.appendChild(segment);
         }
     }
     createPendingButton(className, label, iconSVG, disabled, onClick) {
@@ -1553,6 +1619,7 @@ class Game {
 }
 //every board animation's timing, in one place to tune them together (BoardHandler reads them too)
 Game.TOWER_SLIDE_DURATION = 520; //ms of a disc flying between a player board's reserve and its spot; a turn plays its spots one after the other
+Game.CONFIRM_RING_STAGGER = 50; //ms between two segments of the confirm button's ring filling when it first shows (BoardHandler.createConfirmRing)
 Game.TOWER_DISC_STAGGER = 50; //ms between two discs of the same tower leaving (bottom disc first onto the board, top disc first off it); a spot takes TOWER_SLIDE_DURATION plus this much per disc above the first
 Game.TOWER_SLIDE_EASING = 'ease-in-out';
 Game.BOARD_RECENTER_DURATION = 280; //ms of the board's contents sliding to stay centred (BoardHandler.centerContents; Yaxha's was 400ms)

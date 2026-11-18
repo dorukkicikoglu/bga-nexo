@@ -395,3 +395,20 @@ Deploy `modules/` and `nexo.css`; no schema change, an ongoing table is fine (F5
 - [ ] Phone (or a window under 768px): the same, smaller (black about 45px, marble about 20px at most).
 - [ ] System setting "Reduce motion" on (macOS Accessibility > Display, or iOS): no drift at all, also when switched while the page is open.
 - [ ] No jank while scrolling, and no errors in the console.
+
+## After M1: confirm progress ring
+
+Deploy `modules/` and `nexo.css`; no server change, an ongoing table is fine (F5). New strings to translate: "${you} must place 1 to ${count} discs (${left} more available)" and "${you} must place 1 disc (${left} more available)".
+
+- [ ] Your turn with 25 discs: the status bar reads "You must place 1 to 5 discs (5 more available)" before anything is drafted.
+- [ ] Draft a 1-disc tower: around the confirm button, a ring of 5 thick segments with small gaps, the first (top right) solid green, 4 pale grey, filling with a quick fade and pop; the button is light green with a green tick and outline, clearly clickable (hover changes it). The title says "(4 more available)".
+- [ ] Cycle it to 3: 3 segments filled, "(2 more available)". Draft a 2-disc tower elsewhere (the buttons move to it): 5 filled, the button turns solid green with a white tick and pulses once; "(0 more available)".
+- [ ] Undo one tower: its segments fade back to grey with the same pop (only those; the others don't replay), the button is light green again, no pulse. Bring it back to full: one pulse again.
+- [ ] Undo every tower, then draft a 3-disc replacement: the buttons appear and the 3 segments fill one after another, fast (about 50ms apart). Nothing animates while nothing changes (hover, waiting), and nothing loops.
+- [ ] Over a black tower under the buttons, the grey segments and the gaps still read.
+- [ ] Confirm early (2 of 5 discs): the turn goes through.
+- [ ] Low reserve (`debug_setReserves(3, 25)`, F5): "You must place 1 to 3 discs (3 more available)", a 3-segment ring. With 1 disc: "You must place 1 disc (1 more available)", a single ring, full and solid after one click.
+- [ ] Confirming: the whole pair greys out (ring included) until the server answers.
+- [ ] Phone (375px) and desktop: the ring's segments are readable, it never touches the undo button, and stays inside the board at its edges (rightmost column, bottom row). The status bar never changes height while drafting (the board doesn't move).
+- [ ] Reduced motion (OS setting) or BGA animations off: no pop, no stagger, no pulse; the ring and the button still change state.
+- [ ] No errors in the browser console.

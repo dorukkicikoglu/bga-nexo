@@ -22,7 +22,8 @@ import { BoardRules } from "../BoardRules";
  * it, an undo button that takes it back (with any new tower that no longer reaches the board through the others) and a
  * confirm button, which sends the whole turn (actPlaceTowers, checked again by the server) and is disabled until the server
  * answers. Once the active tower is taken back (undo, or a click past its highest), the one clicked before it is active again. No action buttons in the status bar: they changed its height and moved the board. The status bar keeps
- * one title for the whole draft. Everyone else only sees the status text. The draft lives on this page only: a reload starts it again.
+ * one sentence for the whole draft, with the discs still available (updateTitle); the confirm button's ring shows the same
+ * count (BoardHandler.renderPendingControls). Everyone else only sees the status text. The draft lives on this page only: a reload starts it again.
  */
 export class PlaceTowers {
     private stateArgs: PlaceTowersArgs | null = null;
@@ -48,10 +49,6 @@ export class PlaceTowers {
             this.bga.statusBar.setTitle(_('${actplayer} must place towers'));
             return;
         }
-
-        const discsThisTurn = args.discsThisTurn ?? 1;
-        const title = discsThisTurn > 1 ? _('${you} must place 1 to ${count} discs') : _('${you} must place 1 disc');
-        this.bga.statusBar.setTitle(title, { count: discsThisTurn });
 
         this.game.boardHandler.setDraftClickHandlers({
             spotClicked: spot => this.spotClicked(spot),
@@ -216,6 +213,17 @@ export class PlaceTowers {
             selectedSpot: this.getActiveSpot(),
             discColor: this.game.getDiscColor(this.game.getMyPlayerID()),
             confirming: this.confirming,
+            discsUsed: this.getDiscsUsed(),
+            discsThisTurn: this.stateArgs?.discsThisTurn ?? 1,
         });
+        this.updateTitle();
+    }
+
+    //the same sentence for the whole draft, with the discs still available: shown from the turn's start, so only its number
+    //changes while drafting and the status bar never changes height (which would move the board)
+    private updateTitle(): void {
+        const discsThisTurn = this.stateArgs?.discsThisTurn ?? 1;
+        const title = discsThisTurn > 1 ? _('${you} must place 1 to ${count} discs (${left} more available)') : _('${you} must place 1 disc (${left} more available)');
+        this.bga.statusBar.setTitle(title, { count: discsThisTurn, left: this.getDiscsLeft() });
     }
 }

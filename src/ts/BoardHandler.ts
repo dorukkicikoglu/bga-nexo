@@ -20,6 +20,8 @@ export type DraftView = {
     selectedSpot: NexoSpot | null; //the active drafted tower: the gold ring, and the undo and confirm buttons under it
     discColor: DiscColor;
     confirming: boolean; //the turn is on its way to the server: the buttons stay, disabled
+    discsUsed: number; //the discs drafted so far: the confirm button's filled ring segments
+    discsThisTurn: number; //the most this turn may use (min(5, reserve)): the ring's segments
 };
 
 //what the draft's clicks on the board do (PlaceTowers): a highlighted spot or a drafted tower, a drafted tower's undo button,
@@ -58,6 +60,8 @@ export class BoardHandler {
     private pendingElements = new Map<string, HTMLDivElement>();
     private draft: DraftView | null = null;
     private draftClickHandlers: DraftClickHandlers | null = null;
+    private confirmWasFull: boolean = false; //every disc of the turn was drafted at the last render: the confirm button pulses once on reaching it
+    private ringWasFilled: number | null = null; //the confirm ring's filled segments at the last render, null when no confirm button showed
 
     //the undo button's icon: a curved arrow turning back counter-clockwise, drawn with currentColor
     private static readonly UNDO_ICON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12a7 7 0 1 0 2.05-4.95"/><path d="M11 7.05H7.05V3.1"/></svg>';
@@ -352,10 +356,19 @@ export class BoardHandler {
     //on each drafted tower, in a layer over every tower: a badge with its height (the discs it adds) on its top right corner.
     //Under the active tower only, round buttons side by side: undo (takes it back) and confirm (sends the whole turn).
     //Game.scss keeps them inside the board (nudged sideways, or above the tower on the bottom row). Their clicks never reach
-    //the tower or spot underneath. While the turn is on its way to the server, both are disabled
+    //the tower or spot underneath. While the turn is on its way to the server, both are disabled. The confirm button wears a
+    //ring of one segment per disc the turn may use, filled for each drafted disc (createConfirmRing): light green while discs
+    //are left (still a live button: a turn may stop early), solid green once every disc is drafted, with one pulse when it
+    //gets there (not on a render that was already full, nor with animations off or reduced motion)
     private renderPendingControls(): void {
         this.controlsLayer.innerHTML = '';
         const draft = this.draft;
+        const full = !!draft && draft.discsThisTurn > 0 && draft.discsUsed >= draft.discsThisTurn;
+        const animate = this.game.bga.gameui.bgaAnimationsActive() && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const pulse = full && !this.confirmWasFull && animate;
+        this.confirmWasFull = full;
+        const ringWasFilled = this.ringWasFilled;
+        this.ringWasFilled = null; //set again below if the confirm button shows
         if(!draft)
             return;
 
@@ -376,13 +389,63 @@ export class BoardHandler {
                 const actions = document.createElement('div');
                 actions.className = 'pending-actions';
                 actions.style.setProperty('--pending-actions-count', '2');
+                const confirmButton = this.createPendingButton('pending-confirm-button', _('Confirm'), BoardHandler.CONFIRM_ICON_SVG, draft.confirming, () => this.draftClickHandlers?.confirmClicked());
+                confirmButton.setAttribute('data-full', full.toString());
+                const ringFilled = Math.min(draft.discsUsed, draft.discsThisTurn);
+                this.createConfirmRing(confirmButton, draft.discsThisTurn, ringFilled, animate ? ringWasFilled : ringFilled);
+                this.ringWasFilled = ringFilled;
+                if(pulse){
+                    confirmButton.classList.add('confirm-full-pulse');
+                    confirmButton.addEventListener('animationend', (event: AnimationEvent) => { //the ring's segments' animationend bubbles here too
+                        if(event.target === confirmButton)
+                            confirmButton.classList.remove('confirm-full-pulse');
+                    });
+                }
                 actions.append(
                     this.createPendingButton('pending-undo-button', _('Take this tower back'), BoardHandler.UNDO_ICON_SVG, draft.confirming, () => this.draftClickHandlers?.undoClicked(spot)),
-                    this.createPendingButton('pending-confirm-button', _('Confirm'), BoardHandler.CONFIRM_ICON_SVG, draft.confirming, () => this.draftClickHandlers?.confirmClicked()),
+                    confirmButton,
                 );
                 controls.appendChild(actions);
             }
             this.controlsLayer.appendChild(controls);
+        }
+    }
+
+    /**
+     * The confirm button's ring: one .confirm-ring-segment per disc the turn may use, the first `filled` green (Game.scss draws
+     * and colors them). The board redraws its controls on every draft change, so a CSS transition would never run: the
+     * segments that changed since the last render (`wasFilled`) get a one-shot class instead, removed once it has played.
+     * The ring follows the turn's total, wherever the buttons are, so moving them to another tower changes nothing: a drafted
+     * disc fills its segment (ring-segment-fill), an undo empties its own (ring-segment-empty). When the button first shows
+     * (`wasFilled` null), its filled segments fill one after another, CONFIRM_RING_STAGGER apart. `wasFilled` equal to
+     * `filled`: nothing plays (animations off, reduced motion)
+     */
+    private createConfirmRing(confirmButton: HTMLButtonElement, segments: number, filled: number, wasFilled: number | null): void {
+        confirmButton.style.setProperty('--ring-segments', segments.toString());
+        for(let segmentIndex = 0; segmentIndex < segments; segmentIndex++){
+            const segment = document.createElement('div');
+            segment.className = 'confirm-ring-segment';
+            segment.style.setProperty('--segment-index', segmentIndex.toString());
+            segment.classList.toggle('filled', segmentIndex < filled);
+
+            let changeClass: string | null = null;
+            if(wasFilled === null && segmentIndex < filled){
+                changeClass = 'ring-segment-fill';
+                segment.style.setProperty('--segment-delay', `${segmentIndex * Game.CONFIRM_RING_STAGGER}ms`);
+            }
+            else if(wasFilled !== null && segmentIndex >= wasFilled && segmentIndex < filled)
+                changeClass = 'ring-segment-fill';
+            else if(wasFilled !== null && segmentIndex >= filled && segmentIndex < wasFilled)
+                changeClass = 'ring-segment-empty';
+
+            if(changeClass){
+                segment.classList.add(changeClass);
+                segment.addEventListener('animationend', (event: AnimationEvent) => {
+                    if(event.target === segment && !event.pseudoElement) //its own pop, not its ::before's color fade (same length)
+                        segment.classList.remove(changeClass);
+                });
+            }
+            confirmButton.appendChild(segment);
         }
     }
 

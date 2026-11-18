@@ -397,10 +397,11 @@ html.hide-stack-heights .tower-height-number {
   position: absolute;
   z-index: 1;
   display: flex;
-  gap: 6px;
+  gap: var(--actions-gap);
   pointer-events: auto;
-  --actions-width: calc(var(--pending-actions-count) * var(--pending-button-size) + (var(--pending-actions-count) - 1) * 6px);
-  --actions-margin: calc(4px / var(--board-zoom, 1));
+  --actions-gap: calc(14px / var(--board-zoom, 1));
+  --actions-width: calc(var(--pending-actions-count) * var(--pending-button-size) + (var(--pending-actions-count) - 1) * var(--actions-gap));
+  --actions-margin: calc(12px / var(--board-zoom, 1));
   --actions-below-top: calc(var(--cell-size) * 0.92 + 6px);
   --actions-above-top: calc(-1 * var(--pending-button-size) - 6px);
   --actions-room-below: calc((var(--board-size) - var(--layer-offset-y, 0) - var(--y)) * var(--cell-size) - var(--actions-margin));
@@ -448,7 +449,9 @@ html.hide-stack-heights .tower-height-number {
   outline: none;
 }
 .pending-controls .pending-confirm-button {
-  border: 1px solid #2a7a37;
+  position: relative;
+  --confirm-border: 1px;
+  border: var(--confirm-border) solid #2a7a37;
   background: linear-gradient(160deg, #4cae5b 0%, #2f8a3e 100%);
   color: #ffffff;
 }
@@ -460,7 +463,100 @@ html.hide-stack-heights .tower-height-number {
   box-shadow: 0 1px 2px rgba(40, 30, 18, 0.25), 0 3px 8px -2px rgba(40, 30, 18, 0.35), 0 0 8px rgba(60, 170, 80, 0.55);
   outline: none;
 }
+.pending-controls .pending-confirm-button[data-full=false] {
+  --confirm-border: 2px;
+  background: linear-gradient(160deg, #f6fcf7 0%, #dcefdf 100%);
+  color: #2f8a3e;
+}
+.pending-controls .pending-confirm-button[data-full=false]:not(:disabled):hover, .pending-controls .pending-confirm-button[data-full=false]:not(:disabled):focus-visible {
+  background: linear-gradient(160deg, #e8f7ea 0%, #c8e6cd 100%);
+}
+.pending-controls .pending-confirm-button {
+  --ring-width: calc(6px / var(--board-zoom, 1));
+  --ring-segment: calc(360deg / var(--ring-segments, 1));
+}
+.pending-controls .pending-confirm-button .confirm-ring-segment {
+  position: absolute;
+  inset: calc(-1 * (var(--ring-width) + 2px / var(--board-zoom, 1) + var(--confirm-border)));
+  border-radius: 50%;
+  pointer-events: none;
+  background-color: rgba(255, 255, 255, 0.9);
+  --segment-start: calc(var(--segment-index, 0) * var(--ring-segment) + 6deg);
+  --segment-span: calc(var(--ring-segment) - 12deg);
+  --segment-ring: radial-gradient(farthest-side, transparent calc(100% - var(--ring-width) - 0.5px), #000000 calc(100% - var(--ring-width)), #000000 calc(100% - 0.5px), transparent 100%);
+  --segment-arc: conic-gradient(from var(--segment-start), transparent 0deg, #000000 0.75deg, #000000 calc(var(--segment-span) - 0.75deg), transparent var(--segment-span));
+  -webkit-mask-image: var(--segment-ring), var(--segment-arc);
+  -webkit-mask-composite: source-in;
+  mask-image: var(--segment-ring), var(--segment-arc);
+  mask-composite: intersect;
+}
+.pending-controls .pending-confirm-button .confirm-ring-segment::before {
+  content: "";
+  position: absolute;
+  inset: 0px;
+  border-radius: 50%;
+  background-color: rgba(27, 27, 29, 0.2);
+}
+.pending-controls .pending-confirm-button .confirm-ring-segment.filled::before {
+  background-color: #2f8a3e;
+}
+.pending-controls .pending-confirm-button .confirm-ring-segment.ring-segment-fill, .pending-controls .pending-confirm-button .confirm-ring-segment.ring-segment-empty {
+  animation: confirm-ring-segment-pop 180ms ease-out var(--segment-delay, 0ms) 1 backwards;
+}
+.pending-controls .pending-confirm-button .confirm-ring-segment.ring-segment-fill::before {
+  animation: confirm-ring-segment-fill 180ms ease-out var(--segment-delay, 0ms) 1 backwards;
+}
+.pending-controls .pending-confirm-button .confirm-ring-segment.ring-segment-empty::before {
+  animation: confirm-ring-segment-empty 180ms ease-out var(--segment-delay, 0ms) 1 backwards;
+}
+.pending-controls .pending-confirm-button.confirm-full-pulse {
+  animation: confirm-full-pulse 0.45s ease-out 1;
+}
 
+@keyframes confirm-full-pulse {
+  0% {
+    scale: 1;
+  }
+  40% {
+    scale: 1.14;
+    box-shadow: 0 1px 2px rgba(40, 30, 18, 0.25), 0 3px 8px -2px rgba(40, 30, 18, 0.35), 0 0 12px rgba(60, 170, 80, 0.55);
+  }
+  100% {
+    scale: 1;
+  }
+}
+@keyframes confirm-ring-segment-pop {
+  0% {
+    scale: 1;
+  }
+  45% {
+    scale: 1.1;
+  }
+  100% {
+    scale: 1;
+  }
+}
+@keyframes confirm-ring-segment-fill {
+  from {
+    background-color: rgba(27, 27, 29, 0.2);
+  }
+  to {
+    background-color: #2f8a3e;
+  }
+}
+@keyframes confirm-ring-segment-empty {
+  from {
+    background-color: #2f8a3e;
+  }
+  to {
+    background-color: rgba(27, 27, 29, 0.2);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pending-confirm-button.confirm-full-pulse, .confirm-ring-segment, .confirm-ring-segment::before {
+    animation: none !important;
+  }
+}
 #nexo-board.showing-largest-groups .board-tower:not(.largest-group-tower) {
   opacity: 0.4;
 }
