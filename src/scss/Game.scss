@@ -74,19 +74,32 @@ $bg-arc-mobile-center-y: -30vh;
 //top it is exactly where it would be without it. Two depths: the near layer (the black disc and its shadow) moves faster than the
 //far one (the marble surface and the red disc). Each moves ratio px per px scrolled, at most cap px. Under
 //$bg-parallax-mobile-breakpoint wide, the mobile values. Every layer reaches past the window's right edge by its cap plus
-//$bg-parallax-overscan-margin, so no edge ever shows. prefers-reduced-motion: no movement at all
+//$bg-parallax-overscan-margin, so no edge ever shows. prefers-reduced-motion: no movement at all.
+//The red disc ($bg-red-disc-*) is a layer of its own: it drifts left far less than both, and grows in place from
+//$bg-parallax-red-disc-min-scale of its size at the page's top to its full size where the near layer reaches its cap, so both
+//finish together. Under the breakpoint it also rises with that same progress: $bg-parallax-mobile-red-disc-rise-factor times what
+//takes it (at full size) $bg-parallax-mobile-red-disc-rise-gap above BGA's floating round buttons in the bottom-right corner
+//(measured on the page, --floating-buttons-height), never past the window's top. prefers-reduced-motion: full size, still, and on
+//mobile already risen
 $bg-parallax-near-ratio: 0.042;
 $bg-parallax-near-cap: 90px;
 $bg-parallax-far-ratio: 0.0175;
 $bg-parallax-far-cap: 40px;
+$bg-parallax-red-disc-ratio: 0.032;
+$bg-parallax-red-disc-cap: 60px;
+$bg-parallax-red-disc-min-scale: 0.7;
 $bg-parallax-mobile-breakpoint: 768px;
 $bg-parallax-mobile-near-ratio: 0.035;
 $bg-parallax-mobile-near-cap: 45px;
 $bg-parallax-mobile-far-ratio: 0.015;
 $bg-parallax-mobile-far-cap: 20px;
+$bg-parallax-mobile-red-disc-ratio: 0.024;
+$bg-parallax-mobile-red-disc-cap: 32px;
+$bg-parallax-mobile-red-disc-rise-gap: 8px; //between the disc's bottom edge and the top of BGA's floating buttons, at a factor of 1
+$bg-parallax-mobile-red-disc-rise-factor: 2; //the rise, in times what clears the buttons by the gap (1 until 2026-11-18), capped as below
 $bg-parallax-overscan-margin: 2px; //against a hairline at the right edge from subpixel rounding
-//a red disc lying on the surface in the bottom-right corner (img/bg_red_disc.png, its shadow baked in), the top layer of the
-//surface (body::before). Its disc is $bg-red-disc-token-ratio times a board tower's disc wide, from the board's spot size on
+//a red disc lying on the surface in the bottom-right corner (img/bg_red_disc.png, its shadow baked in), a layer of its
+//own (.background-red-disc, see the parallax above for how it moves and grows). Its disc is $bg-red-disc-token-ratio times a board tower's disc wide, from the board's spot size on
 //screen (--board-cell-screen-size, BoardHandler.fitToViewport). Placed by its disc's centre, from the window's right and bottom
 //edges. On desktop it shrinks to keep clear of the board and the player boards, and hides below $bg-red-disc-min-width
 $bg-red-disc-image: url(img/bg_red_disc.png);
@@ -238,23 +251,36 @@ $log-snapshot-changed-fill: rgba($selected-spot-color, 0.22);
     --bg-log-game-end-draw: #{$log-background-game-end-draw};
 
     //the background's parallax ($bg-parallax-*): BackgroundHandler reads the ratios and caps here and sets --nexo-parallax (the
-    //page's scroll offset, px, clamped where every layer has reached its cap). Each layer reaches past the window's right edge by
-    //its overscan and moves left by min(scroll * ratio, cap)
+    //page's scroll offset, clamped where every layer has reached its cap). --nexo-parallax and the caps are plain numbers of px:
+    //the red disc's scale divides one by the other, and a length divided by a length is too new in CSS. Each layer reaches past
+    //the window's right edge by its overscan and moves left by min(scroll * ratio, cap) px
     --bg-parallax-near-ratio: #{$bg-parallax-near-ratio};
-    --bg-parallax-near-cap: #{$bg-parallax-near-cap};
+    --bg-parallax-near-cap: #{math.div($bg-parallax-near-cap, 1px)};
     --bg-parallax-far-ratio: #{$bg-parallax-far-ratio};
-    --bg-parallax-far-cap: #{$bg-parallax-far-cap};
-    --bg-parallax-near-overscan: calc(var(--bg-parallax-near-cap) + #{$bg-parallax-overscan-margin});
-    --bg-parallax-far-overscan: calc(var(--bg-parallax-far-cap) + #{$bg-parallax-overscan-margin});
-    --bg-parallax-near-shift: calc(-1 * min(var(--nexo-parallax, 0px) * var(--bg-parallax-near-ratio), var(--bg-parallax-near-cap)));
-    --bg-parallax-far-shift: calc(-1 * min(var(--nexo-parallax, 0px) * var(--bg-parallax-far-ratio), var(--bg-parallax-far-cap)));
+    --bg-parallax-far-cap: #{math.div($bg-parallax-far-cap, 1px)};
+    --bg-parallax-red-disc-ratio: #{$bg-parallax-red-disc-ratio};
+    --bg-parallax-red-disc-cap: #{math.div($bg-parallax-red-disc-cap, 1px)};
+    --bg-parallax-red-disc-min-scale: #{$bg-parallax-red-disc-min-scale};
+    --bg-parallax-red-disc-rises: 0; //1 under the breakpoint: BoardHandler then measures BGA's floating buttons and the disc rises
+    --bg-parallax-still: 0; //1 with prefers-reduced-motion: the red disc sits where the parallax would end
+    --bg-parallax-near-overscan: calc(var(--bg-parallax-near-cap) * 1px + #{$bg-parallax-overscan-margin});
+    --bg-parallax-far-overscan: calc(var(--bg-parallax-far-cap) * 1px + #{$bg-parallax-overscan-margin});
+    --bg-parallax-near-shift: calc(-1px * min(var(--nexo-parallax, 0) * var(--bg-parallax-near-ratio), var(--bg-parallax-near-cap)));
+    --bg-parallax-far-shift: calc(-1px * min(var(--nexo-parallax, 0) * var(--bg-parallax-far-ratio), var(--bg-parallax-far-cap)));
+    --bg-parallax-red-disc-shift: calc(-1px * min(var(--nexo-parallax, 0) * var(--bg-parallax-red-disc-ratio), var(--bg-parallax-red-disc-cap)));
+    //the red disc's growth and rise follow the near layer's progress to its cap (0 to 1), so they finish at the same scroll; held
+    //at 1 when still
+    --bg-parallax-red-disc-progress: max(var(--bg-parallax-still), min(1, var(--nexo-parallax, 0) * var(--bg-parallax-near-ratio) / var(--bg-parallax-near-cap)));
+    --bg-parallax-red-disc-scale: calc(var(--bg-parallax-red-disc-min-scale) + (1 - var(--bg-parallax-red-disc-min-scale)) * var(--bg-parallax-red-disc-progress));
 }
 @media (max-width: #{$bg-parallax-mobile-breakpoint - 0.02px}){
-    :root{ --bg-parallax-near-ratio: #{$bg-parallax-mobile-near-ratio}; --bg-parallax-near-cap: #{$bg-parallax-mobile-near-cap};
-        --bg-parallax-far-ratio: #{$bg-parallax-mobile-far-ratio}; --bg-parallax-far-cap: #{$bg-parallax-mobile-far-cap}; }
+    :root{ --bg-parallax-near-ratio: #{$bg-parallax-mobile-near-ratio}; --bg-parallax-near-cap: #{math.div($bg-parallax-mobile-near-cap, 1px)};
+        --bg-parallax-far-ratio: #{$bg-parallax-mobile-far-ratio}; --bg-parallax-far-cap: #{math.div($bg-parallax-mobile-far-cap, 1px)};
+        --bg-parallax-red-disc-ratio: #{$bg-parallax-mobile-red-disc-ratio}; --bg-parallax-red-disc-cap: #{math.div($bg-parallax-mobile-red-disc-cap, 1px)};
+        --bg-parallax-red-disc-rises: 1; }
 }
 @media (prefers-reduced-motion: reduce){
-    :root{ --bg-parallax-near-ratio: 0; --bg-parallax-far-ratio: 0; }
+    :root{ --bg-parallax-near-ratio: 0; --bg-parallax-far-ratio: 0; --bg-parallax-red-disc-ratio: 0; --bg-parallax-still: 1; }
 }
 
 //the parallax's layers reach past the window's right edge by $overscan, which would move whatever they place in % of their own
@@ -275,10 +301,10 @@ $log-snapshot-changed-fill: rgba($selected-spot-color, 0.22);
 //height. This stylesheet only loads on Nexo's pages, so styling body here affects no other page. isolation: body is its own
 //stacking context, so the z-index -1 layers paint over body's own background (and over BGA's on html) and under all of the
 //page. It sets no containing block, so position: fixed elements are unaffected. body keeps only the fallback color.
-//::before is the surface (marble and the red disc), ::after the disc: a layer as big as the window, cut to the circle by a
+//::before is the surface (marble), ::after the disc: a layer as big as the window, cut to the circle by a
 //radial-gradient mask with a 1px soft edge (a crisp curve without jagged pixels); the disc's shadow is a third layer between
-//them (.background-arc-shadow). All three drift left as the page scrolls ($bg-parallax-*), each reaching past the window's right
-//edge by its overscan
+//them (.background-arc-shadow), then the red disc (.background-red-disc). All drift left as the page scrolls ($bg-parallax-*),
+//the three wide ones reaching past the window's right edge by their overscan
 body{ background: $bg-surface-color; isolation: isolate;
     --bg-arc-radius: #{$bg-arc-radius}; --bg-arc-center-x: #{$bg-arc-center-x}; --bg-arc-center-y: #{$bg-arc-center-y};
     --bg-arc-center: var(--bg-arc-center-x) calc(100% + var(--bg-arc-center-y));
@@ -300,15 +326,26 @@ body{ background: $bg-surface-color; isolation: isolate;
     --bg-red-disc-width: min(var(--bg-red-disc-fit-width), max(0px, (var(--bg-red-disc-fit-width) - #{math.div($bg-red-disc-min-width, $bg-red-disc-disc-share)}) * 1000));
     --bg-red-disc-height: calc(var(--bg-red-disc-width) * #{$bg-red-disc-image-ratio});
     --bg-red-disc-bottom: max(#{$bg-red-disc-bottom}, #{$bg-red-disc-chatbar-clearance} + var(--bg-red-disc-height) * #{$bg-red-disc-half-height-share});
-    --bg-red-disc-position: right calc(var(--bg-parallax-far-overscan) + var(--bg-red-disc-right) - var(--bg-red-disc-width) * #{1 - $bg-red-disc-center-x-share})
-        bottom calc(var(--bg-red-disc-bottom) - var(--bg-red-disc-height) * #{1 - $bg-red-disc-center-y-share});
     &.mobile_version{ --bg-red-disc-right: #{$bg-red-disc-mobile-right}; --bg-red-disc-width: var(--bg-red-disc-wanted-width);
         --bg-red-disc-bottom: max(#{$bg-red-disc-mobile-min-bottom}, var(--board-bottom-gap, 0px) / 2); }
+    //the red disc's rise, under the breakpoint (--bg-parallax-red-disc-rises): $bg-parallax-mobile-red-disc-rise-factor times what
+    //takes its bottom edge, at full size, $bg-parallax-mobile-red-disc-rise-gap above BGA's floating buttons
+    //(--floating-buttons-height: from the window's bottom to their top, so their bottom offset and the safe-area inset included,
+    //0 when there are none), as high as the caps allow when that is too far: never so far that its image leaves the window's top
+    //and, when still, never over the board (page at its top), since it is there from the start. Otherwise the board scrolls up a
+    //px per px scrolled, far faster than the disc rises, so it is above the disc by the time it has risen
+    --bg-red-disc-rise-needed: calc(var(--floating-buttons-height, 0px) + #{$bg-parallax-mobile-red-disc-rise-gap}
+        + var(--bg-red-disc-height) * #{$bg-red-disc-half-height-share} - var(--bg-red-disc-bottom));
+    --bg-red-disc-rise-room: calc(var(--bg-viewport-height) - var(--bg-red-disc-bottom) - var(--bg-red-disc-height) * #{$bg-red-disc-center-y-share});
+    --bg-red-disc-rise-board-room: calc(var(--board-bottom-gap, 0px) - #{$bg-red-disc-clearance} - var(--bg-red-disc-bottom)
+        - var(--bg-red-disc-height) * #{$bg-red-disc-half-height-share} + (1 - var(--bg-parallax-still)) * 100000px);
+    --bg-red-disc-rise: calc(var(--bg-parallax-red-disc-rises) * max(0px, min(var(--bg-red-disc-rise-needed) * #{$bg-parallax-mobile-red-disc-rise-factor}, var(--bg-red-disc-rise-room), var(--bg-red-disc-rise-board-room))));
+    --bg-viewport-height: 100vh; //100dvh below where known: a custom property doesn't fall back on an unknown unit
+    @supports (height: 100dvh){ --bg-viewport-height: 100dvh; }
     &::before, &::after{ content: ""; position: fixed; left: 0px; top: 0px; bottom: 0px; z-index: -1; pointer-events: none; will-change: transform; }
-    //the far layer: the surface, and the red disc lying on it
+    //the far layer: the surface
     &::before{ right: calc(-1 * var(--bg-parallax-far-overscan)); transform: translate3d(var(--bg-parallax-far-shift), 0, 0);
         background:
-            $bg-red-disc-image var(--bg-red-disc-position) / var(--bg-red-disc-width) var(--bg-red-disc-height) no-repeat,
             linear-gradient(113deg, transparent overscan-stop(62%, 113deg, var(--bg-parallax-far-overscan)), $bg-surface-vein-color overscan-stop(62.35%, 113deg, var(--bg-parallax-far-overscan)), transparent overscan-stop(62.8%, 113deg, var(--bg-parallax-far-overscan))),
             linear-gradient(109deg, transparent overscan-stop(63.2%, 109deg, var(--bg-parallax-far-overscan)), rgba($bg-surface-vein-color, 0.03) overscan-stop(63.9%, 109deg, var(--bg-parallax-far-overscan)), transparent overscan-stop(64.8%, 109deg, var(--bg-parallax-far-overscan))),
             linear-gradient(104deg, transparent overscan-stop(75.2%, 104deg, var(--bg-parallax-far-overscan)), rgba($bg-surface-vein-color, 0.035) overscan-stop(75.5%, 104deg, var(--bg-parallax-far-overscan)), transparent overscan-stop(75.9%, 104deg, var(--bg-parallax-far-overscan))),
@@ -338,6 +375,19 @@ body .background-arc-shadow{ position: fixed; left: 0px; top: 0px; right: calc(-
     will-change: transform; transform: translate3d(var(--bg-parallax-near-shift), 0, 0);
     background: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), transparent calc(var(--bg-arc-radius) - 2px), $bg-disc-shadow-color var(--bg-arc-radius),
         rgba($bg-disc-shadow-color, 0.05) calc(var(--bg-arc-radius) + #{$bg-disc-shadow-width} * 0.55), transparent calc(var(--bg-arc-radius) + #{$bg-disc-shadow-width}));
+}
+//the red disc (img/bg_red_disc.png, see $bg-red-disc-*), its own layer after the arc's shadow in <body> (BackgroundHandler), so over
+//the surface and the shadow, under body::after and the whole page. A box exactly the image, at its full size, placed so its disc's
+//centre sits $bg-red-disc-right / -bottom from the window's right and bottom edges (the board and player boards rules size it at
+//that full size, so nothing grows past them). It scales from that centre ($bg-parallax-red-disc-min-scale up to 1, never over: the
+//box never clips it), drifts left by its own ratio and, under the breakpoint, rises (--bg-red-disc-rise). Hidden is a 0 x 0 box
+body .background-red-disc{ position: fixed; z-index: -1; pointer-events: none; will-change: transform;
+    right: calc(var(--bg-red-disc-right) - var(--bg-red-disc-width) * #{1 - $bg-red-disc-center-x-share});
+    bottom: calc(var(--bg-red-disc-bottom) - var(--bg-red-disc-height) * #{1 - $bg-red-disc-center-y-share});
+    width: var(--bg-red-disc-width); height: var(--bg-red-disc-height);
+    background: $bg-red-disc-image 0px 0px / 100% 100% no-repeat;
+    transform-origin: #{$bg-red-disc-center-x-share * 100%} #{$bg-red-disc-center-y-share * 100%};
+    transform: translate3d(var(--bg-parallax-red-disc-shift), calc(-1 * var(--bg-red-disc-rise) * var(--bg-parallax-red-disc-progress)), 0) scale(var(--bg-parallax-red-disc-scale));
 }
 @media (orientation: portrait){
     body{ --bg-arc-radius: #{$bg-arc-portrait-radius}; --bg-arc-center-x: #{$bg-arc-portrait-center-x}; --bg-arc-center-y: #{$bg-arc-portrait-center-y}; }

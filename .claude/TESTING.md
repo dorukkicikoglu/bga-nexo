@@ -455,3 +455,26 @@ Deploy `modules/` and `nexo.css`; no server change, an ongoing table is fine (F5
 - [ ] The player boards' reserve stacks are unchanged: they don't move while I draft, only when the turn plays.
 - [ ] A refused confirm keeps the dimmed icons as they were. F5 during a draft: every icon full again.
 - [ ] No errors in the browser console.
+
+## After M1: red disc grows on scroll
+
+Deploy `modules/` and `nexo.css`; no schema change, an ongoing table is fine (F5).
+
+- [ ] Desktop, page at its top: the red disc is smaller than before (70%), in the same place (its centre hasn't moved).
+- [ ] Scroll down slowly: it grows smoothly in place, its centre fixed, its shadow growing with it, and drifts left only a little (far less than the marble and the black disc). It is full size (as before this change) when the black disc stops drifting (about 2140px down); scrolling further changes nothing. Scroll back up: it shrinks back to 70% at the top.
+- [ ] Full size: never cut off (disc and shadow whole), never over the board, the player boards or the chat bar; the log may cover it, as before.
+- [ ] Narrow window until it shrinks or hides (the board's room rule): the 70% start and the growth follow that size.
+- [ ] Phone (or a window under 768px): the same, drifting even less (8px at most).
+- [ ] System setting "Reduce motion" on: full size at the top and no movement or growth at all, also when switched while the page is open.
+- [ ] The black disc, its shadow and the marble still drift as before.
+
+## After M1: red disc drifts further and rises on mobile
+
+Deploy `modules/` and `nexo.css`; no schema change, an ongoing table is fine (F5).
+
+- [ ] Desktop: scrolling down, the red disc drifts left clearly more than before (60px at most, reached about 1875px down), still growing from 70% to 100%; it never moves up or down.
+- [ ] Phone, page at its top: the disc is at 70%, where it was (it may sit under BGA's round buttons in the bottom-right corner).
+- [ ] Phone, scroll down: it grows, drifts left (32px at most) and rises, smoothly, all three ending together (about 1300px down). At the end it sits well above the round buttons (its rise is twice what would just clear them), inside the screen. Scroll back up: it returns.
+- [ ] In the console on the phone (or Chrome's device mode under 768px): `getComputedStyle(document.body).getPropertyValue('--floating-buttons-height')` gives the buttons' height from the screen's bottom (their top edge); compare with the buttons on screen. Note the value.
+- [ ] Open and close a chat bubble, rotate the phone: the disc still ends above the buttons.
+- [ ] Reduce motion on, phone: the disc shows at 100%, already at that final height, and never moves; if the board leaves no room for it there, it stays clear of the board instead.

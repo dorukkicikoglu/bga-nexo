@@ -598,6 +598,11 @@ class BoardHandler {
         const statusBar = document.getElementById('page-title');
         if (statusBar)
             layoutObserver.observe(statusBar);
+        //BGA's chat bubbles come and go in #chatbar without resizing anything: measure the floating buttons again then (direct
+        //children only: on mobile the table log fills the chat windows inside it)
+        const chatBar = document.getElementById('chatbar');
+        if (chatBar)
+            new MutationObserver(scheduleFit).observe(chatBar, { childList: true, attributes: true, attributeFilter: ['style', 'class'] });
         this.layerElement.addEventListener('click', (event) => this.onBoardClick(event));
     }
     /**
@@ -635,10 +640,10 @@ class BoardHandler {
         this.measureForBackgroundDisc(cellSize * zoom);
     }
     /**
-     * The page background's red disc ($bg-red-disc-* in Game.scss) lives in body::before, which can't read the board's
-     * --cell-size: hand it, on body, the board's spot size on screen and where the board and the player boards are, from the
-     * window's right edge (the player boards only when beside the board) and its bottom edge (page at its top). Game.scss
-     * decides the disc's size and place from these. Set only when they change
+     * The page background's red disc ($bg-red-disc-* in Game.scss) is outside the board and can't read its --cell-size: hand
+     * it, on body, the board's spot size on screen and where the board and the player boards are, from the window's right edge
+     * (the player boards only when beside the board) and its bottom edge (page at its top), and how high BGA's floating buttons
+     * reach (measureFloatingButtons). Game.scss decides the disc's size, place and rise from these. Set only when they change
      */
     measureForBackgroundDisc(cellScreenSize) {
         const viewport = document.documentElement;
@@ -651,12 +656,55 @@ class BoardHandler {
             '--panels-right-gap': panelsBeside ? viewport.clientWidth - panelsRect.left : 0,
             '--panels-bottom-gap': panelsBeside ? viewport.clientHeight - (panelsRect.bottom + window.scrollY) : 0,
             '--board-bottom-gap': viewport.clientHeight - (boardRect.bottom + window.scrollY),
+            '--floating-buttons-height': this.measureFloatingButtons(),
         };
         for (const [name, value] of Object.entries(values)) {
             const px = Math.round(value) + 'px';
             if (document.body.style.getPropertyValue(name) !== px)
                 document.body.style.setProperty(name, px);
         }
+    }
+    /**
+     * Under Game.scss's mobile breakpoint (--bg-parallax-red-disc-rises), how high BGA's floating round buttons in the window's
+     * bottom-right corner (the replay / history and chat bubbles) reach: screen px from the window's bottom edge to their top, so
+     * their bottom offset and the safe-area inset are counted. 0 when there are none, or on desktop. BGA's markup for them is
+     * not ours to rely on, so this hit-tests the corner (FLOATING_BUTTONS_SCAN_*) for anything fixed in place (itself or an
+     * ancestor position: fixed) that isn't tall like an open chat window, and takes the highest top among the element hit and
+     * its ancestors up to that fixed one (the button, not just its icon). Our own layers take no clicks, so they are never hit
+     */
+    measureFloatingButtons() {
+        const root = document.documentElement;
+        if (getComputedStyle(root).getPropertyValue('--bg-parallax-red-disc-rises').trim() !== '1')
+            return 0;
+        const width = root.clientWidth;
+        const height = root.clientHeight;
+        const maxHeight = height * BoardHandler.FLOATING_BUTTONS_MAX_HEIGHT_SHARE;
+        const fixedRoots = new Map(); //each element's nearest position: fixed ancestor (or itself), null if none
+        const getFixedRoot = (element) => {
+            if (fixedRoots.has(element))
+                return fixedRoots.get(element);
+            const fixedRoot = element === document.body || element === root ? null
+                : getComputedStyle(element).position === 'fixed' ? element
+                    : element.parentElement ? getFixedRoot(element.parentElement) : null;
+            fixedRoots.set(element, fixedRoot);
+            return fixedRoot;
+        };
+        let top = height;
+        const step = BoardHandler.FLOATING_BUTTONS_SCAN_STEP;
+        for (let y = height - 1; y >= height * (1 - BoardHandler.FLOATING_BUTTONS_SCAN_HEIGHT_SHARE); y -= step) {
+            for (let x = width - 1; x >= width * (1 - BoardHandler.FLOATING_BUTTONS_SCAN_WIDTH_SHARE); x -= step) {
+                const hit = document.elementFromPoint(x, y);
+                const fixedRoot = hit ? getFixedRoot(hit) : null;
+                if (!fixedRoot || fixedRoot.getBoundingClientRect().height > maxHeight)
+                    continue;
+                for (let element = hit; element; element = element === fixedRoot ? null : element.parentElement) {
+                    const rect = element.getBoundingClientRect();
+                    if (rect.height > 0 && rect.height <= maxHeight)
+                        top = Math.min(top, rect.top);
+                }
+            }
+        }
+        return Math.max(0, height - top);
     }
     //a tower of height discs in discColor: one .tower-disc per disc, bottom one first, and its height as a number on top. Also
     //used for log rows and the player boards' reserve, each sized by its own --cell-size
@@ -1009,6 +1057,13 @@ class BoardHandler {
         }
     }
 }
+//measureFloatingButtons(): the share of the window's width (from the right) and height (from the bottom) hit-tested for
+//BGA's floating buttons, every FLOATING_BUTTONS_SCAN_STEP screen px; anything fixed taller than the height share is not a
+//button (an open chat window)
+BoardHandler.FLOATING_BUTTONS_SCAN_WIDTH_SHARE = 0.5;
+BoardHandler.FLOATING_BUTTONS_SCAN_HEIGHT_SHARE = 0.4;
+BoardHandler.FLOATING_BUTTONS_SCAN_STEP = 12;
+BoardHandler.FLOATING_BUTTONS_MAX_HEIGHT_SHARE = 0.4;
 //the undo button's icon: a curved arrow turning back counter-clockwise, drawn with currentColor
 BoardHandler.UNDO_ICON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12a7 7 0 1 0 2.05-4.95"/><path d="M11 7.05H7.05V3.1"/></svg>';
 //the confirm button's icon: a tick
@@ -1273,9 +1328,9 @@ PrefHandler.DEFAULT_PREF_NAMES = {
  * BackgroundHandler.ts
  */
 //the page background's parallax (Game.scss, $bg-parallax-*): its layers drift left as the page scrolls down. Game.scss holds the
-//settings and does the moving; this only hands it the scroll offset, as --nexo-parallax on <html>, clamped where every layer has
-//reached its cap so scrolling further writes nothing. Also puts the black disc's shadow layer in <body>, which a pseudo-element
-//can't hold (body's two are the surface and the disc)
+//settings and does the moving; this only hands it the scroll offset, as --nexo-parallax on <html> (a plain number of px), clamped
+//where every layer has reached its cap so scrolling further writes nothing. Also puts in <body> the two layers a pseudo-element
+//can't hold (body's two are the surface and the black disc): the black disc's shadow, then the red disc, which moves on its own
 class BackgroundHandler {
     static getInstance() {
         return BackgroundHandler.instance ?? (BackgroundHandler.instance = new BackgroundHandler());
@@ -1286,6 +1341,9 @@ class BackgroundHandler {
         const arcShadow = document.createElement('div');
         arcShadow.classList.add('background-arc-shadow');
         document.body.insertAdjacentElement('afterbegin', arcShadow); //first in <body>: over body::before, under body::after
+        const redDisc = document.createElement('div');
+        redDisc.classList.add('background-red-disc');
+        arcShadow.insertAdjacentElement('afterend', redDisc); //over the shadow, under body::after
         this.readParallaxSettings();
         //the settings change with the window's width (the mobile breakpoint) and prefers-reduced-motion: read them again then,
         //never while scrolling
@@ -1315,7 +1373,7 @@ class BackgroundHandler {
         });
     }
     update() {
-        const offset = Math.round(Math.min(Math.max(window.scrollY, 0), this.maxScroll)) + 'px'; //never negative (iOS's bounce at the top)
+        const offset = Math.round(Math.min(Math.max(window.scrollY, 0), this.maxScroll)).toString(); //never negative (iOS's bounce at the top)
         const root = document.documentElement;
         if (root.style.getPropertyValue(BackgroundHandler.PARALLAX_PROPERTY) !== offset)
             root.style.setProperty(BackgroundHandler.PARALLAX_PROPERTY, offset);
@@ -1323,8 +1381,8 @@ class BackgroundHandler {
 }
 //custom properties on <html>: the scroll offset (set here) and the parallax's settings (set in Game.scss, :root)
 BackgroundHandler.PARALLAX_PROPERTY = '--nexo-parallax';
-BackgroundHandler.PARALLAX_LAYERS = ['near', 'far'];
-BackgroundHandler.instance = null; //guards against a second shadow layer if the game sets its UI up again
+BackgroundHandler.PARALLAX_LAYERS = ['near', 'far', 'red-disc']; //the red disc's growth ends with the near layer
+BackgroundHandler.instance = null; //guards against second layers if the game sets its UI up again
 
 /**
  *------

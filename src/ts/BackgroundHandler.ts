@@ -11,15 +11,15 @@
  */
 
 //the page background's parallax (Game.scss, $bg-parallax-*): its layers drift left as the page scrolls down. Game.scss holds the
-//settings and does the moving; this only hands it the scroll offset, as --nexo-parallax on <html>, clamped where every layer has
-//reached its cap so scrolling further writes nothing. Also puts the black disc's shadow layer in <body>, which a pseudo-element
-//can't hold (body's two are the surface and the disc)
+//settings and does the moving; this only hands it the scroll offset, as --nexo-parallax on <html> (a plain number of px), clamped
+//where every layer has reached its cap so scrolling further writes nothing. Also puts in <body> the two layers a pseudo-element
+//can't hold (body's two are the surface and the black disc): the black disc's shadow, then the red disc, which moves on its own
 export class BackgroundHandler{
     //custom properties on <html>: the scroll offset (set here) and the parallax's settings (set in Game.scss, :root)
     private static readonly PARALLAX_PROPERTY = '--nexo-parallax';
-    private static readonly PARALLAX_LAYERS = ['near', 'far'];
+    private static readonly PARALLAX_LAYERS = ['near', 'far', 'red-disc']; //the red disc's growth ends with the near layer
 
-    private static instance: BackgroundHandler | null = null; //guards against a second shadow layer if the game sets its UI up again
+    private static instance: BackgroundHandler | null = null; //guards against second layers if the game sets its UI up again
 
     private maxScroll = 0; //px of scroll past which every layer is at its cap
     private frame = 0;
@@ -32,6 +32,9 @@ export class BackgroundHandler{
         const arcShadow = document.createElement('div');
         arcShadow.classList.add('background-arc-shadow');
         document.body.insertAdjacentElement('afterbegin', arcShadow); //first in <body>: over body::before, under body::after
+        const redDisc = document.createElement('div');
+        redDisc.classList.add('background-red-disc');
+        arcShadow.insertAdjacentElement('afterend', redDisc); //over the shadow, under body::after
 
         this.readParallaxSettings();
         //the settings change with the window's width (the mobile breakpoint) and prefers-reduced-motion: read them again then,
@@ -65,7 +68,7 @@ export class BackgroundHandler{
     }
 
     private update(): void {
-        const offset = Math.round(Math.min(Math.max(window.scrollY, 0), this.maxScroll)) + 'px'; //never negative (iOS's bounce at the top)
+        const offset = Math.round(Math.min(Math.max(window.scrollY, 0), this.maxScroll)).toString(); //never negative (iOS's bounce at the top)
         const root = document.documentElement;
         if(root.style.getPropertyValue(BackgroundHandler.PARALLAX_PROPERTY) !== offset)
             root.style.setProperty(BackgroundHandler.PARALLAX_PROPERTY, offset);
