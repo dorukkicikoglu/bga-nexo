@@ -478,3 +478,26 @@ Deploy `modules/` and `nexo.css`; no schema change, an ongoing table is fine (F5
 - [ ] In the console on the phone (or Chrome's device mode under 768px): `getComputedStyle(document.body).getPropertyValue('--floating-buttons-height')` gives the buttons' height from the screen's bottom (their top edge); compare with the buttons on screen. Note the value.
 - [ ] Open and close a chat bubble, rotate the phone: the disc still ends above the buttons.
 - [ ] Reduce motion on, phone: the disc shows at 100%, already at that final height, and never moves; if the board leaves no room for it there, it stays clear of the board instead.
+
+## After M1: red disc rises smoothly from the first scroll
+
+Deploy `modules/` and `nexo.css`; no schema change. Use a real phone (the address bar matters), each check from a fresh load (close the tab, open the table again).
+
+- [ ] Fresh load, page at its top: the disc at 70%, where it was; nothing moves by itself in the first few seconds.
+- [ ] Fresh load, first scroll down slowly: the disc grows, drifts left and rises smoothly from the very first px, with no jump when the address bar hides. Scroll back up: the same, in reverse.
+- [ ] Fresh load, first scroll down fast (a flick): it ends at the same final spot above the round buttons, with no jump on the way.
+- [ ] Rotate the phone (both ways), then scroll: the disc is right for the new orientation and smooth again (a change of place right at the rotation is expected).
+- [ ] Open a chat bubble while scrolled down: the disc keeps its course; back at the top it takes the new buttons into account.
+- [ ] In the console: `getComputedStyle(document.body).getPropertyValue('--floating-buttons-height')` right after load gives the buttons' height already (not 0px).
+
+## After M1: status bar on one line
+
+Deploy `nexo.css`; no server change, an ongoing table is fine (F5). Checked only on a mock status bar in headless Chromium (BGA's real markup and styles aren't available locally), so the real bar needs these checks.
+
+- [ ] Phone around 360px and 400px wide (BGA's mobile layout), my turn: "You must place up to" with the disc icons and BGA's arrow button on the right are on one line; the bar is one line tall, not two.
+- [ ] Same widths, my turn: the icons, the text and the arrow button share one vertical centre (no icon or button sitting high or low).
+- [ ] Draft discs until every icon is dimmed, then undo them all: the bar's height never changes and the board never moves.
+- [ ] Opponent's turn on the phone: "[name] must place up to" with full icons and the arrow button on one line. A long player name: if it doesn't fit, the arrow wraps to a second line rather than overflowing the bar or squashing the text.
+- [ ] Game over (BGA's end state, its own buttons if any) and spectator view: buttons wrap to a new line only when they don't fit, never overflow the bar.
+- [ ] 768px (tablet or narrow window) and desktop width: the title and anything in `#generalactions` on one line, as before.
+- [ ] No errors in the browser console.

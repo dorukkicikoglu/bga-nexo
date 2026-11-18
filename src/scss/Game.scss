@@ -340,8 +340,11 @@ body{ background: $bg-surface-color; isolation: isolate;
     --bg-red-disc-rise-board-room: calc(var(--board-bottom-gap, 0px) - #{$bg-red-disc-clearance} - var(--bg-red-disc-bottom)
         - var(--bg-red-disc-height) * #{$bg-red-disc-half-height-share} + (1 - var(--bg-parallax-still)) * 100000px);
     --bg-red-disc-rise: calc(var(--bg-parallax-red-disc-rises) * max(0px, min(var(--bg-red-disc-rise-needed) * #{$bg-parallax-mobile-red-disc-rise-factor}, var(--bg-red-disc-rise-room), var(--bg-red-disc-rise-board-room))));
-    --bg-viewport-height: 100vh; //100dvh below where known: a custom property doesn't fall back on an unknown unit
-    @supports (height: 100dvh){ --bg-viewport-height: 100dvh; }
+    //the window's height for the rise's cap: 100svh (the height with a mobile browser's address bar shown) where known, so it
+    //stays put when the bar hides on the first scroll down (100dvh followed it, and the cap with it). Through @supports: a
+    //custom property doesn't fall back on an unknown unit
+    --bg-viewport-height: 100vh;
+    @supports (height: 100svh){ --bg-viewport-height: 100svh; }
     &::before, &::after{ content: ""; position: fixed; left: 0px; top: 0px; bottom: 0px; z-index: -1; pointer-events: none; will-change: transform; }
     //the far layer: the surface
     &::before{ right: calc(-1 * var(--bg-parallax-far-overscan)); transform: translate3d(var(--bg-parallax-far-shift), 0, 0);
@@ -413,10 +416,6 @@ $passed-banner-shadow: 0 6px 24px 0 rgba($material-charcoal, 0.3); //while it is
 $passed-banner-flight-easing: ease-in-out;
 @mixin passed-stamp-look($scale) { display: flex; align-items: center; gap: 5px * $scale; padding: 1px * $scale 7px * $scale; border: 2px * $scale solid $passed-stamp-color; border-radius: 4px * $scale;
     background-color: rgba(255, 255, 255, 0.7); color: $passed-stamp-color; font-size: 13px * $scale; font-weight: bold; text-transform: uppercase; letter-spacing: 1px * $scale; white-space: nowrap; box-shadow: $passed-stamp-shadow; }
-
-//mobile: a line break right before the action buttons, like a <br>, so they and BGA's arrow button start a second line
-//under the status bar title (the hourglass stays inline with it). Desktop keeps them next to the title
-.mobile_version #generalactions::before{ content: ""; display: block; }
 
 //towers (BoardHandler.createTowerDiv): one .tower-disc per disc, bottom one first, each drawn as a cylinder: its top face is the
 //element's background (an ellipse in the top --disc-face-height of the box), its side a rectangle (::before) and its bottom

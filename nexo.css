@@ -89,9 +89,9 @@ body {
   --bg-red-disc-rise: calc(var(--bg-parallax-red-disc-rises) * max(0px, min(var(--bg-red-disc-rise-needed) * 2, var(--bg-red-disc-rise-room), var(--bg-red-disc-rise-board-room))));
   --bg-viewport-height: 100vh;
 }
-@supports (height: 100dvh) {
+@supports (height: 100svh) {
   body {
-    --bg-viewport-height: 100dvh;
+    --bg-viewport-height: 100svh;
   }
 }
 body::before, body::after {
@@ -165,11 +165,6 @@ body .sliding-clone {
   pointer-events: none;
   transform-origin: 0 0;
   will-change: transform;
-}
-
-.mobile_version #generalactions::before {
-  content: "";
-  display: block;
 }
 
 .nexo-tower {
@@ -940,3 +935,5 @@ body .passed-banner.passed-banner-flying .passed-banner-name {
 .dijitTooltipLeft, .dijitTooltipRight {
   max-width: calc(100vw - 30px);
 }
+
+/*# sourceMappingURL=nexo.css.map */

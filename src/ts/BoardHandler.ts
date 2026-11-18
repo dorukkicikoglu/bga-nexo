@@ -55,13 +55,6 @@ export class BoardHandler {
     //the turn's towers have landed (recenter) or the draft is emptied (setDraft)
     private frozenCenter: { x: number; y: number; } | null = null;
     private boxLegalSpots: NexoSpot[] = []; //the legal spots the box is centred on, shown or not (getBoxLegalSpots)
-    //measureFloatingButtons(): the share of the window's width (from the right) and height (from the bottom) hit-tested for
-    //BGA's floating buttons, every FLOATING_BUTTONS_SCAN_STEP screen px; anything fixed taller than the height share is not a
-    //button (an open chat window)
-    private static readonly FLOATING_BUTTONS_SCAN_WIDTH_SHARE = 0.5;
-    private static readonly FLOATING_BUTTONS_SCAN_HEIGHT_SHARE = 0.4;
-    private static readonly FLOATING_BUTTONS_SCAN_STEP = 12;
-    private static readonly FLOATING_BUTTONS_MAX_HEIGHT_SHARE = 0.4;
     private towers = new Map<string, NexoTower>();
     private towerElements = new Map<string, HTMLDivElement>();
     private pendingElements = new Map<string, HTMLDivElement>();
@@ -114,11 +107,6 @@ export class BoardHandler {
         const statusBar = document.getElementById('page-title');
         if(statusBar)
             layoutObserver.observe(statusBar);
-        //BGA's chat bubbles come and go in #chatbar without resizing anything: measure the floating buttons again then (direct
-        //children only: on mobile the table log fills the chat windows inside it)
-        const chatBar = document.getElementById('chatbar');
-        if(chatBar)
-            new MutationObserver(scheduleFit).observe(chatBar, { childList: true, attributes: true, attributeFilter: ['style', 'class'] });
 
         this.layerElement.addEventListener('click', (event: MouseEvent) => this.onBoardClick(event));
     }
@@ -164,74 +152,30 @@ export class BoardHandler {
     /**
      * The page background's red disc ($bg-red-disc-* in Game.scss) is outside the board and can't read its --cell-size: hand
      * it, on body, the board's spot size on screen and where the board and the player boards are, from the window's right edge
-     * (the player boards only when beside the board) and its bottom edge (page at its top), and how high BGA's floating buttons
-     * reach (measureFloatingButtons). Game.scss decides the disc's size, place and rise from these. Set only when they change
+     * (the player boards only when beside the board) and its bottom edge (page at its top; the window's stable height, which a
+     * mobile browser's address bar showing or hiding doesn't change, BackgroundHandler.getStableViewportHeight). Game.scss
+     * decides the disc's size and place from these (and its rise from BackgroundHandler's --floating-buttons-height). Set only
+     * when they change
      */
     private measureForBackgroundDisc(cellScreenSize: number): void {
         const viewport = document.documentElement;
         const boardRect = this.boardElement.getBoundingClientRect();
         const panelsRect = document.getElementById('player_boards')?.getBoundingClientRect();
         const panelsBeside = !!panelsRect && panelsRect.width > 0 && panelsRect.left >= boardRect.right;
+        const viewportHeight = this.game.backgroundHandler?.getStableViewportHeight() || viewport.clientHeight;
 
         const values: Record<string, number> = {
             '--board-cell-screen-size': cellScreenSize,
             '--board-right-gap': viewport.clientWidth - boardRect.right,
             '--panels-right-gap': panelsBeside ? viewport.clientWidth - panelsRect.left : 0,
-            '--panels-bottom-gap': panelsBeside ? viewport.clientHeight - (panelsRect.bottom + window.scrollY) : 0,
-            '--board-bottom-gap': viewport.clientHeight - (boardRect.bottom + window.scrollY),
-            '--floating-buttons-height': this.measureFloatingButtons(),
+            '--panels-bottom-gap': panelsBeside ? viewportHeight - (panelsRect.bottom + window.scrollY) : 0,
+            '--board-bottom-gap': viewportHeight - (boardRect.bottom + window.scrollY),
         };
         for(const [name, value] of Object.entries(values)){
             const px = Math.round(value) + 'px';
             if(document.body.style.getPropertyValue(name) !== px)
                 document.body.style.setProperty(name, px);
         }
-    }
-
-    /**
-     * Under Game.scss's mobile breakpoint (--bg-parallax-red-disc-rises), how high BGA's floating round buttons in the window's
-     * bottom-right corner (the replay / history and chat bubbles) reach: screen px from the window's bottom edge to their top, so
-     * their bottom offset and the safe-area inset are counted. 0 when there are none, or on desktop. BGA's markup for them is
-     * not ours to rely on, so this hit-tests the corner (FLOATING_BUTTONS_SCAN_*) for anything fixed in place (itself or an
-     * ancestor position: fixed) that isn't tall like an open chat window, and takes the highest top among the element hit and
-     * its ancestors up to that fixed one (the button, not just its icon). Our own layers take no clicks, so they are never hit
-     */
-    private measureFloatingButtons(): number {
-        const root = document.documentElement;
-        if(getComputedStyle(root).getPropertyValue('--bg-parallax-red-disc-rises').trim() !== '1')
-            return 0;
-
-        const width = root.clientWidth;
-        const height = root.clientHeight;
-        const maxHeight = height * BoardHandler.FLOATING_BUTTONS_MAX_HEIGHT_SHARE;
-        const fixedRoots = new Map<Element, Element | null>(); //each element's nearest position: fixed ancestor (or itself), null if none
-        const getFixedRoot = (element: Element): Element | null => {
-            if(fixedRoots.has(element))
-                return fixedRoots.get(element);
-            const fixedRoot = element === document.body || element === root ? null
-                : getComputedStyle(element).position === 'fixed' ? element
-                : element.parentElement ? getFixedRoot(element.parentElement) : null;
-            fixedRoots.set(element, fixedRoot);
-            return fixedRoot;
-        };
-
-        let top = height;
-        const step = BoardHandler.FLOATING_BUTTONS_SCAN_STEP;
-        for(let y = height - 1; y >= height * (1 - BoardHandler.FLOATING_BUTTONS_SCAN_HEIGHT_SHARE); y -= step){
-            for(let x = width - 1; x >= width * (1 - BoardHandler.FLOATING_BUTTONS_SCAN_WIDTH_SHARE); x -= step){
-                const hit = document.elementFromPoint(x, y);
-                const fixedRoot = hit ? getFixedRoot(hit) : null;
-                if(!fixedRoot || fixedRoot.getBoundingClientRect().height > maxHeight)
-                    continue;
-
-                for(let element: Element | null = hit; element; element = element === fixedRoot ? null : element.parentElement){
-                    const rect = element.getBoundingClientRect();
-                    if(rect.height > 0 && rect.height <= maxHeight)
-                        top = Math.min(top, rect.top);
-                }
-            }
-        }
-        return Math.max(0, height - top);
     }
 
     //a tower of height discs in discColor: one .tower-disc per disc, bottom one first, and its height as a number on top. Also
