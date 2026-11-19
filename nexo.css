@@ -281,6 +281,7 @@ body .sliding-clone {
 
 .nexo-tower.status-disc {
   --cell-size: 1.4em;
+  --disc-scale: 1;
   --disc-thickness: calc(var(--cell-size) * 0.14);
   height: calc(var(--cell-size) * 0.571);
 }
@@ -344,7 +345,7 @@ html.hide-stack-heights .tower-height-number {
   height: 0px;
 }
 
-.spots-layer, .towers-layer, .draft-controls-layer {
+.spots-layer, .towers-layer, .draft-controls-layer, .board-message-layer {
   position: absolute;
   left: 0px;
   top: 0px;
@@ -491,6 +492,105 @@ html.hide-stack-heights .tower-height-number {
   opacity: 0.18;
 }
 
+.towers-layer .board-tower.unaffordable-tower {
+  pointer-events: auto;
+}
+
+.towers-layer .board-tower.shaking-tower {
+  animation: tower-shake 350ms ease-in-out 1;
+}
+
+@keyframes tower-shake {
+  0%, 100% {
+    translate: 0px 0px;
+  }
+  15% {
+    translate: -5px 0px;
+  }
+  35% {
+    translate: 5px 0px;
+  }
+  55% {
+    translate: -3.5px 0px;
+  }
+  75% {
+    translate: 2px 0px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .towers-layer .board-tower.shaking-tower {
+    animation: none;
+  }
+}
+.board-message-layer {
+  z-index: 2100;
+  pointer-events: none;
+}
+
+.tower-message {
+  position: absolute;
+  left: var(--message-x);
+  top: var(--message-above-y);
+  box-sizing: border-box;
+  width: max-content;
+  max-width: calc(var(--board-size) * var(--cell-size) - 12px / var(--board-zoom, 1));
+  padding: calc(5px / var(--board-zoom, 1)) calc(10px / var(--board-zoom, 1));
+  border: calc(1px / var(--board-zoom, 1)) solid rgba(27, 27, 29, 0.12);
+  border-radius: calc(8px / var(--board-zoom, 1));
+  background: linear-gradient(160deg, #ffffff 0%, #fcfbf9 100%);
+  box-shadow: 0 1px 3px rgba(40, 30, 18, 0.2), 0 6px 18px -4px rgba(40, 30, 18, 0.32);
+  color: #1f1f21;
+  font-size: calc(13px / var(--board-zoom, 1));
+  font-weight: bold;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal;
+  pointer-events: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  --message-gap: calc((6px + 4.5px) / var(--board-zoom, 1));
+  translate: calc(-50% + var(--message-shift, 0px)) calc(-100% - var(--message-gap));
+  animation: tower-message-in var(--tower-message-fade-in, 150ms) ease-out;
+}
+.tower-message[data-placement=below] {
+  top: var(--message-below-y);
+  translate: calc(-50% + var(--message-shift, 0px)) var(--message-gap);
+}
+.tower-message.leaving-tower-message {
+  opacity: 0;
+  transition: opacity var(--tower-message-fade-out, 250ms) ease-in;
+}
+.tower-message .tower-message-arrow {
+  position: absolute;
+  left: calc(50% - var(--message-shift, 0px));
+  top: 100%;
+  box-sizing: border-box;
+  width: calc(9px / var(--board-zoom, 1));
+  height: calc(9px / var(--board-zoom, 1));
+  background: #fcfbf9;
+  border-right: inherit;
+  border-bottom: inherit;
+  rotate: 45deg;
+  translate: -50% -50%;
+}
+.tower-message[data-placement=below] .tower-message-arrow {
+  top: 0%;
+  background: #ffffff;
+  border-right: none;
+  border-bottom: none;
+  border-left: inherit;
+  border-top: inherit;
+}
+
+@keyframes tower-message-in {
+  from {
+    opacity: 0;
+  }
+}
 .draft-controls-layer {
   z-index: 2000;
 }

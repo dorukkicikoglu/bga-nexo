@@ -229,6 +229,19 @@ $pending-confirm-ring-pop-scale: 1.1;
 $pending-confirm-pulse-scale: 1.14; //the one pulse when every disc is drafted
 $pending-confirm-pulse-duration: 0.45s;
 $draft-controls-z-index: 2000; //over every tower (1000 + its row)
+//[BGA] an enemy tower clicked but too high for the discs left this turn (BoardHandler.showUnaffordableTower): a short shake
+//(the translate property, a one-shot class; none with reduced motion) and a speech bubble over it, the "Confirm anyway?"
+//card's look (below). The bubble lives in the board, which BGA scales down on a phone: its sizes are screen px, divided
+//by --board-zoom. Its timings are Game.TOWER_MESSAGE_*
+$tower-shake-duration: 350ms;
+$tower-shake-distance: 5px; //the widest swing, either side; the later ones smaller
+$tower-message-z-index: 2100; //over the draft's controls
+$tower-message-font-size: 13px;
+$tower-message-padding-y: 5px;
+$tower-message-padding-x: 10px;
+$tower-message-radius: 8px;
+$tower-message-gap: 6px; //from the tower's top face (or, below it, its bottom) to the arrow's tip
+$tower-message-arrow-size: 9px; //a square turned 45 degrees, half of it out of the bubble
 //"Confirm anyway?" (ConfirmPopover): a small card under the confirm button when discs are still placeable. Fixed in <body>,
 //outside BGA's mobile scaling, so these are real screen px. ConfirmPopover reads the anchor gap and the edge margin from the
 //custom properties, so every size lives here. z-index 948 and later in <body>: over the board and BGA's status bar, under
@@ -537,7 +550,7 @@ $passed-banner-flight-easing: ease-in-out;
 //[BGA] the status bar's allowance (PlaceTowers.getDiscIconsHTML): one disc per disc the turn may use, inline on the text line,
 //a one-disc .nexo-tower box only as tall as its disc. The drafted ones dim (the opponent's view never does)
 .status-discs{ display: inline-flex; vertical-align: middle; white-space: nowrap; }
-.nexo-tower.status-disc{ --cell-size: #{$status-disc-cell-size}; --disc-thickness: calc(var(--cell-size) * #{$status-disc-thickness-ratio});
+.nexo-tower.status-disc{ --cell-size: #{$status-disc-cell-size}; --disc-scale: 1; --disc-thickness: calc(var(--cell-size) * #{$status-disc-thickness-ratio});
     height: calc(var(--cell-size) * #{$tower-base-ratio + $status-disc-thickness-ratio + $disc-width-ratio * $disc-face-ratio});
     &.used-status-disc{ opacity: $status-disc-used-opacity; }
 }
@@ -570,7 +583,7 @@ html.hide-stack-heights .tower-height-number{ display: none; }
 #nexo-board{ --board-edge-padding: #{$board-edge-padding}; }
 .mobile_version #nexo-board{ --board-edge-padding: #{$board-edge-mobile-padding}; }
 .board-layer{ position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
-.spots-layer, .towers-layer, .draft-controls-layer{ position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
+.spots-layer, .towers-layer, .draft-controls-layer, .board-message-layer{ position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
 
 //one spot's box, from its board coordinates
 @mixin board-place(){ position: absolute; left: calc(var(--x) * var(--cell-size)); top: calc(var(--y) * var(--cell-size)); width: var(--cell-size); height: var(--cell-size); }
@@ -642,6 +655,44 @@ html.hide-stack-heights .tower-height-number{ display: none; }
 }
 .towers-layer .pending-tower.confirmed-tower{ pointer-events: none; cursor: default; } //confirmed, waiting for its spot's turn in the turn animation
 .towers-layer .board-tower.being-replaced{ opacity: $replaced-tower-opacity; }
+//[BGA] an enemy tower replaceable but for the discs left this turn: it takes the click (BoardHandler.onBoardClick), which shakes it
+//and says why. The cursor and the look stay a plain tower's
+.towers-layer .board-tower.unaffordable-tower{ pointer-events: auto; }
+.towers-layer .board-tower.shaking-tower{ animation: tower-shake $tower-shake-duration ease-in-out 1; }
+@keyframes tower-shake{
+    0%, 100%{ translate: 0px 0px; }
+    15%{ translate: -$tower-shake-distance 0px; }
+    35%{ translate: $tower-shake-distance 0px; }
+    55%{ translate: -$tower-shake-distance * 0.7 0px; }
+    75%{ translate: $tower-shake-distance * 0.4 0px; }
+}
+@media (prefers-reduced-motion: reduce){
+    .towers-layer .board-tower.shaking-tower{ animation: none; }
+}
+
+//the bubble (BoardHandler.showTowerMessage): anchored at --message-x (the spot's middle) and the tower's top face
+//(--message-above-y) or, with data-placement="below", its bottom (--message-below-y); --message-shift keeps it inside the board,
+//the arrow staying over the tower. Never wider than the board. No clicks
+.board-message-layer{ z-index: $tower-message-z-index; pointer-events: none; }
+.tower-message{ position: absolute; left: var(--message-x); top: var(--message-above-y); box-sizing: border-box; width: max-content;
+    max-width: calc(var(--board-size) * var(--cell-size) - #{2 * $tower-message-gap} / var(--board-zoom, 1));
+    padding: calc(#{$tower-message-padding-y} / var(--board-zoom, 1)) calc(#{$tower-message-padding-x} / var(--board-zoom, 1));
+    border: calc(1px / var(--board-zoom, 1)) solid $confirm-popover-border-color; border-radius: calc(#{$tower-message-radius} / var(--board-zoom, 1));
+    background: $confirm-popover-background; box-shadow: $confirm-popover-shadow; color: $log-text-color;
+    font-size: calc(#{$tower-message-font-size} / var(--board-zoom, 1)); font-weight: bold; line-height: 1.25; text-align: center; white-space: normal; pointer-events: none; @include non-selectable();
+    --message-gap: calc((#{$tower-message-gap} + #{$tower-message-arrow-size * 0.5}) / var(--board-zoom, 1));
+    translate: calc(-50% + var(--message-shift, 0px)) calc(-100% - var(--message-gap));
+    animation: tower-message-in var(--tower-message-fade-in, 150ms) ease-out;
+    &[data-placement="below"]{ top: var(--message-below-y); translate: calc(-50% + var(--message-shift, 0px)) var(--message-gap); }
+    &.leaving-tower-message{ opacity: 0; transition: opacity var(--tower-message-fade-out, 250ms) ease-in; }
+
+    //the arrow, under the bubble pointing down at the tower (above it, pointing up, when the bubble is below)
+    .tower-message-arrow{ position: absolute; left: calc(50% - var(--message-shift, 0px)); top: 100%; box-sizing: border-box;
+        width: calc(#{$tower-message-arrow-size} / var(--board-zoom, 1)); height: calc(#{$tower-message-arrow-size} / var(--board-zoom, 1));
+        background: $marble-white; border-right: inherit; border-bottom: inherit; rotate: 45deg; translate: -50% -50%; }
+    &[data-placement="below"] .tower-message-arrow{ top: 0%; background: #ffffff; border-right: none; border-bottom: none; border-left: inherit; border-top: inherit; }
+}
+@keyframes tower-message-in{ from{ opacity: 0; } }
 
 //each drafted tower's count badge and buttons (BoardHandler.renderPendingControls), in their own layer over every tower so the
 //buttons, which hang into the row below, are never under a tower. A click on the badge goes to the drafted tower under it

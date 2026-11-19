@@ -25,6 +25,10 @@ import { BoardRules } from "../BoardRules";
  * one sentence for the whole draft, with one disc icon per disc the turn may use, the drafted ones dimmed (updateTitle); the
  * confirm button's ring shows the same count (BoardHandler.renderPendingControls). Everyone else only sees the status text. The draft lives on this page only: a reload starts it again.
  */
+//whether an enemy tower can be replaced with the discs left this turn (getCaptureCheck): needed, its height + 1; available, the
+//discs left
+export type CaptureCheck = { canCapture: boolean; needed: number; available: number; };
+
 export class PlaceTowers {
     private stateArgs: PlaceTowersArgs | null = null;
     private pending: PendingTower[] = [];
@@ -55,6 +59,7 @@ export class PlaceTowers {
             spotClicked: spot => this.spotClicked(spot),
             undoClicked: spot => this.undoClicked(spot),
             confirmClicked: () => this.confirmClicked(),
+            unaffordableTowerClicked: spot => this.unaffordableTowerClicked(spot),
         });
         this.update();
     }
@@ -94,9 +99,25 @@ export class PlaceTowers {
 
     //enemy towers on the board, not already replaced in this draft, that the discs left can out-height
     private getReplaceableTowers(): NexoTower[] {
-        const maxHeight = Math.min(this.game.getRules().maxTowerHeight, this.getDiscsLeft());
-        const myPlayerID = this.game.getMyPlayerID();
-        return this.game.boardHandler.getTowers().filter(tower => tower.player_id !== myPlayerID && tower.height + 1 <= maxHeight && !this.getPendingAt(tower));
+        return this.game.boardHandler.getTowers().filter(tower => this.getCaptureCheck(tower)?.canCapture);
+    }
+
+    //[BGA] enemy towers that would be replaceable but for the discs left this turn: a click on one says so (unaffordableTowerClicked)
+    private getUnaffordableTowers(): NexoTower[] {
+        return this.game.boardHandler.getTowers().filter(tower => this.getCaptureCheck(tower)?.canCapture === false);
+    }
+
+    //the one rule for replacing a tower: an enemy tower, not already replaced in this draft, takes its height + 1 discs, never
+    //more than a tower's highest height, out of the discs left this turn. null when no number of discs could replace it (my own
+    //tower, one already replaced in this draft, or one already as high as a tower goes)
+    private getCaptureCheck(tower: NexoTower): CaptureCheck | null {
+        if(tower.player_id === this.game.getMyPlayerID() || this.getPendingAt(tower))
+            return null;
+        const needed = tower.height + 1;
+        if(needed > this.game.getRules().maxTowerHeight)
+            return null;
+        const available = this.getDiscsLeft();
+        return { canCapture: needed <= available, needed: needed, available: available };
     }
 
     private getPendingAt(spot: NexoSpot): PendingTower | undefined {
@@ -156,6 +177,22 @@ export class PlaceTowers {
         const heightOptions = this.getHeightOptions(spot);
         if(heightOptions.length > 0)
             this.addPending(spot, heightOptions[0]);
+    }
+
+    //[BGA] called by BoardHandler: an enemy tower I could replace but for the discs left this turn. Nothing changes: the tower
+    //shakes and a bubble over it gives the numbers, from the same rule as the rings (getCaptureCheck). Client only
+    private unaffordableTowerClicked(spot: NexoSpot): void {
+        if(!this.canDraft())
+            return;
+        const tower = this.game.boardHandler.getTowerMap().get(BoardRules.key(spot.x, spot.y));
+        const check = tower ? this.getCaptureCheck(tower) : null;
+        if(!check || check.canCapture)
+            return;
+        //${disc} becomes a disc icon in my color after translation, so a translation may put it anywhere in the sentence
+        const messageHTML = _('Not enough ${disc}: need ${needed}, you have ${available}')
+            .replace('${disc}', this.getDiscIconsHTML(this.game.getDiscColor(this.game.getMyPlayerID()), 1, 0))
+            .replace('${needed}', check.needed.toString()).replace('${available}', check.available.toString());
+        this.game.boardHandler.showUnaffordableTower(spot, messageHTML);
     }
 
     //called by BoardHandler: the active tower's undo button (never also a click on its spot)
@@ -236,6 +273,7 @@ export class PlaceTowers {
             pending: this.pending,
             legalNewSpots: this.getLegalNewSpots(),
             replaceableTowers: this.getReplaceableTowers(),
+            unaffordableTowers: this.getUnaffordableTowers(),
             selectedSpot: this.getActiveSpot(),
             discColor: this.game.getDiscColor(this.game.getMyPlayerID()),
             confirming: this.confirming,
@@ -254,7 +292,7 @@ export class PlaceTowers {
     }
 
     //the status bar's allowance: count mini discs in the drafting player's color (Game.scss .status-disc, a one-disc .nexo-tower
-    //sized to the text line), the last usedCount dimmed (.used-status-disc): they dim from the right, so the full ones stay next to
+    //sized to the text line; a single one is also the disc in the "Not enough discs" bubble), the last usedCount dimmed (.used-status-disc): they dim from the right, so the full ones stay next to
     //the text, and an undo brightens the leftmost dimmed one first. HTML for statusBar.setTitle's args, never part of
     //the translated string
     private getDiscIconsHTML(discColor: DiscColor, count: number, usedCount: number): string {

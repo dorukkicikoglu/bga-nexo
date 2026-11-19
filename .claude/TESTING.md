@@ -615,3 +615,18 @@ Deploy `modules/` and `nexo.css`; no server change, an ongoing table is fine (F5
 - [ ] Switch between BGA's desktop and mobile layouts (narrow the window): the board refits and re-centres at once.
 - [ ] During a turn's flights and the pass banner, the board doesn't resize.
 - [ ] Phone (375px): the board fits the width as before.
+
+## After M1: too high to replace
+
+Deploy `modules/` and `nexo.css`; no server change, an ongoing table is fine (F5). Quick setup: on your turn, draft a tower of 2 discs first, so a 3-disc or taller enemy tower is out of reach (or `debug_setReserves(2, 25)` from Studio's debug menu, then F5). Console (`window[0]` on Studio): `window[0].gameui.debug_unaffordableTower()` clicks the first such tower, `window[0].gameui.debug_unaffordableTower(x, y)` a given one; `window[0].document.querySelectorAll('#nexo-board .unaffordable-tower')` lists them.
+
+- [ ] Click an enemy tower too high for your discs left: it shakes briefly side to side and settles back exactly in place; a bubble just above it reads "Not enough [disc]: need N, you have M", the disc a small icon in your own color (red or black, like the status bar's), level with the text, with the right numbers (N its height + 1, M the discs you have left this turn), arrow pointing at it.
+- [ ] The bubble fades in, stays about 2 seconds, fades out; clicking again while it shows replaces it (one bubble, the shake starts again).
+- [ ] Towers near the board's left and right edges: the bubble stays inside the board, its arrow still on the tower; a tower in the top row on a phone: the bubble shows under it.
+- [ ] Clicks still work through the bubble's area (it never blocks a click), and the board doesn't change: no tower drafted, nothing sent, nothing in the log.
+- [ ] Undo a drafted tower so the same enemy tower becomes affordable: it gets its ring back and a click drafts on it as before.
+- [ ] A 5-disc enemy tower and your own towers: a click still does nothing. The opponent, spectators and replays: nothing happens on any tower.
+- [ ] Reduced motion (OS setting): no shake, the bubble still shows.
+- [ ] Phone (375px): the bubble's text is readable (about 13px), on one line with its disc icon, the shake visible.
+- [ ] The status bar's disc icons look as before.
+- [ ] No errors in the browser console.

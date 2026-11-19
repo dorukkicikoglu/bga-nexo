@@ -36,6 +36,11 @@ export class Game {
     public static readonly TOWER_SLIDE_EASING = 'ease-in-out';
     public static readonly BOARD_RECENTER_DURATION = 280; //ms of the board's contents sliding to stay centred (BoardHandler.centerContents; Yaxha's was 400ms)
     public static readonly BOARD_RECENTER_EASING = 'ease-out';
+    //[BGA] the bubble over an enemy tower too high for the discs left (BoardHandler.showTowerMessage); its shake is CSS only (Game.scss: $tower-shake-*)
+    public static readonly TOWER_MESSAGE_FADE_IN = 150;
+    public static readonly TOWER_MESSAGE_HOLD = 1800;
+    public static readonly TOWER_MESSAGE_FADE_OUT = 250;
+    public static readonly TOWER_MESSAGE_EDGE_MARGIN = 6; //screen px kept between the bubble and the board's edges
     public static readonly BOARD_VIEWPORT_MARGIN = 10; //screen px from the board to the window's bottom (BoardHandler.fitToViewport); the status bar's gap is #nexo-board-container's padding
     public static readonly MIN_BOARD_CELL_SIZE = 40; //px of a spot, however short the window
     public static readonly FIT_ROOM_THRESHOLD = 4; //px the room for the board must change by before its spot size is computed again (BoardHandler.fitToViewport)
@@ -118,6 +123,7 @@ export class Game {
         Object.assign(this.bga.gameui, { //client-only console helpers (debug_passAnim)
             debug_passAnim: (who: number | string) => this.debug_passAnim(who),
             debug_clearPassed: () => this.debug_clearPassed(),
+            debug_unaffordableTower: (x?: number, y?: number) => this.debug_unaffordableTower(x, y),
         });
 
         if(gamedatas.hasOwnProperty('endGameScoring'))
@@ -411,6 +417,19 @@ export class Game {
     //hides every PASSED stamp (client only), so debug_passAnim can run again from a clean state
     public debug_clearPassed(): void {
         Object.values(this.players).forEach(player => player.setPassed(false));
+    }
+
+    //client-only console helper: clicks an enemy tower too high for the discs left this turn, as a player would (the first one, or
+    //the one at x y), so its shake and bubble play: window[0].gameui.debug_unaffordableTower()
+    public debug_unaffordableTower(x?: number, y?: number): void {
+        const selector = (x === undefined || y === undefined) ? '#nexo-board .unaffordable-tower' : `#nexo-board .unaffordable-tower[data-x="${x}"][data-y="${y}"]`;
+        const tower = document.querySelector<HTMLElement>(selector);
+        if(!tower){
+            console.warn('debug_unaffordableTower: no enemy tower too high for your discs left' + (x === undefined ? '' : ` at ${x} ${y}`) + ' (only while you draft your turn)');
+            return;
+        }
+        tower.click();
+        console.log(`debug_unaffordableTower: clicked ${tower.getAttribute('data-x')} ${tower.getAttribute('data-y')}`);
     }
 
     private async notif_displayEndGameScoring(args: DisplayEndGameScoringArgs) {

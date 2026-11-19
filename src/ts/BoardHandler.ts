@@ -17,6 +17,7 @@ export type DraftView = {
     pending: PendingTower[];
     legalNewSpots: NexoSpot[];
     replaceableTowers: NexoTower[];
+    unaffordableTowers: NexoTower[]; //enemy towers replaceable but for the discs left this turn: a click shakes them and says why
     selectedSpot: NexoSpot | null; //the active drafted tower: the gold ring, and the undo and confirm buttons under it
     discColor: DiscColor;
     confirming: boolean; //the turn is on its way to the server: the buttons stay, disabled
@@ -30,6 +31,7 @@ export type DraftClickHandlers = {
     spotClicked: (spot: NexoSpot) => void;
     undoClicked: (spot: NexoSpot) => void;
     confirmClicked: () => void;
+    unaffordableTowerClicked: (spot: NexoSpot) => void;
 };
 
 /**
@@ -49,6 +51,8 @@ export class BoardHandler {
     private spotsLayer: HTMLDivElement;
     private towersLayer: HTMLDivElement;
     private controlsLayer: HTMLDivElement;
+    private messageLayer: HTMLDivElement;
+    private towerMessage: { element: HTMLDivElement; timers: number[]; } | null = null; //the bubble over an unaffordable tower, one at a time
     private boardSize: number; //in spots (readBoardSize)
     private fitFrame: number = 0; //the one pending fit (requestFit), 0 when none
     //what the spot size was last computed from (fitToViewport): the room for the board, in the board's own px, and its span
@@ -89,12 +93,14 @@ export class BoardHandler {
                 <div class="spots-layer"></div>
                 <div class="towers-layer"></div>
                 <div class="draft-controls-layer"></div>
+                <div class="board-message-layer"></div>
             </div>
         `;
         this.layerElement = this.boardElement.querySelector('.board-layer');
         this.spotsLayer = this.boardElement.querySelector('.spots-layer');
         this.towersLayer = this.boardElement.querySelector('.towers-layer');
         this.controlsLayer = this.boardElement.querySelector('.draft-controls-layer');
+        this.messageLayer = this.boardElement.querySelector('.board-message-layer');
 
         for(const tower of towers)
             this.addBoardTower(tower);
@@ -584,7 +590,100 @@ export class BoardHandler {
     //an enemy tower under a drafted replacement fades (being-replaced)
     private updateTowerDraftClasses(): void {
         const replacedKeys = new Set((this.draft?.pending ?? []).filter(tower => tower.kind === 'replace').map(tower => BoardRules.key(tower.x, tower.y)));
-        this.towerElements.forEach((element, key) => element.classList.toggle('being-replaced', replacedKeys.has(key)));
+        //clickable only for the player drafting, as the rings are (never in a replay, nor while the turn is on its way)
+        const showUnaffordable = !!this.draft && !this.draft.confirming && !this.game.isReplay();
+        const unaffordableKeys = new Set(showUnaffordable ? this.draft.unaffordableTowers.map(tower => BoardRules.key(tower.x, tower.y)) : []);
+        this.towerElements.forEach((element, key) => {
+            element.classList.toggle('being-replaced', replacedKeys.has(key));
+            element.classList.toggle('unaffordable-tower', unaffordableKeys.has(key));
+        });
+        if(!this.draft)
+            this.clearTowerMessage();
+    }
+
+    /**
+     * [BGA] An enemy tower the player clicked but can't replace for lack of discs this turn: it shakes (one-shot
+     * .shaking-tower, the translate property, so it never fights a transform; none with reduced motion or animations off) and a
+     * bubble over it says why (showTowerMessage). Client only: nothing changes on the board
+     */
+    public showUnaffordableTower(spot: NexoSpot, messageHTML: string): void {
+        const towerElement = this.towerElements.get(BoardRules.key(spot.x, spot.y));
+        if(!towerElement)
+            return;
+        this.showTowerMessage(spot, towerElement, messageHTML); //measured before the shake moves it
+        if(!this.game.bga.gameui.bgaAnimationsActive() || window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+            return;
+        towerElement.classList.remove('shaking-tower');
+        void towerElement.offsetWidth; //restarts it when clicked again mid-shake
+        towerElement.classList.add('shaking-tower');
+        towerElement.addEventListener('animationend', function onEnd(event: AnimationEvent){
+            if(event.target !== towerElement)
+                return;
+            towerElement.classList.remove('shaking-tower');
+            towerElement.removeEventListener('animationend', onEnd);
+        });
+    }
+
+    //a speech bubble just over the tower's top face, its arrow pointing down at it, in its own layer over everything on the board
+    //(the board clips it, so it never leaves the board). Nudged sideways to stay TOWER_MESSAGE_EDGE_MARGIN inside the board's
+    //edges (the arrow keeps pointing at the tower), under the tower instead when there is no room above. Fades in, stays
+    //TOWER_MESSAGE_HOLD, fades out and leaves the page; a new one replaces it. No clicks. messageHTML: a translated sentence
+    //(from _(), with our own disc icon and numbers in it)
+    private showTowerMessage(spot: NexoSpot, towerElement: HTMLDivElement, messageHTML: string): void {
+        this.clearTowerMessage();
+
+        const message = document.createElement('div');
+        message.className = 'tower-message';
+        message.setAttribute('role', 'status');
+        message.style.setProperty('--tower-message-fade-in', `${Game.TOWER_MESSAGE_FADE_IN}ms`);
+        message.style.setProperty('--tower-message-fade-out', `${Game.TOWER_MESSAGE_FADE_OUT}ms`);
+        const textElement = document.createElement('span');
+        textElement.className = 'tower-message-text';
+        textElement.innerHTML = messageHTML;
+        const arrow = document.createElement('span');
+        arrow.className = 'tower-message-arrow';
+        message.append(textElement, arrow);
+
+        //anchored in the layer's own px: across, the spot's middle; up and down, the tower's top face (or bottom, below it)
+        const zoom = parseFloat(this.boardElement.style.getPropertyValue('--board-zoom')) || 1;
+        const cellSize = parseFloat(this.boardElement.style.getPropertyValue('--cell-size')) || 0;
+        const layerRect = this.layerElement.getBoundingClientRect();
+        const discs = towerElement.querySelectorAll<HTMLElement>(':scope > .tower-disc');
+        const topRect = discs[discs.length - 1]?.getBoundingClientRect() ?? towerElement.getBoundingClientRect();
+        const bottomRect = discs[0]?.getBoundingClientRect() ?? towerElement.getBoundingClientRect();
+        message.style.setProperty('--message-x', `${(spot.x + 0.5) * cellSize}px`);
+        message.style.setProperty('--message-above-y', `${(topRect.top - layerRect.top) / zoom}px`);
+        message.style.setProperty('--message-below-y', `${(bottomRect.bottom - layerRect.top) / zoom}px`);
+        message.setAttribute('data-placement', 'above');
+        this.messageLayer.appendChild(message);
+
+        //kept inside the board: measured where it landed, in screen px, converted back with the board's zoom
+        const boardRect = this.boardElement.getBoundingClientRect();
+        const margin = Game.TOWER_MESSAGE_EDGE_MARGIN;
+        if(message.getBoundingClientRect().top < boardRect.top + margin)
+            message.setAttribute('data-placement', 'below');
+        const messageRect = message.getBoundingClientRect();
+        let shift = 0;
+        if(messageRect.left < boardRect.left + margin)
+            shift = boardRect.left + margin - messageRect.left;
+        else if(messageRect.right > boardRect.right - margin)
+            shift = boardRect.right - margin - messageRect.right;
+        message.style.setProperty('--message-shift', `${shift / zoom}px`);
+
+        const timers = [
+            window.setTimeout(() => message.classList.add('leaving-tower-message'), Game.TOWER_MESSAGE_FADE_IN + Game.TOWER_MESSAGE_HOLD),
+            window.setTimeout(() => this.clearTowerMessage(message), Game.TOWER_MESSAGE_FADE_IN + Game.TOWER_MESSAGE_HOLD + Game.TOWER_MESSAGE_FADE_OUT),
+        ];
+        this.towerMessage = { element: message, timers: timers };
+    }
+
+    //removes the bubble at once (only `message` when given, so an old timer never removes a newer one)
+    private clearTowerMessage(message: HTMLDivElement | null = null): void {
+        if(!this.towerMessage || (message && this.towerMessage.element !== message))
+            return;
+        this.towerMessage.timers.forEach(timer => window.clearTimeout(timer));
+        this.towerMessage.element.remove();
+        this.towerMessage = null;
     }
 
     //a click on a highlighted spot (empty or an enemy tower) or on a tower of the draft: PlaceTowers drafts or cycles its height
@@ -595,6 +694,11 @@ export class BoardHandler {
         const target = event.target as HTMLElement;
         if(target.closest('.pending-actions'))
             return; //a disabled button's click, which no listener of its own receives: never a click on the tower under it
+        const unaffordable = target.closest('.unaffordable-tower') as HTMLElement | null;
+        if(unaffordable){
+            this.draftClickHandlers.unaffordableTowerClicked({ x: parseInt(unaffordable.getAttribute('data-x')), y: parseInt(unaffordable.getAttribute('data-y')) });
+            return;
+        }
         const clicked = (target.closest('.pending-tower') ?? target.closest('.board-spot.clickable-spot')) as HTMLElement | null;
         if(!clicked)
             return;

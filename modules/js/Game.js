@@ -97,19 +97,6 @@ class BoardRules {
     }
 }
 
-/**
- * [BGA] The active player drafts their turn on the client, then confirms it. A click on a highlighted spot (an empty spot next to
- * a tower, or an enemy tower they can out-height) drafts a tower there at the lowest legal height (1, or the enemy tower's
- * height + 1); each click on that drafted tower adds one disc, and a click when it is already at the most it may take (5, or
- * every disc left this turn) takes it back, so the next click starts again at the lowest. A turn may hold several towers, so
- * another highlighted spot starts a tower of its own and the others stay. Each drafted tower shows semi-transparent with a
- * count badge. The active tower (the one clicked last that is still drafted: clickHistory) alone has the gold ring and, under
- * it, an undo button that takes it back (with any new tower that no longer reaches the board through the others) and a
- * confirm button, which sends the whole turn (actPlaceTowers, checked again by the server) and is disabled until the server
- * answers. Once the active tower is taken back (undo, or a click past its highest), the one clicked before it is active again. No action buttons in the status bar: they changed its height and moved the board. The status bar keeps
- * one sentence for the whole draft, with one disc icon per disc the turn may use, the drafted ones dimmed (updateTitle); the
- * confirm button's ring shows the same count (BoardHandler.renderPendingControls). Everyone else only sees the status text. The draft lives on this page only: a reload starts it again.
- */
 class PlaceTowers {
     constructor(game, bga) {
         this.game = game;
@@ -138,6 +125,7 @@ class PlaceTowers {
             spotClicked: spot => this.spotClicked(spot),
             undoClicked: spot => this.undoClicked(spot),
             confirmClicked: () => this.confirmClicked(),
+            unaffordableTowerClicked: spot => this.unaffordableTowerClicked(spot),
         });
         this.update();
     }
@@ -172,9 +160,23 @@ class PlaceTowers {
     }
     //enemy towers on the board, not already replaced in this draft, that the discs left can out-height
     getReplaceableTowers() {
-        const maxHeight = Math.min(this.game.getRules().maxTowerHeight, this.getDiscsLeft());
-        const myPlayerID = this.game.getMyPlayerID();
-        return this.game.boardHandler.getTowers().filter(tower => tower.player_id !== myPlayerID && tower.height + 1 <= maxHeight && !this.getPendingAt(tower));
+        return this.game.boardHandler.getTowers().filter(tower => this.getCaptureCheck(tower)?.canCapture);
+    }
+    //[BGA] enemy towers that would be replaceable but for the discs left this turn: a click on one says so (unaffordableTowerClicked)
+    getUnaffordableTowers() {
+        return this.game.boardHandler.getTowers().filter(tower => this.getCaptureCheck(tower)?.canCapture === false);
+    }
+    //the one rule for replacing a tower: an enemy tower, not already replaced in this draft, takes its height + 1 discs, never
+    //more than a tower's highest height, out of the discs left this turn. null when no number of discs could replace it (my own
+    //tower, one already replaced in this draft, or one already as high as a tower goes)
+    getCaptureCheck(tower) {
+        if (tower.player_id === this.game.getMyPlayerID() || this.getPendingAt(tower))
+            return null;
+        const needed = tower.height + 1;
+        if (needed > this.game.getRules().maxTowerHeight)
+            return null;
+        const available = this.getDiscsLeft();
+        return { canCapture: needed <= available, needed: needed, available: available };
     }
     getPendingAt(spot) {
         return this.pending.find(tower => tower.x === spot.x && tower.y === spot.y);
@@ -225,6 +227,21 @@ class PlaceTowers {
         const heightOptions = this.getHeightOptions(spot);
         if (heightOptions.length > 0)
             this.addPending(spot, heightOptions[0]);
+    }
+    //[BGA] called by BoardHandler: an enemy tower I could replace but for the discs left this turn. Nothing changes: the tower
+    //shakes and a bubble over it gives the numbers, from the same rule as the rings (getCaptureCheck). Client only
+    unaffordableTowerClicked(spot) {
+        if (!this.canDraft())
+            return;
+        const tower = this.game.boardHandler.getTowerMap().get(BoardRules.key(spot.x, spot.y));
+        const check = tower ? this.getCaptureCheck(tower) : null;
+        if (!check || check.canCapture)
+            return;
+        //${disc} becomes a disc icon in my color after translation, so a translation may put it anywhere in the sentence
+        const messageHTML = _('Not enough ${disc}: need ${needed}, you have ${available}')
+            .replace('${disc}', this.getDiscIconsHTML(this.game.getDiscColor(this.game.getMyPlayerID()), 1, 0))
+            .replace('${needed}', check.needed.toString()).replace('${available}', check.available.toString());
+        this.game.boardHandler.showUnaffordableTower(spot, messageHTML);
     }
     //called by BoardHandler: the active tower's undo button (never also a click on its spot)
     undoClicked(spot) {
@@ -293,6 +310,7 @@ class PlaceTowers {
             pending: this.pending,
             legalNewSpots: this.getLegalNewSpots(),
             replaceableTowers: this.getReplaceableTowers(),
+            unaffordableTowers: this.getUnaffordableTowers(),
             selectedSpot: this.getActiveSpot(),
             discColor: this.game.getDiscColor(this.game.getMyPlayerID()),
             confirming: this.confirming,
@@ -309,7 +327,7 @@ class PlaceTowers {
         this.bga.statusBar.setTitle(_('${you} must place up to ${discs}'), { discs: this.getDiscIconsHTML(discColor, discsThisTurn, Math.min(this.getDiscsUsed(), discsThisTurn)) });
     }
     //the status bar's allowance: count mini discs in the drafting player's color (Game.scss .status-disc, a one-disc .nexo-tower
-    //sized to the text line), the last usedCount dimmed (.used-status-disc): they dim from the right, so the full ones stay next to
+    //sized to the text line; a single one is also the disc in the "Not enough discs" bubble), the last usedCount dimmed (.used-status-disc): they dim from the right, so the full ones stay next to
     //the text, and an undo brightens the leftmost dimmed one first. HTML for statusBar.setTitle's args, never part of
     //the translated string
     getDiscIconsHTML(discColor, count, usedCount) {
@@ -574,6 +592,7 @@ PlayerHandler.RESERVE_STACK_SIZE = 5;
 class BoardHandler {
     constructor(game, towers) {
         this.game = game;
+        this.towerMessage = null; //the bubble over an unaffordable tower, one at a time
         this.fitFrame = 0; //the one pending fit (requestFit), 0 when none
         //what the spot size was last computed from (fitToViewport): the room for the board, in the board's own px, and its span
         this.fittedRoom = null;
@@ -602,12 +621,14 @@ class BoardHandler {
                 <div class="spots-layer"></div>
                 <div class="towers-layer"></div>
                 <div class="draft-controls-layer"></div>
+                <div class="board-message-layer"></div>
             </div>
         `;
         this.layerElement = this.boardElement.querySelector('.board-layer');
         this.spotsLayer = this.boardElement.querySelector('.spots-layer');
         this.towersLayer = this.boardElement.querySelector('.towers-layer');
         this.controlsLayer = this.boardElement.querySelector('.draft-controls-layer');
+        this.messageLayer = this.boardElement.querySelector('.board-message-layer');
         for (const tower of towers)
             this.addBoardTower(tower);
         this.fitToViewport();
@@ -1044,7 +1065,93 @@ class BoardHandler {
     //an enemy tower under a drafted replacement fades (being-replaced)
     updateTowerDraftClasses() {
         const replacedKeys = new Set((this.draft?.pending ?? []).filter(tower => tower.kind === 'replace').map(tower => BoardRules.key(tower.x, tower.y)));
-        this.towerElements.forEach((element, key) => element.classList.toggle('being-replaced', replacedKeys.has(key)));
+        //clickable only for the player drafting, as the rings are (never in a replay, nor while the turn is on its way)
+        const showUnaffordable = !!this.draft && !this.draft.confirming && !this.game.isReplay();
+        const unaffordableKeys = new Set(showUnaffordable ? this.draft.unaffordableTowers.map(tower => BoardRules.key(tower.x, tower.y)) : []);
+        this.towerElements.forEach((element, key) => {
+            element.classList.toggle('being-replaced', replacedKeys.has(key));
+            element.classList.toggle('unaffordable-tower', unaffordableKeys.has(key));
+        });
+        if (!this.draft)
+            this.clearTowerMessage();
+    }
+    /**
+     * [BGA] An enemy tower the player clicked but can't replace for lack of discs this turn: it shakes (one-shot
+     * .shaking-tower, the translate property, so it never fights a transform; none with reduced motion or animations off) and a
+     * bubble over it says why (showTowerMessage). Client only: nothing changes on the board
+     */
+    showUnaffordableTower(spot, messageHTML) {
+        const towerElement = this.towerElements.get(BoardRules.key(spot.x, spot.y));
+        if (!towerElement)
+            return;
+        this.showTowerMessage(spot, towerElement, messageHTML); //measured before the shake moves it
+        if (!this.game.bga.gameui.bgaAnimationsActive() || window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+            return;
+        towerElement.classList.remove('shaking-tower');
+        void towerElement.offsetWidth; //restarts it when clicked again mid-shake
+        towerElement.classList.add('shaking-tower');
+        towerElement.addEventListener('animationend', function onEnd(event) {
+            if (event.target !== towerElement)
+                return;
+            towerElement.classList.remove('shaking-tower');
+            towerElement.removeEventListener('animationend', onEnd);
+        });
+    }
+    //a speech bubble just over the tower's top face, its arrow pointing down at it, in its own layer over everything on the board
+    //(the board clips it, so it never leaves the board). Nudged sideways to stay TOWER_MESSAGE_EDGE_MARGIN inside the board's
+    //edges (the arrow keeps pointing at the tower), under the tower instead when there is no room above. Fades in, stays
+    //TOWER_MESSAGE_HOLD, fades out and leaves the page; a new one replaces it. No clicks. messageHTML: a translated sentence
+    //(from _(), with our own disc icon and numbers in it)
+    showTowerMessage(spot, towerElement, messageHTML) {
+        this.clearTowerMessage();
+        const message = document.createElement('div');
+        message.className = 'tower-message';
+        message.setAttribute('role', 'status');
+        message.style.setProperty('--tower-message-fade-in', `${Game.TOWER_MESSAGE_FADE_IN}ms`);
+        message.style.setProperty('--tower-message-fade-out', `${Game.TOWER_MESSAGE_FADE_OUT}ms`);
+        const textElement = document.createElement('span');
+        textElement.className = 'tower-message-text';
+        textElement.innerHTML = messageHTML;
+        const arrow = document.createElement('span');
+        arrow.className = 'tower-message-arrow';
+        message.append(textElement, arrow);
+        //anchored in the layer's own px: across, the spot's middle; up and down, the tower's top face (or bottom, below it)
+        const zoom = parseFloat(this.boardElement.style.getPropertyValue('--board-zoom')) || 1;
+        const cellSize = parseFloat(this.boardElement.style.getPropertyValue('--cell-size')) || 0;
+        const layerRect = this.layerElement.getBoundingClientRect();
+        const discs = towerElement.querySelectorAll(':scope > .tower-disc');
+        const topRect = discs[discs.length - 1]?.getBoundingClientRect() ?? towerElement.getBoundingClientRect();
+        const bottomRect = discs[0]?.getBoundingClientRect() ?? towerElement.getBoundingClientRect();
+        message.style.setProperty('--message-x', `${(spot.x + 0.5) * cellSize}px`);
+        message.style.setProperty('--message-above-y', `${(topRect.top - layerRect.top) / zoom}px`);
+        message.style.setProperty('--message-below-y', `${(bottomRect.bottom - layerRect.top) / zoom}px`);
+        message.setAttribute('data-placement', 'above');
+        this.messageLayer.appendChild(message);
+        //kept inside the board: measured where it landed, in screen px, converted back with the board's zoom
+        const boardRect = this.boardElement.getBoundingClientRect();
+        const margin = Game.TOWER_MESSAGE_EDGE_MARGIN;
+        if (message.getBoundingClientRect().top < boardRect.top + margin)
+            message.setAttribute('data-placement', 'below');
+        const messageRect = message.getBoundingClientRect();
+        let shift = 0;
+        if (messageRect.left < boardRect.left + margin)
+            shift = boardRect.left + margin - messageRect.left;
+        else if (messageRect.right > boardRect.right - margin)
+            shift = boardRect.right - margin - messageRect.right;
+        message.style.setProperty('--message-shift', `${shift / zoom}px`);
+        const timers = [
+            window.setTimeout(() => message.classList.add('leaving-tower-message'), Game.TOWER_MESSAGE_FADE_IN + Game.TOWER_MESSAGE_HOLD),
+            window.setTimeout(() => this.clearTowerMessage(message), Game.TOWER_MESSAGE_FADE_IN + Game.TOWER_MESSAGE_HOLD + Game.TOWER_MESSAGE_FADE_OUT),
+        ];
+        this.towerMessage = { element: message, timers: timers };
+    }
+    //removes the bubble at once (only `message` when given, so an old timer never removes a newer one)
+    clearTowerMessage(message = null) {
+        if (!this.towerMessage || (message && this.towerMessage.element !== message))
+            return;
+        this.towerMessage.timers.forEach(timer => window.clearTimeout(timer));
+        this.towerMessage.element.remove();
+        this.towerMessage = null;
     }
     //a click on a highlighted spot (empty or an enemy tower) or on a tower of the draft: PlaceTowers drafts or cycles its height
     onBoardClick(event) {
@@ -1053,6 +1160,11 @@ class BoardHandler {
         const target = event.target;
         if (target.closest('.pending-actions'))
             return; //a disabled button's click, which no listener of its own receives: never a click on the tower under it
+        const unaffordable = target.closest('.unaffordable-tower');
+        if (unaffordable) {
+            this.draftClickHandlers.unaffordableTowerClicked({ x: parseInt(unaffordable.getAttribute('data-x')), y: parseInt(unaffordable.getAttribute('data-y')) });
+            return;
+        }
         const clicked = (target.closest('.pending-tower') ?? target.closest('.board-spot.clickable-spot'));
         if (!clicked)
             return;
@@ -1903,6 +2015,7 @@ class Game {
         Object.assign(this.bga.gameui, {
             debug_passAnim: (who) => this.debug_passAnim(who),
             debug_clearPassed: () => this.debug_clearPassed(),
+            debug_unaffordableTower: (x, y) => this.debug_unaffordableTower(x, y),
         });
         if (gamedatas.hasOwnProperty('endGameScoring'))
             this.endGameScoringHandler.displayEndGameScore(gamedatas.endGameScoring);
@@ -2158,6 +2271,18 @@ class Game {
     debug_clearPassed() {
         Object.values(this.players).forEach(player => player.setPassed(false));
     }
+    //client-only console helper: clicks an enemy tower too high for the discs left this turn, as a player would (the first one, or
+    //the one at x y), so its shake and bubble play: window[0].gameui.debug_unaffordableTower()
+    debug_unaffordableTower(x, y) {
+        const selector = (x === undefined || y === undefined) ? '#nexo-board .unaffordable-tower' : `#nexo-board .unaffordable-tower[data-x="${x}"][data-y="${y}"]`;
+        const tower = document.querySelector(selector);
+        if (!tower) {
+            console.warn('debug_unaffordableTower: no enemy tower too high for your discs left' + (x === undefined ? '' : ` at ${x} ${y}`) + ' (only while you draft your turn)');
+            return;
+        }
+        tower.click();
+        console.log(`debug_unaffordableTower: clicked ${tower.getAttribute('data-x')} ${tower.getAttribute('data-y')}`);
+    }
     async notif_displayEndGameScoring(args) {
         this.endGameScoringHandler.displayEndGameScore(args.endGameScoring);
     }
@@ -2170,6 +2295,11 @@ Game.TOWER_DISC_STAGGER = 50; //ms between two discs of the same tower leaving (
 Game.TOWER_SLIDE_EASING = 'ease-in-out';
 Game.BOARD_RECENTER_DURATION = 280; //ms of the board's contents sliding to stay centred (BoardHandler.centerContents; Yaxha's was 400ms)
 Game.BOARD_RECENTER_EASING = 'ease-out';
+//[BGA] the bubble over an enemy tower too high for the discs left (BoardHandler.showTowerMessage); its shake is CSS only (Game.scss: $tower-shake-*)
+Game.TOWER_MESSAGE_FADE_IN = 150;
+Game.TOWER_MESSAGE_HOLD = 1800;
+Game.TOWER_MESSAGE_FADE_OUT = 250;
+Game.TOWER_MESSAGE_EDGE_MARGIN = 6; //screen px kept between the bubble and the board's edges
 Game.BOARD_VIEWPORT_MARGIN = 10; //screen px from the board to the window's bottom (BoardHandler.fitToViewport); the status bar's gap is #nexo-board-container's padding
 Game.MIN_BOARD_CELL_SIZE = 40; //px of a spot, however short the window
 Game.FIT_ROOM_THRESHOLD = 4; //px the room for the board must change by before its spot size is computed again (BoardHandler.fitToViewport)
