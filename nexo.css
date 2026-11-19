@@ -77,7 +77,7 @@ body {
   --bg-arc-center-y: 5vw;
   --bg-arc-center: var(--bg-arc-center-x) calc(100% + var(--bg-arc-center-y));
   --bg-red-disc-right: 16vw;
-  --bg-red-disc-wanted-width: calc(var(--board-cell-screen-size, clamp(160px, 16vw, 320px) * 0.3707893414 / min(var(--nexo-disc-scale), 1.1103479853)) * 2.6969491525 * min(var(--nexo-disc-scale), 1.1103479853));
+  --bg-red-disc-wanted-width: calc(var(--board-cell-screen-size, clamp(160px, 16vw, 320px) * 0.3707893414 / min(var(--nexo-disc-scale), 1.1750881316)) * 2.6969491525 * min(var(--nexo-disc-scale), 1.1750881316));
   --bg-red-disc-wanted-half-height: calc(var(--bg-red-disc-wanted-width) * 0.1490196078);
   --bg-red-disc-wanted-top: calc(max(16vh, 48px + var(--bg-red-disc-wanted-half-height)) + var(--bg-red-disc-wanted-half-height));
   --bg-red-disc-board-room: calc(var(--board-right-gap, 100vw) - var(--bg-red-disc-right) - 16px);
@@ -326,7 +326,7 @@ html.hide-stack-heights .tower-height-number {
 }
 
 #nexo-board, .board-tower {
-  --disc-scale: min(var(--nexo-disc-scale), 1.1103479853);
+  --disc-scale: min(var(--nexo-disc-scale), 1.1750881316);
 }
 
 #nexo-board {
@@ -362,10 +362,11 @@ html.hide-stack-heights .tower-height-number {
   --spot-ring-width: calc(var(--cell-size) * 0.78 * var(--disc-scale, 1));
   --spot-ring-height: calc(var(--spot-ring-width) * 0.45);
   --spot-ring-bottom: calc(var(--cell-size) * 0.08);
-  --ring-box-left: calc((var(--cell-size) - var(--spot-ring-width)) / 2);
-  --ring-box-bottom: var(--spot-ring-bottom);
-  --ring-box-width: var(--spot-ring-width);
-  --ring-box-height: var(--spot-ring-height);
+  --spot-ring-center: calc(var(--spot-ring-bottom) + var(--spot-ring-height) / 2);
+  --ring-box-width: min(calc(var(--spot-ring-width) * 1.05), calc(var(--cell-size) * 1));
+  --ring-box-height: calc(var(--ring-box-width) * 0.45);
+  --ring-box-left: calc((var(--cell-size) - var(--ring-box-width)) / 2);
+  --ring-box-bottom: calc(var(--spot-ring-center) - var(--ring-box-height) / 2);
 }
 .board-spot.clickable-spot {
   cursor: pointer;
@@ -388,11 +389,14 @@ html.hide-stack-heights .tower-height-number {
   background-color: var(--legal-spot-hover-fill);
   box-shadow: 0 0 8px var(--legal-spot-glow);
 }
-.board-spot.replaceable-spot {
-  --ring-box-width: calc(var(--spot-ring-width) * 1.12);
-  --ring-box-height: calc(var(--spot-ring-height) * 1.12);
-  --ring-box-left: calc((var(--cell-size) - var(--ring-box-width)) / 2);
-  --ring-box-bottom: calc(var(--spot-ring-bottom) - var(--spot-ring-height) * 0.06);
+.board-spot.replaceable-spot, .board-spot.selected-spot {
+  --ring-box-width: min(calc(var(--spot-ring-width) * 1.15), calc(var(--cell-size) * 1));
+  --ring-box-height: calc(var(--ring-box-width) * 0.5292);
+  --ring-box-left: calc((var(--cell-size) - var(--ring-box-width)) / 2 + var(--cell-size) * 0);
+  --ring-box-bottom: calc(var(--spot-ring-center) - var(--ring-box-height) / 2 + var(--cell-size) * 0);
+}
+.board-spot {
+  --spot-ring-stroke: clamp(calc(1.25px / var(--board-zoom, 1)), calc(var(--cell-size) * 0.023), calc(3px / var(--board-zoom, 1)));
 }
 .board-spot .spot-ring {
   position: absolute;
@@ -406,15 +410,15 @@ html.hide-stack-heights .tower-height-number {
 .board-spot .spot-ring ellipse {
   cx: 50%;
   cy: 50%;
-  rx: calc(50% - 1px);
-  ry: calc(50% - 1px);
+  rx: calc(50% - var(--spot-ring-stroke) / 2);
+  ry: calc(50% - var(--spot-ring-stroke) / 2);
   fill: none;
   stroke: var(--legal-spot-border);
-  stroke-width: 2px;
-  stroke-dasharray: 4.1666666667 1.3888888889;
+  stroke-width: var(--spot-ring-stroke);
+  stroke-dasharray: 3.9473684211 1.3157894737;
 }
 .board-spot.replaceable-spot .spot-ring ellipse {
-  stroke-dasharray: 3.5714285714 1.1904761905;
+  stroke-dasharray: 3.4090909091 1.1363636364;
 }
 .board-spot.legal-spot.clickable-spot:hover .spot-ring ellipse, .board-spot.replaceable-spot:hover .spot-ring ellipse {
   stroke-dasharray: none;
@@ -907,16 +911,18 @@ body .confirm-popover[data-placement=above] .confirm-popover-arrow {
 }
 
 .board-tower.largest-group-tower[data-disc-color=black] {
-  --group-glow: #ffd54f;
+  --group-glow: rgba(52, 48, 48, 0.9019607843);
 }
 
 .board-tower.largest-group-tower::before {
   content: "";
   position: absolute;
-  left: calc((var(--cell-size) - var(--disc-width) * 1.12) / 2);
-  bottom: calc(var(--tower-base) - var(--disc-face-height) * 0.06);
-  width: calc(var(--disc-width) * 1.12);
-  height: calc(var(--disc-face-height) * 1.12);
+  --group-glow-width: min(calc(var(--disc-width) * 1.15), calc(var(--cell-size) * 1));
+  --group-glow-height: calc(var(--group-glow-width) * 0.5292);
+  left: calc((var(--cell-size) - var(--group-glow-width)) / 2 + var(--cell-size) * 0);
+  bottom: calc(var(--tower-base) + var(--disc-face-height) / 2 - var(--group-glow-height) / 2 + var(--cell-size) * 0);
+  width: var(--group-glow-width);
+  height: var(--group-glow-height);
   border-radius: 50%;
   background: var(--group-glow);
   box-shadow: 0 0 10px 3px var(--group-glow);

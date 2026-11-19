@@ -631,3 +631,14 @@ Deploy `modules/` and `nexo.css`; no server change, an ongoing table is fine (F5
 - [ ] Phone (375px): the bubble's text is readable (about 13px), on one line with its disc icon, the shake visible.
 - [ ] The status bar's disc icons look as before.
 - [ ] No errors in the browser console.
+
+## After M1: flat target rings
+
+Deploy `nexo.css` only (no TS or server change); an ongoing table is fine (F5).
+
+- [ ] Your turn: every empty target ring has the same flat shape as a disc's base, a touch larger than a disc, where a disc's base would sit; draft on one: the drafted disc sits inside it, centred.
+- [ ] Enemy towers you can replace: the ring lies around the tower's base like a ring painted on the board, a whole spot wide and a little rounder than a disc, centred under the tower, showing beside it and in front of its bottom disc, its back hidden by the tower, on desktop and on a phone (375px); its fill and dashed outline line up exactly.
+- [ ] The dashed lines read clearly, about 2.5px on a desktop and about half that on a phone (375px), never hairline thin, dashes marching evenly with no seam on both; hover still makes a ring solid with its glow.
+- [ ] Two replaceable enemy towers side by side: their rings meet at their tips, never overlap; an empty ring next to one keeps a gap. A click anywhere on a target's spot (on a replaceable tower, anywhere on the tower) drafts there.
+- [ ] The gold ring under the drafted tower and the end-game glow have the same shape and place as a replaceable tower's ring; empty rings look exactly as before this change.
+- [ ] Discs, towers and the board's spacing look exactly as before.

@@ -29,15 +29,29 @@ $tower-base-ratio: 0.08;
 //thickness times this on the board and its flying copies; the log snapshots, reserve stacks and status bar icons keep 1.
 //Everything on the board sized from a disc follows it: the height number, the target rings, the end-game glow, the draft's
 //badge and buttons. Desktop, then BGA's mobile layout (body.mobile_version). At 1.1 a disc is 0.86 of a spot (0.14 spot between
-//neighbours); at 1.11, 0.87. A 5-disc tower stays clear of the tower behind it up to 1.17
+//neighbours); at 1.11, 0.87. Capped at $board-disc-max-scale: a 5-disc tower (5 thicknesses and a face) then still stays clear
+//of the tower behind it
 $board-disc-scale: 1.1;
 $board-disc-mobile-scale: 1.11;
-//a ring around a tower's base (a replaceable tower's, the end-game glow): the bottom disc's own ellipse (same ratio, same centre),
-//this many times as big, so it shows evenly around the base like a footprint. Never wider than $spot-ring-max-share of a spot, so
-//neighbouring rings never touch: rather than squeeze the ring, the disc scale is capped at $board-disc-max-scale (1.11 with these)
-$spot-ring-tower-ratio: 1.12;
-$spot-ring-max-share: 0.97;
-$board-disc-max-scale: math.div($spot-ring-max-share, $spot-ring-tower-ratio * $disc-width-ratio);
+$board-disc-max-scale: math.div(1, 5 * $disc-thickness-ratio + $disc-width-ratio * $disc-face-ratio); //about 1.175
+//[BGA] the target rings, centred on the bottom disc's footprint (the disc's ::after bottom curve: as wide as the disc,
+//$disc-face-ratio of that tall, height / width 0.45), where a disc's base sits. Two kinds (.board-spot):
+//- empty (a legal spot, no disc on it): the footprint's own shape, $spot-ring-empty-ratio times the disc's width, so it reads as
+//  the spot a disc would take
+//- occupied (a ring under a tower: a replaceable enemy tower, the gold ring under the active drafted tower, the end-game glow),
+//  behind the tower, which hides its back: $spot-ring-occupied-width-scale times the disc's width, $spot-ring-occupied-height-scale
+//  times as tall as a flat ellipse of that width (a little rounder than the disc, so it shows in front of the base), on the
+//  footprint's centre moved by $spot-ring-occupied-offset-x / -y (shares of a spot: right and up)
+//No ring is ever wider than $spot-ring-max-share of a spot (a capped ring keeps its shape): the occupied ring is a whole spot wide
+//at both disc scales (1.17 times the disc would be wider), so side-by-side occupied rings meet at their tips. Tuned in the browser
+//2026-11-19 (the occupied ring had been the footprint's shape 1.15 times the disc, capped at 0.98 of a spot; that day's first try,
+//every ring 1.5 times as tall, was rounder than the discs)
+$spot-ring-empty-ratio: 1.05;
+$spot-ring-occupied-width-scale: 1.15;
+$spot-ring-occupied-height-scale: 1.176;
+$spot-ring-occupied-offset-x: 0;
+$spot-ring-occupied-offset-y: 0;
+$spot-ring-max-share: 1;
 //[BGA] empty board between the largest box the contents can take (GRID_SIZE + 1 spots: a legal spot on each side of 4 columns of
 //towers) and the board's edges, in spots, on each side (BoardHandler reads --board-edge-padding: the board is GRID_SIZE + 1 + 2 *
 //this spots across). Room for the outer targets to breathe; on mobile, at least a 5-disc tower's top over its spot. Until
@@ -57,7 +71,7 @@ $disc-colors: (
 
 $pending-tower-opacity: 0.6; //a tower of the turn being drafted
 $replaced-tower-opacity: 0.18; //an enemy tower under a drafted replacement
-$largest-group-glow: ("red": #ff8a80, "black": #ffd54f); //end of the game: each player's largest group glows, in a color that stands out from the discs
+$largest-group-glow: ("red": #ff8a80, "black": #343030e6); //end of the game: each player's largest group glows, in a color that stands out from the discs
 
 //page background (see "page background" below): a warm white marble surface under a giant black disc seen up close, its centre
 //off-screen to the bottom-left so only a curved section shows. Gradients only, no image
@@ -185,10 +199,26 @@ $board-border-color: rgba($material-charcoal, 0.1);
 //BoardHandler.renderSpots). Still with prefers-reduced-motion
 $spot-ring-march-duration: math.div(70s, 1.2 * 0.6); //about 97.2s: 60% of the speed until 2026-11-18 (58.3s)
 $spot-ring-march-mobile-share: 0.85; //BGA's mobile layout (.mobile_version) a little faster: about 82.6s (49.6s until 2026-11-18)
-$spot-ring-stroke-width: 2px;
+//the dashed outline's thickness, every ring alike: $spot-ring-stroke-share of a spot (--cell-size), so it scales with the board,
+//held between $spot-ring-stroke-min and -max on screen (screen px, divided by --board-zoom: BGA scales the board down on a
+//phone). About 2.5px at desktop's 108px spot, 1.35px on a 375px phone (a 59px spot on screen), 3px at most on large screens.
+//2px in board px until 2026-11-19 (1px on a phone), then that day 2.5px on screen everywhere, too thick on a phone
+$spot-ring-stroke-share: 0.023;
+$spot-ring-stroke-min: 1.25px;
+$spot-ring-stroke-max: 3px;
 $spot-ring-dash-share: 0.75; //of each dash and gap
-$spot-ring-legal-dashes: 18;
-$spot-ring-replaceable-dashes: 21; //the replaceable ring is 1.2 times wider
+//the dash count around each ring: 18 around a disc's own footprint (the rhythm above), times how much longer the ring's outline
+//is (Ramanujan's perimeter), rounded to a whole number so the march has no seam. The occupied ring's width is taken as it shows,
+//capped at $spot-ring-max-share of a spot, at the desktop disc scale (the phone's is within 1%): 19 and 22
+@function ellipse-perimeter($width, $height){
+    $a: $width * 0.5; $b: $height * 0.5;
+    @return math.$pi * (3 * ($a + $b) - math.sqrt((3 * $a + $b) * ($a + 3 * $b)));
+}
+@function spot-ring-dashes($width-ratio, $height-scale: 1){
+    @return math.round(18 * math.div(ellipse-perimeter($width-ratio, $width-ratio * $disc-face-ratio * $height-scale), ellipse-perimeter(1, $disc-face-ratio)));
+}
+$spot-ring-empty-dashes: spot-ring-dashes($spot-ring-empty-ratio);
+$spot-ring-occupied-dashes: spot-ring-dashes(math.min($spot-ring-occupied-width-scale, math.div($spot-ring-max-share, $disc-width-ratio * $board-disc-scale)), $spot-ring-occupied-height-scale);
 $selected-spot-color: #ffc400; //the gold ring under the active drafted tower
 //the draft's controls on each drafted tower (BoardHandler.renderPendingControls): a count badge on its top right corner and,
 //under the active tower only, round buttons side by side: undo and confirm. Shares of --cell-size times the disc
@@ -578,7 +608,7 @@ html.hide-stack-heights .tower-height-number{ display: none; }
     border: 1px solid $board-border-color; border-radius: $board-radius; background: $board-background; box-shadow: $slab-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.9); @include non-selectable();
 }
 //the board's discs against its spot pitch: every tower, spot and control on the board, and a board tower's flying copies in
-//<body> (they keep its class). Capped so a ring around a tower's base always fits its spot ($board-disc-max-scale)
+//<body> (they keep its class). Capped so a 5-disc tower never reaches the tower behind it ($board-disc-max-scale)
 #nexo-board, .board-tower{ --disc-scale: min(var(--nexo-disc-scale), #{$board-disc-max-scale}); }
 #nexo-board{ --board-edge-padding: #{$board-edge-padding}; }
 .mobile_version #nexo-board{ --board-edge-padding: #{$board-edge-mobile-padding}; }
@@ -593,11 +623,15 @@ html.hide-stack-heights .tower-height-number{ display: none; }
     --spot-ring-width: calc(var(--cell-size) * #{$disc-width-ratio} * var(--disc-scale, 1));
     --spot-ring-height: calc(var(--spot-ring-width) * #{$disc-face-ratio});
     --spot-ring-bottom: calc(var(--cell-size) * #{$tower-base-ratio});
-    //the ring's box, shared by its fill (::before) and its dashed outline (.spot-ring): the bottom disc's ellipse
-    --ring-box-left: calc((var(--cell-size) - var(--spot-ring-width)) / 2);
-    --ring-box-bottom: var(--spot-ring-bottom);
-    --ring-box-width: var(--spot-ring-width);
-    --ring-box-height: var(--spot-ring-height);
+    --spot-ring-center: calc(var(--spot-ring-bottom) + var(--spot-ring-height) / 2); //the bottom disc's footprint's centre, from the spot's bottom
+    //the ring's box, shared by its fill (::before) and its dashed outline (.spot-ring). An empty ring here: the footprint's
+    //ellipse, its width $spot-ring-empty-ratio times the disc's (at most $spot-ring-max-share of the spot), its height the
+    //footprint's share of that width, on the footprint's centre. Occupied rings override it below. Inside the spot, which is the
+    //clickable box
+    --ring-box-width: min(calc(var(--spot-ring-width) * #{$spot-ring-empty-ratio}), calc(var(--cell-size) * #{$spot-ring-max-share}));
+    --ring-box-height: calc(var(--ring-box-width) * #{$disc-face-ratio});
+    --ring-box-left: calc((var(--cell-size) - var(--ring-box-width)) / 2);
+    --ring-box-bottom: calc(var(--spot-ring-center) - var(--ring-box-height) / 2);
     &.clickable-spot{ cursor: pointer; }
     &.clickable-spot, &.legal-spot, &.selected-spot{
         &::before{ content: ""; position: absolute; box-sizing: border-box; left: var(--ring-box-left); bottom: var(--ring-box-bottom); width: var(--ring-box-width); height: var(--ring-box-height); border-radius: 50%; transition: background-color 0.15s ease, box-shadow 0.15s ease; }
@@ -607,21 +641,28 @@ html.hide-stack-heights .tower-height-number{ display: none; }
     //on hover
     &.legal-spot::before, &.replaceable-spot::before{ background-color: var(--legal-spot-fill); }
     &.legal-spot.clickable-spot:hover::before, &.replaceable-spot:hover::before{ background-color: var(--legal-spot-hover-fill); box-shadow: 0 0 8px var(--legal-spot-glow); }
-    //the replaceable tower's ring, around its base, under the tower: the bottom disc's ellipse $spot-ring-tower-ratio times as
-    //big, on the same centre, so it shows evenly around the disc (wider at the sides, as the ellipse is). The disc scale's cap
-    //($board-disc-max-scale) keeps it within $spot-ring-max-share of the spot
-    &.replaceable-spot{ --ring-box-width: calc(var(--spot-ring-width) * #{$spot-ring-tower-ratio}); --ring-box-height: calc(var(--spot-ring-height) * #{$spot-ring-tower-ratio});
-        --ring-box-left: calc((var(--cell-size) - var(--ring-box-width)) / 2); --ring-box-bottom: calc(var(--spot-ring-bottom) - var(--spot-ring-height) * #{($spot-ring-tower-ratio - 1) * 0.5}); }
-
-    //the dashed outline: an <ellipse> in an SVG exactly the ring's box, no viewBox, so its units are the box's px and the
-    //stroke keeps 2px whatever the ring's size (BGA's phone scaling scales it like the old border). Its centre line 1px inside
-    //the box, like a 2px border. The ellipse never moves: only its dashes march (below the spot's rules). Under the towers
-    //like the spot itself; no clicks: they go to the spot
-    .spot-ring{ position: absolute; left: var(--ring-box-left); bottom: var(--ring-box-bottom); width: var(--ring-box-width); height: var(--ring-box-height); overflow: visible; pointer-events: none;
-        ellipse{ cx: 50%; cy: 50%; rx: calc(50% - #{$spot-ring-stroke-width * 0.5}); ry: calc(50% - #{$spot-ring-stroke-width * 0.5}); fill: none; stroke: var(--legal-spot-border); stroke-width: $spot-ring-stroke-width;
-            stroke-dasharray: #{math.div(100 * $spot-ring-dash-share, $spot-ring-legal-dashes)} #{math.div(100 * (1 - $spot-ring-dash-share), $spot-ring-legal-dashes)}; }
+    //an occupied ring: a replaceable enemy tower's, and the gold ring under the active drafted tower. Behind the tower (the spots
+    //layer is under the towers), which hides its back, so it shows beside and in front of the base, like a ring painted on the
+    //board around it: $spot-ring-occupied-width-scale times the bottom disc (at most $spot-ring-max-share of the spot),
+    //$spot-ring-occupied-height-scale times as tall as a flat ellipse of that width, centred on the footprint plus the offsets
+    //(shares of a spot, so it stays put under the tower at any spot size and BGA zoom). The fill and the outline share the box
+    &.replaceable-spot, &.selected-spot{
+        --ring-box-width: min(calc(var(--spot-ring-width) * #{$spot-ring-occupied-width-scale}), calc(var(--cell-size) * #{$spot-ring-max-share}));
+        --ring-box-height: calc(var(--ring-box-width) * #{$disc-face-ratio * $spot-ring-occupied-height-scale});
+        --ring-box-left: calc((var(--cell-size) - var(--ring-box-width)) / 2 + var(--cell-size) * #{$spot-ring-occupied-offset-x});
+        --ring-box-bottom: calc(var(--spot-ring-center) - var(--ring-box-height) / 2 + var(--cell-size) * #{$spot-ring-occupied-offset-y});
     }
-    &.replaceable-spot .spot-ring ellipse{ stroke-dasharray: #{math.div(100 * $spot-ring-dash-share, $spot-ring-replaceable-dashes)} #{math.div(100 * (1 - $spot-ring-dash-share), $spot-ring-replaceable-dashes)}; }
+
+    //the dashed outline: an <ellipse> in an SVG exactly the ring's box, no viewBox, so its units are the box's px. Its stroke
+    //(--spot-ring-stroke, board px) is $spot-ring-stroke-share of the spot, clamped to $spot-ring-stroke-min / -max on screen;
+    //its centre line half that inside the box (rx / ry), like a border. The ellipse never moves: only its dashes march (below the
+    //spot's rules). Under the towers like the spot itself; no clicks: they go to the spot
+    --spot-ring-stroke: clamp(calc(#{$spot-ring-stroke-min} / var(--board-zoom, 1)), calc(var(--cell-size) * #{$spot-ring-stroke-share}), calc(#{$spot-ring-stroke-max} / var(--board-zoom, 1)));
+    .spot-ring{ position: absolute; left: var(--ring-box-left); bottom: var(--ring-box-bottom); width: var(--ring-box-width); height: var(--ring-box-height); overflow: visible; pointer-events: none;
+        ellipse{ cx: 50%; cy: 50%; rx: calc(50% - var(--spot-ring-stroke) / 2); ry: calc(50% - var(--spot-ring-stroke) / 2); fill: none; stroke: var(--legal-spot-border); stroke-width: var(--spot-ring-stroke);
+            stroke-dasharray: #{math.div(100 * $spot-ring-dash-share, $spot-ring-empty-dashes)} #{math.div(100 * (1 - $spot-ring-dash-share), $spot-ring-empty-dashes)}; }
+    }
+    &.replaceable-spot .spot-ring ellipse{ stroke-dasharray: #{math.div(100 * $spot-ring-dash-share, $spot-ring-occupied-dashes)} #{math.div(100 * (1 - $spot-ring-dash-share), $spot-ring-occupied-dashes)}; }
     &.legal-spot.clickable-spot:hover .spot-ring ellipse, &.replaceable-spot:hover .spot-ring ellipse{ stroke-dasharray: none; }
     &.selected-spot::before{ border: 3px solid $selected-spot-color !important; background-color: rgba($selected-spot-color, 0.35) !important; box-shadow: 0 0 10px $selected-spot-color; }
 }
@@ -830,9 +871,13 @@ body .confirm-popover{ position: fixed; left: 0px; top: 0px; z-index: $confirm-p
 @each $name, $glow in $largest-group-glow {
     .board-tower.largest-group-tower[data-disc-color="#{$name}"]{ --group-glow: #{$glow}; }
 }
-//the replaceable ring's ellipse ($spot-ring-tower-ratio times the bottom disc's, same centre)
-.board-tower.largest-group-tower::before{ content: ""; position: absolute; left: calc((var(--cell-size) - var(--disc-width) * #{$spot-ring-tower-ratio}) / 2);
-    bottom: calc(var(--tower-base) - var(--disc-face-height) * #{($spot-ring-tower-ratio - 1) * 0.5}); width: calc(var(--disc-width) * #{$spot-ring-tower-ratio}); height: calc(var(--disc-face-height) * #{$spot-ring-tower-ratio});
+//an occupied ring's box ($spot-ring-occupied-*, like .board-spot's), from the tower's own disc size
+.board-tower.largest-group-tower::before{ content: ""; position: absolute;
+    --group-glow-width: min(calc(var(--disc-width) * #{$spot-ring-occupied-width-scale}), calc(var(--cell-size) * #{$spot-ring-max-share}));
+    --group-glow-height: calc(var(--group-glow-width) * #{$disc-face-ratio * $spot-ring-occupied-height-scale});
+    left: calc((var(--cell-size) - var(--group-glow-width)) / 2 + var(--cell-size) * #{$spot-ring-occupied-offset-x});
+    bottom: calc(var(--tower-base) + var(--disc-face-height) / 2 - var(--group-glow-height) / 2 + var(--cell-size) * #{$spot-ring-occupied-offset-y});
+    width: var(--group-glow-width); height: var(--group-glow-height);
     border-radius: 50%; background: var(--group-glow); box-shadow: 0 0 10px 3px var(--group-glow); opacity: 0.9; }
 //end board
 
