@@ -17,7 +17,7 @@ export type DraftView = {
     pending: PendingTower[];
     legalNewSpots: NexoSpot[];
     replaceableTowers: NexoTower[];
-    unaffordableTowers: NexoTower[]; //enemy towers replaceable but for the discs left this turn: a click shakes them and says why
+    warningTowers: NexoTower[]; //towers a click can't draft on but answers (my own, enemy towers too high for the discs left): they shake and say why
     selectedSpot: NexoSpot | null; //the active drafted tower: the gold ring, and the undo and confirm buttons under it
     discColor: DiscColor;
     confirming: boolean; //the turn is on its way to the server: the buttons stay, disabled
@@ -31,7 +31,7 @@ export type DraftClickHandlers = {
     spotClicked: (spot: NexoSpot) => void;
     undoClicked: (spot: NexoSpot) => void;
     confirmClicked: () => void;
-    unaffordableTowerClicked: (spot: NexoSpot) => void;
+    warningTowerClicked: (spot: NexoSpot) => void;
 };
 
 /**
@@ -52,7 +52,7 @@ export class BoardHandler {
     private towersLayer: HTMLDivElement;
     private controlsLayer: HTMLDivElement;
     private messageLayer: HTMLDivElement;
-    private towerMessage: { element: HTMLDivElement; timers: number[]; } | null = null; //the bubble over an unaffordable tower, one at a time
+    private towerMessage: { element: HTMLDivElement; timers: number[]; } | null = null; //the bubble over a warning tower (showTowerWarning), one at a time
     private boardSize: number; //in spots (readBoardSize)
     private fitFrame: number = 0; //the one pending fit (requestFit), 0 when none
     //what the spot size was last computed from (fitToViewport): the room for the board, in the board's own px, and its span
@@ -591,26 +591,32 @@ export class BoardHandler {
     private updateTowerDraftClasses(): void {
         const replacedKeys = new Set((this.draft?.pending ?? []).filter(tower => tower.kind === 'replace').map(tower => BoardRules.key(tower.x, tower.y)));
         //clickable only for the player drafting, as the rings are (never in a replay, nor while the turn is on its way)
-        const showUnaffordable = !!this.draft && !this.draft.confirming && !this.game.isReplay();
-        const unaffordableKeys = new Set(showUnaffordable ? this.draft.unaffordableTowers.map(tower => BoardRules.key(tower.x, tower.y)) : []);
+        const showWarnings = !!this.draft && !this.draft.confirming && !this.game.isReplay();
+        const warningKeys = new Set(showWarnings ? this.draft.warningTowers.map(tower => BoardRules.key(tower.x, tower.y)) : []);
         this.towerElements.forEach((element, key) => {
             element.classList.toggle('being-replaced', replacedKeys.has(key));
-            element.classList.toggle('unaffordable-tower', unaffordableKeys.has(key));
+            element.classList.toggle('warning-tower', warningKeys.has(key));
         });
         if(!this.draft)
             this.clearTowerMessage();
     }
 
     /**
-     * [BGA] An enemy tower the player clicked but can't replace for lack of discs this turn: it shakes (one-shot
-     * .shaking-tower, the translate property, so it never fights a transform; none with reduced motion or animations off) and a
-     * bubble over it says why (showTowerMessage). Client only: nothing changes on the board
+     * [BGA] A board tower the player clicked but can't draft on (PlaceTowers.getTowerWarningHTML: their own, or an enemy tower too
+     * high for the discs left), every case alike: it shakes (shakeTower) and a bubble over it says why (showTowerMessage), one
+     * bubble at a time, a new one replacing it. Client only: nothing changes on the board
      */
-    public showUnaffordableTower(spot: NexoSpot, messageHTML: string): void {
+    public showTowerWarning(spot: NexoSpot, messageHTML: string): void {
         const towerElement = this.towerElements.get(BoardRules.key(spot.x, spot.y));
         if(!towerElement)
             return;
         this.showTowerMessage(spot, towerElement, messageHTML); //measured before the shake moves it
+        this.shakeTower(towerElement);
+    }
+
+    //a short shake (one-shot .shaking-tower, the translate property, so it never fights a transform), restarted by a click
+    //mid-shake; none with reduced motion or animations off
+    private shakeTower(towerElement: HTMLDivElement): void {
         if(!this.game.bga.gameui.bgaAnimationsActive() || window.matchMedia('(prefers-reduced-motion: reduce)').matches)
             return;
         towerElement.classList.remove('shaking-tower');
@@ -694,9 +700,9 @@ export class BoardHandler {
         const target = event.target as HTMLElement;
         if(target.closest('.pending-actions'))
             return; //a disabled button's click, which no listener of its own receives: never a click on the tower under it
-        const unaffordable = target.closest('.unaffordable-tower') as HTMLElement | null;
-        if(unaffordable){
-            this.draftClickHandlers.unaffordableTowerClicked({ x: parseInt(unaffordable.getAttribute('data-x')), y: parseInt(unaffordable.getAttribute('data-y')) });
+        const warningTower = target.closest('.warning-tower') as HTMLElement | null;
+        if(warningTower){
+            this.draftClickHandlers.warningTowerClicked({ x: parseInt(warningTower.getAttribute('data-x')), y: parseInt(warningTower.getAttribute('data-y')) });
             return;
         }
         const clicked = (target.closest('.pending-tower') ?? target.closest('.board-spot.clickable-spot')) as HTMLElement | null;

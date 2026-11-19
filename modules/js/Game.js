@@ -125,7 +125,7 @@ class PlaceTowers {
             spotClicked: spot => this.spotClicked(spot),
             undoClicked: spot => this.undoClicked(spot),
             confirmClicked: () => this.confirmClicked(),
-            unaffordableTowerClicked: spot => this.unaffordableTowerClicked(spot),
+            warningTowerClicked: spot => this.warningTowerClicked(spot),
         });
         this.update();
     }
@@ -162,9 +162,24 @@ class PlaceTowers {
     getReplaceableTowers() {
         return this.game.boardHandler.getTowers().filter(tower => this.getCaptureCheck(tower)?.canCapture);
     }
-    //[BGA] enemy towers that would be replaceable but for the discs left this turn: a click on one says so (unaffordableTowerClicked)
-    getUnaffordableTowers() {
-        return this.game.boardHandler.getTowers().filter(tower => this.getCaptureCheck(tower)?.canCapture === false);
+    //[BGA] the board towers a click answers with a warning (warningTowerClicked): those with a sentence in getTowerWarningHTML
+    getWarningTowers() {
+        return this.game.boardHandler.getTowers().filter(tower => this.getTowerWarningHTML(tower) !== null);
+    }
+    //[BGA] why a click on this board tower does nothing, as the sentence for its bubble, or null when there is nothing to say (a
+    //replaceable tower, which a click drafts on; a 5-disc enemy tower or one already replaced in this draft, which stay as they
+    //were). My own towers: no disc goes on them. An enemy tower the discs left can't out-height: the numbers, from the same rule as
+    //the rings (getCaptureCheck). ${disc} becomes a disc icon in my color after translation, so a translation may put it
+    //anywhere in the sentence
+    getTowerWarningHTML(tower) {
+        const discIconHTML = this.getDiscIconsHTML(this.game.getDiscColor(this.game.getMyPlayerID()), 1, 0);
+        if (tower.player_id === this.game.getMyPlayerID())
+            return _('You cannot add ${disc} to your own towers').replace('${disc}', discIconHTML);
+        const check = this.getCaptureCheck(tower);
+        if (!check || check.canCapture)
+            return null;
+        return _('Not enough ${disc}: need ${needed}, you have ${available}')
+            .replace('${disc}', discIconHTML).replace('${needed}', check.needed.toString()).replace('${available}', check.available.toString());
     }
     //the one rule for replacing a tower: an enemy tower, not already replaced in this draft, takes its height + 1 discs, never
     //more than a tower's highest height, out of the discs left this turn. null when no number of discs could replace it (my own
@@ -228,20 +243,15 @@ class PlaceTowers {
         if (heightOptions.length > 0)
             this.addPending(spot, heightOptions[0]);
     }
-    //[BGA] called by BoardHandler: an enemy tower I could replace but for the discs left this turn. Nothing changes: the tower
-    //shakes and a bubble over it gives the numbers, from the same rule as the rings (getCaptureCheck). Client only
-    unaffordableTowerClicked(spot) {
+    //[BGA] called by BoardHandler: a board tower a click can't draft on (getTowerWarningHTML: my own, or an enemy tower too high
+    //for the discs left). Nothing changes: the tower shakes and a bubble over it says why. Client only
+    warningTowerClicked(spot) {
         if (!this.canDraft())
             return;
         const tower = this.game.boardHandler.getTowerMap().get(BoardRules.key(spot.x, spot.y));
-        const check = tower ? this.getCaptureCheck(tower) : null;
-        if (!check || check.canCapture)
-            return;
-        //${disc} becomes a disc icon in my color after translation, so a translation may put it anywhere in the sentence
-        const messageHTML = _('Not enough ${disc}: need ${needed}, you have ${available}')
-            .replace('${disc}', this.getDiscIconsHTML(this.game.getDiscColor(this.game.getMyPlayerID()), 1, 0))
-            .replace('${needed}', check.needed.toString()).replace('${available}', check.available.toString());
-        this.game.boardHandler.showUnaffordableTower(spot, messageHTML);
+        const messageHTML = tower ? this.getTowerWarningHTML(tower) : null;
+        if (messageHTML !== null)
+            this.game.boardHandler.showTowerWarning(spot, messageHTML);
     }
     //called by BoardHandler: the active tower's undo button (never also a click on its spot)
     undoClicked(spot) {
@@ -310,7 +320,7 @@ class PlaceTowers {
             pending: this.pending,
             legalNewSpots: this.getLegalNewSpots(),
             replaceableTowers: this.getReplaceableTowers(),
-            unaffordableTowers: this.getUnaffordableTowers(),
+            warningTowers: this.getWarningTowers(),
             selectedSpot: this.getActiveSpot(),
             discColor: this.game.getDiscColor(this.game.getMyPlayerID()),
             confirming: this.confirming,
@@ -592,7 +602,7 @@ PlayerHandler.RESERVE_STACK_SIZE = 5;
 class BoardHandler {
     constructor(game, towers) {
         this.game = game;
-        this.towerMessage = null; //the bubble over an unaffordable tower, one at a time
+        this.towerMessage = null; //the bubble over a warning tower (showTowerWarning), one at a time
         this.fitFrame = 0; //the one pending fit (requestFit), 0 when none
         //what the spot size was last computed from (fitToViewport): the room for the board, in the board's own px, and its span
         this.fittedRoom = null;
@@ -1066,25 +1076,30 @@ class BoardHandler {
     updateTowerDraftClasses() {
         const replacedKeys = new Set((this.draft?.pending ?? []).filter(tower => tower.kind === 'replace').map(tower => BoardRules.key(tower.x, tower.y)));
         //clickable only for the player drafting, as the rings are (never in a replay, nor while the turn is on its way)
-        const showUnaffordable = !!this.draft && !this.draft.confirming && !this.game.isReplay();
-        const unaffordableKeys = new Set(showUnaffordable ? this.draft.unaffordableTowers.map(tower => BoardRules.key(tower.x, tower.y)) : []);
+        const showWarnings = !!this.draft && !this.draft.confirming && !this.game.isReplay();
+        const warningKeys = new Set(showWarnings ? this.draft.warningTowers.map(tower => BoardRules.key(tower.x, tower.y)) : []);
         this.towerElements.forEach((element, key) => {
             element.classList.toggle('being-replaced', replacedKeys.has(key));
-            element.classList.toggle('unaffordable-tower', unaffordableKeys.has(key));
+            element.classList.toggle('warning-tower', warningKeys.has(key));
         });
         if (!this.draft)
             this.clearTowerMessage();
     }
     /**
-     * [BGA] An enemy tower the player clicked but can't replace for lack of discs this turn: it shakes (one-shot
-     * .shaking-tower, the translate property, so it never fights a transform; none with reduced motion or animations off) and a
-     * bubble over it says why (showTowerMessage). Client only: nothing changes on the board
+     * [BGA] A board tower the player clicked but can't draft on (PlaceTowers.getTowerWarningHTML: their own, or an enemy tower too
+     * high for the discs left), every case alike: it shakes (shakeTower) and a bubble over it says why (showTowerMessage), one
+     * bubble at a time, a new one replacing it. Client only: nothing changes on the board
      */
-    showUnaffordableTower(spot, messageHTML) {
+    showTowerWarning(spot, messageHTML) {
         const towerElement = this.towerElements.get(BoardRules.key(spot.x, spot.y));
         if (!towerElement)
             return;
         this.showTowerMessage(spot, towerElement, messageHTML); //measured before the shake moves it
+        this.shakeTower(towerElement);
+    }
+    //a short shake (one-shot .shaking-tower, the translate property, so it never fights a transform), restarted by a click
+    //mid-shake; none with reduced motion or animations off
+    shakeTower(towerElement) {
         if (!this.game.bga.gameui.bgaAnimationsActive() || window.matchMedia('(prefers-reduced-motion: reduce)').matches)
             return;
         towerElement.classList.remove('shaking-tower');
@@ -1160,9 +1175,9 @@ class BoardHandler {
         const target = event.target;
         if (target.closest('.pending-actions'))
             return; //a disabled button's click, which no listener of its own receives: never a click on the tower under it
-        const unaffordable = target.closest('.unaffordable-tower');
-        if (unaffordable) {
-            this.draftClickHandlers.unaffordableTowerClicked({ x: parseInt(unaffordable.getAttribute('data-x')), y: parseInt(unaffordable.getAttribute('data-y')) });
+        const warningTower = target.closest('.warning-tower');
+        if (warningTower) {
+            this.draftClickHandlers.warningTowerClicked({ x: parseInt(warningTower.getAttribute('data-x')), y: parseInt(warningTower.getAttribute('data-y')) });
             return;
         }
         const clicked = (target.closest('.pending-tower') ?? target.closest('.board-spot.clickable-spot'));
@@ -2015,7 +2030,7 @@ class Game {
         Object.assign(this.bga.gameui, {
             debug_passAnim: (who) => this.debug_passAnim(who),
             debug_clearPassed: () => this.debug_clearPassed(),
-            debug_unaffordableTower: (x, y) => this.debug_unaffordableTower(x, y),
+            debug_towerWarning: (x, y) => this.debug_towerWarning(x, y),
         });
         if (gamedatas.hasOwnProperty('endGameScoring'))
             this.endGameScoringHandler.displayEndGameScore(gamedatas.endGameScoring);
@@ -2271,17 +2286,17 @@ class Game {
     debug_clearPassed() {
         Object.values(this.players).forEach(player => player.setPassed(false));
     }
-    //client-only console helper: clicks an enemy tower too high for the discs left this turn, as a player would (the first one, or
-    //the one at x y), so its shake and bubble play: window[0].gameui.debug_unaffordableTower()
-    debug_unaffordableTower(x, y) {
-        const selector = (x === undefined || y === undefined) ? '#nexo-board .unaffordable-tower' : `#nexo-board .unaffordable-tower[data-x="${x}"][data-y="${y}"]`;
+    //client-only console helper: clicks a tower that answers with a warning (your own, or an enemy tower too high for the discs
+    //left), as a player would (the first one, or the one at x y), so its shake and bubble play: window[0].gameui.debug_towerWarning()
+    debug_towerWarning(x, y) {
+        const selector = (x === undefined || y === undefined) ? '#nexo-board .warning-tower' : `#nexo-board .warning-tower[data-x="${x}"][data-y="${y}"]`;
         const tower = document.querySelector(selector);
         if (!tower) {
-            console.warn('debug_unaffordableTower: no enemy tower too high for your discs left' + (x === undefined ? '' : ` at ${x} ${y}`) + ' (only while you draft your turn)');
+            console.warn('debug_towerWarning: no tower with a warning' + (x === undefined ? '' : ` at ${x} ${y}`) + ' (only while you draft your turn)');
             return;
         }
         tower.click();
-        console.log(`debug_unaffordableTower: clicked ${tower.getAttribute('data-x')} ${tower.getAttribute('data-y')}`);
+        console.log(`debug_towerWarning: clicked ${tower.getAttribute('data-x')} ${tower.getAttribute('data-y')}`);
     }
     async notif_displayEndGameScoring(args) {
         this.endGameScoringHandler.displayEndGameScore(args.endGameScoring);
@@ -2295,7 +2310,7 @@ Game.TOWER_DISC_STAGGER = 50; //ms between two discs of the same tower leaving (
 Game.TOWER_SLIDE_EASING = 'ease-in-out';
 Game.BOARD_RECENTER_DURATION = 280; //ms of the board's contents sliding to stay centred (BoardHandler.centerContents; Yaxha's was 400ms)
 Game.BOARD_RECENTER_EASING = 'ease-out';
-//[BGA] the bubble over an enemy tower too high for the discs left (BoardHandler.showTowerMessage); its shake is CSS only (Game.scss: $tower-shake-*)
+//[BGA] the bubble over a tower a click can't draft on (BoardHandler.showTowerWarning); its shake is CSS only (Game.scss: $tower-shake-*)
 Game.TOWER_MESSAGE_FADE_IN = 150;
 Game.TOWER_MESSAGE_HOLD = 1800;
 Game.TOWER_MESSAGE_FADE_OUT = 250;

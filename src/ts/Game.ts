@@ -36,7 +36,7 @@ export class Game {
     public static readonly TOWER_SLIDE_EASING = 'ease-in-out';
     public static readonly BOARD_RECENTER_DURATION = 280; //ms of the board's contents sliding to stay centred (BoardHandler.centerContents; Yaxha's was 400ms)
     public static readonly BOARD_RECENTER_EASING = 'ease-out';
-    //[BGA] the bubble over an enemy tower too high for the discs left (BoardHandler.showTowerMessage); its shake is CSS only (Game.scss: $tower-shake-*)
+    //[BGA] the bubble over a tower a click can't draft on (BoardHandler.showTowerWarning); its shake is CSS only (Game.scss: $tower-shake-*)
     public static readonly TOWER_MESSAGE_FADE_IN = 150;
     public static readonly TOWER_MESSAGE_HOLD = 1800;
     public static readonly TOWER_MESSAGE_FADE_OUT = 250;
@@ -123,7 +123,7 @@ export class Game {
         Object.assign(this.bga.gameui, { //client-only console helpers (debug_passAnim)
             debug_passAnim: (who: number | string) => this.debug_passAnim(who),
             debug_clearPassed: () => this.debug_clearPassed(),
-            debug_unaffordableTower: (x?: number, y?: number) => this.debug_unaffordableTower(x, y),
+            debug_towerWarning: (x?: number, y?: number) => this.debug_towerWarning(x, y),
         });
 
         if(gamedatas.hasOwnProperty('endGameScoring'))
@@ -419,17 +419,17 @@ export class Game {
         Object.values(this.players).forEach(player => player.setPassed(false));
     }
 
-    //client-only console helper: clicks an enemy tower too high for the discs left this turn, as a player would (the first one, or
-    //the one at x y), so its shake and bubble play: window[0].gameui.debug_unaffordableTower()
-    public debug_unaffordableTower(x?: number, y?: number): void {
-        const selector = (x === undefined || y === undefined) ? '#nexo-board .unaffordable-tower' : `#nexo-board .unaffordable-tower[data-x="${x}"][data-y="${y}"]`;
+    //client-only console helper: clicks a tower that answers with a warning (your own, or an enemy tower too high for the discs
+    //left), as a player would (the first one, or the one at x y), so its shake and bubble play: window[0].gameui.debug_towerWarning()
+    public debug_towerWarning(x?: number, y?: number): void {
+        const selector = (x === undefined || y === undefined) ? '#nexo-board .warning-tower' : `#nexo-board .warning-tower[data-x="${x}"][data-y="${y}"]`;
         const tower = document.querySelector<HTMLElement>(selector);
         if(!tower){
-            console.warn('debug_unaffordableTower: no enemy tower too high for your discs left' + (x === undefined ? '' : ` at ${x} ${y}`) + ' (only while you draft your turn)');
+            console.warn('debug_towerWarning: no tower with a warning' + (x === undefined ? '' : ` at ${x} ${y}`) + ' (only while you draft your turn)');
             return;
         }
         tower.click();
-        console.log(`debug_unaffordableTower: clicked ${tower.getAttribute('data-x')} ${tower.getAttribute('data-y')}`);
+        console.log(`debug_towerWarning: clicked ${tower.getAttribute('data-x')} ${tower.getAttribute('data-y')}`);
     }
 
     private async notif_displayEndGameScoring(args: DisplayEndGameScoringArgs) {

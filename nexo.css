@@ -492,7 +492,7 @@ html.hide-stack-heights .tower-height-number {
   opacity: 0.18;
 }
 
-.towers-layer .board-tower.unaffordable-tower {
+.towers-layer .board-tower.warning-tower {
   pointer-events: auto;
 }
 

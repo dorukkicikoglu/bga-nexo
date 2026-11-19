@@ -59,7 +59,7 @@ export class PlaceTowers {
             spotClicked: spot => this.spotClicked(spot),
             undoClicked: spot => this.undoClicked(spot),
             confirmClicked: () => this.confirmClicked(),
-            unaffordableTowerClicked: spot => this.unaffordableTowerClicked(spot),
+            warningTowerClicked: spot => this.warningTowerClicked(spot),
         });
         this.update();
     }
@@ -102,9 +102,26 @@ export class PlaceTowers {
         return this.game.boardHandler.getTowers().filter(tower => this.getCaptureCheck(tower)?.canCapture);
     }
 
-    //[BGA] enemy towers that would be replaceable but for the discs left this turn: a click on one says so (unaffordableTowerClicked)
-    private getUnaffordableTowers(): NexoTower[] {
-        return this.game.boardHandler.getTowers().filter(tower => this.getCaptureCheck(tower)?.canCapture === false);
+    //[BGA] the board towers a click answers with a warning (warningTowerClicked): those with a sentence in getTowerWarningHTML
+    private getWarningTowers(): NexoTower[] {
+        return this.game.boardHandler.getTowers().filter(tower => this.getTowerWarningHTML(tower) !== null);
+    }
+
+    //[BGA] why a click on this board tower does nothing, as the sentence for its bubble, or null when there is nothing to say (a
+    //replaceable tower, which a click drafts on; a 5-disc enemy tower or one already replaced in this draft, which stay as they
+    //were). My own towers: no disc goes on them. An enemy tower the discs left can't out-height: the numbers, from the same rule as
+    //the rings (getCaptureCheck). ${disc} becomes a disc icon in my color after translation, so a translation may put it
+    //anywhere in the sentence
+    private getTowerWarningHTML(tower: NexoTower): string | null {
+        const discIconHTML = this.getDiscIconsHTML(this.game.getDiscColor(this.game.getMyPlayerID()), 1, 0);
+        if(tower.player_id === this.game.getMyPlayerID())
+            return _('You cannot add ${disc} to your own towers').replace('${disc}', discIconHTML);
+
+        const check = this.getCaptureCheck(tower);
+        if(!check || check.canCapture)
+            return null;
+        return _('Not enough ${disc}: need ${needed}, you have ${available}')
+            .replace('${disc}', discIconHTML).replace('${needed}', check.needed.toString()).replace('${available}', check.available.toString());
     }
 
     //the one rule for replacing a tower: an enemy tower, not already replaced in this draft, takes its height + 1 discs, never
@@ -179,20 +196,15 @@ export class PlaceTowers {
             this.addPending(spot, heightOptions[0]);
     }
 
-    //[BGA] called by BoardHandler: an enemy tower I could replace but for the discs left this turn. Nothing changes: the tower
-    //shakes and a bubble over it gives the numbers, from the same rule as the rings (getCaptureCheck). Client only
-    private unaffordableTowerClicked(spot: NexoSpot): void {
+    //[BGA] called by BoardHandler: a board tower a click can't draft on (getTowerWarningHTML: my own, or an enemy tower too high
+    //for the discs left). Nothing changes: the tower shakes and a bubble over it says why. Client only
+    private warningTowerClicked(spot: NexoSpot): void {
         if(!this.canDraft())
             return;
         const tower = this.game.boardHandler.getTowerMap().get(BoardRules.key(spot.x, spot.y));
-        const check = tower ? this.getCaptureCheck(tower) : null;
-        if(!check || check.canCapture)
-            return;
-        //${disc} becomes a disc icon in my color after translation, so a translation may put it anywhere in the sentence
-        const messageHTML = _('Not enough ${disc}: need ${needed}, you have ${available}')
-            .replace('${disc}', this.getDiscIconsHTML(this.game.getDiscColor(this.game.getMyPlayerID()), 1, 0))
-            .replace('${needed}', check.needed.toString()).replace('${available}', check.available.toString());
-        this.game.boardHandler.showUnaffordableTower(spot, messageHTML);
+        const messageHTML = tower ? this.getTowerWarningHTML(tower) : null;
+        if(messageHTML !== null)
+            this.game.boardHandler.showTowerWarning(spot, messageHTML);
     }
 
     //called by BoardHandler: the active tower's undo button (never also a click on its spot)
@@ -273,7 +285,7 @@ export class PlaceTowers {
             pending: this.pending,
             legalNewSpots: this.getLegalNewSpots(),
             replaceableTowers: this.getReplaceableTowers(),
-            unaffordableTowers: this.getUnaffordableTowers(),
+            warningTowers: this.getWarningTowers(),
             selectedSpot: this.getActiveSpot(),
             discColor: this.game.getDiscColor(this.game.getMyPlayerID()),
             confirming: this.confirming,

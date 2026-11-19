@@ -229,7 +229,7 @@ $pending-confirm-ring-pop-scale: 1.1;
 $pending-confirm-pulse-scale: 1.14; //the one pulse when every disc is drafted
 $pending-confirm-pulse-duration: 0.45s;
 $draft-controls-z-index: 2000; //over every tower (1000 + its row)
-//[BGA] an enemy tower clicked but too high for the discs left this turn (BoardHandler.showUnaffordableTower): a short shake
+//[BGA] a tower clicked but not draftable (BoardHandler.showTowerWarning: my own, or an enemy tower too high for the discs left): a short shake
 //(the translate property, a one-shot class; none with reduced motion) and a speech bubble over it, the "Confirm anyway?"
 //card's look (below). The bubble lives in the board, which BGA scales down on a phone: its sizes are screen px, divided
 //by --board-zoom. Its timings are Game.TOWER_MESSAGE_*
@@ -655,9 +655,9 @@ html.hide-stack-heights .tower-height-number{ display: none; }
 }
 .towers-layer .pending-tower.confirmed-tower{ pointer-events: none; cursor: default; } //confirmed, waiting for its spot's turn in the turn animation
 .towers-layer .board-tower.being-replaced{ opacity: $replaced-tower-opacity; }
-//[BGA] an enemy tower replaceable but for the discs left this turn: it takes the click (BoardHandler.onBoardClick), which shakes it
-//and says why. The cursor and the look stay a plain tower's
-.towers-layer .board-tower.unaffordable-tower{ pointer-events: auto; }
+//[BGA] a tower a click can't draft on but answers (my own, an enemy tower too high for the discs left): it takes the click
+//(BoardHandler.onBoardClick), which shakes it and says why. The cursor and the look stay a plain tower's
+.towers-layer .board-tower.warning-tower{ pointer-events: auto; }
 .towers-layer .board-tower.shaking-tower{ animation: tower-shake $tower-shake-duration ease-in-out 1; }
 @keyframes tower-shake{
     0%, 100%{ translate: 0px 0px; }
