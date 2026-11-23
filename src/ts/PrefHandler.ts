@@ -56,7 +56,7 @@ export class PrefHandler{
     }
 
     //one class on <html> like applyStackHeights, so every disc switches at once, wherever it is (the board, the flying copies, the
-    //reserve stacks, the status bar, the log rows). Every disc always carries its wooden sprite (BoardHandler.setDiscSprite), so
+    //reserve stacks, the status bar, the log rows). Every disc always carries its wooden sprite (BoardHandler.getDiscLook), so
     //nothing is redrawn. Any value other than Marble is Wooden (the default; also a missing value, as for a spectator with no
     //saved preference)
     private applyDiscStyle(prefValue: number): void{

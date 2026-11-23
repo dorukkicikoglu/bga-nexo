@@ -202,6 +202,7 @@ body .sliding-clone {
   --disc-face-height: calc(var(--disc-width) * 0.45);
   --disc-thickness: calc(var(--cell-size) * 0.1 * var(--disc-scale, 1));
   --tower-base: calc(var(--cell-size) * 0.08);
+  --disc-box-ratio: 0.5782051282;
 }
 .nexo-tower .tower-disc {
   position: absolute;
@@ -236,6 +237,9 @@ body .sliding-clone {
 }
 .nexo-tower .tower-disc + .tower-disc::after {
   box-shadow: inset 0 -1px 0 var(--disc-seam-above), 0 1px 0 var(--disc-seam-below);
+}
+.nexo-tower .tower-disc, .nexo-tower .tower-height-number {
+  translate: calc(var(--jitter-x, 0) * var(--disc-width) * 0.01) calc(var(--jitter-y, 0) * var(--disc-width) * 0.0107874865);
 }
 .nexo-tower .tower-height-number {
   position: absolute;
@@ -283,6 +287,12 @@ body .sliding-clone {
   --cell-size: 1.4em;
   --disc-scale: 1;
   --disc-thickness: calc(var(--cell-size) * 0.14);
+  --disc-box-ratio: 0.6294871795;
+}
+.nexo-tower.status-disc .tower-disc {
+  translate: none;
+}
+.nexo-tower.status-disc {
   height: calc(var(--cell-size) * 0.571);
 }
 .nexo-tower.status-disc.used-status-disc {
@@ -295,9 +305,17 @@ html.hide-stack-heights .tower-height-number {
 
 html.nexo-discs-wooden .nexo-tower .tower-disc {
   background: url(img/wooden_discs.webp) calc(var(--col, 0) * 100% / 9) calc(var(--row, 0) * 100% / 11)/1000% 1200% no-repeat;
+  --wooden-face-squash: calc(var(--disc-box-ratio) * 0.7313642757);
 }
 html.nexo-discs-wooden .nexo-tower .tower-disc::before {
-  display: none;
+  z-index: 0;
+  top: 0px;
+  bottom: 0px;
+  background: url(img/wooden_discs.webp) calc(var(--col, 0) * 100% / 9) calc(var(--row, 0) * 100% / 11)/1000% 1200% no-repeat;
+  transform-origin: 50% 37.2222222222%;
+  transform: scaleY(var(--wooden-face-squash)) rotate(var(--jitter-rot, 0deg)) scaleY(calc(1 / var(--wooden-face-squash)));
+  -webkit-mask-image: radial-gradient(49.375% 36.1111111111% at 50% 37.2222222222%, #000000 70%, transparent 86%);
+  mask-image: radial-gradient(49.375% 36.1111111111% at 50% 37.2222222222%, #000000 70%, transparent 86%);
 }
 html.nexo-discs-wooden .nexo-tower .tower-disc::after {
   z-index: 1;
@@ -969,6 +987,7 @@ body .confirm-popover[data-placement=above] .confirm-popover-arrow {
 .nexo-player-board .nexo-tower.reserve-stack {
   --cell-size: 28px;
   --disc-thickness: calc(var(--cell-size) * 0.14);
+  --disc-box-ratio: 0.6294871795;
   height: calc(var(--cell-size) * 1.131);
 }
 .nexo-player-board .nexo-tower.reserve-stack::before {

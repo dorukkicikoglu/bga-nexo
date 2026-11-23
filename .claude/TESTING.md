@@ -651,9 +651,25 @@ Deploy `gamepreferences.jsonc`, `img/wooden_discs.webp`, `modules/` and `nexo.cs
 - [ ] With Wooden on, every disc is wood: the board's towers, the drafted towers, the reserve stacks on both player boards, the status bar's disc icons, the "Not enough" / "own towers" bubble's icon and the log rows' snapshots. Red discs red wood, black discs black wood; neighbouring discs show different grains.
 - [ ] Stacks of 2 to 5 discs show each disc on its own: a thin seam between discs (lighter over maroon on red, a dark gap over a grey line on black), the seam lying on the disc's curved edge (no gap or overlap at the sides), on the board, in the stacks and in the log. A 1-disc tower has a soft shadow under it.
 - [ ] The height number is white and readable on both colors, on the board and in the log (and hidden with "Show stack heights" Disabled).
-- [ ] Draft a tower and click it up to 5 discs, then draft a second one: no disc already drafted changes its grain on any click; undo and redraft: the new tower may get new grains.
-- [ ] Watch the opponent's turn: each disc keeps its grain from the reserve stack, through the flight, to the board. A replaced tower's discs land on their owner's stacks with the grains they had on the board.
+- [ ] Draft a tower and click it up to 5 discs, then draft a second one: no disc already drafted changes its grain on any click.
+- [ ] Watch the opponent's turn: each disc takes its board grain as it leaves the reserve stack (at the stack's size) and keeps it through the flight; a replaced tower's discs take their stack grains as they land.
 - [ ] The status bar's icons keep their grains while drafting (only their dimming changes).
 - [ ] No disc shows a sliver of a neighbouring sprite at its edges, at desktop size, on a phone and in the log's small snapshots.
 - [ ] Switch to Marble: at once, with no reload, every disc is exactly the old marble look (seams, gradients, shadow); back to Wooden, the same discs get their same grains again. F5 keeps your choice; the opponent's screen follows their own preference.
 - [ ] Replay (`replayFrom`) of a game begun before "Disc style" existed: it loads (no `disc_style` error in the console), and switching the preference during the replay applies at once.
+
+## After M1: hand-piled stacks
+
+Deploy `modules/` and `nexo.css`. No server change. Check with both disc styles (Wooden and Marble), on desktop and on a phone.
+
+- [ ] Every stack of 2 to 5 discs looks piled by hand: each disc a hair off to the left or right (1% of its width, about 1px on a desktop board; neighbours never visibly apart) and a hair up or down, none leaning as a whole. The same on the board, the drafted towers, the reserve stacks and the log's snapshots, in proportion on the small ones. The height number sits centred on the top disc.
+- [ ] Wooden: every disc's grain runs in its own direction, but the rim, the side and the light (lighter at the back) look the same on every disc. No visible ring where the turned grain meets the rim, at desktop size, on a phone and in the log.
+- [ ] Marble: the offsets only; the discs otherwise look exactly as before.
+- [ ] Draft a tower and click it up to 5 discs: each click adds a disc on top and none under it moves or changes. Undo and draft it again: it looks exactly the same.
+- [ ] Confirm: each disc lands exactly on its drafted copy (no jump when the copy goes), and the tower stays exactly as it looked while drafted.
+- [ ] Watch the opponent's turn: each disc leaves its reserve stack exactly from where it sat and lands exactly at its place in the tower, with no snap after landing. A replaced tower's discs land exactly on the reserve stacks' slots.
+- [ ] The log's snapshot of a turn shows the board's towers exactly as they look on the board.
+- [ ] F5: every stack on the board, in the reserves and in the log looks exactly as before the reload (wooden grain and angle included). The opponent and a spectator see the same stacks. A replay shows the same stacks too.
+- [ ] Switch the disc style mid-game, both ways: the offsets stay exactly the same; only the look of the discs changes, at once.
+- [ ] The status bar's disc icons stay in a straight row (no offsets).
+

@@ -84,6 +84,24 @@ $wooden-disc-sprite-inset-bottom: math.div(2, 180);
 $wooden-disc-sprite-curve-height: math.div(130, 180);
 //the height number on a wooden disc: the marble's shadow plus a soft dark halo, so it reads over the grain
 $wooden-disc-number-shadow: 0 1px 2px rgba(0, 0, 0, 0.7), 0 0 3px rgba(0, 0, 0, 0.55);
+//the face's ellipse in a cell: 2px down from its top, 316px wide, 130px tall (centre 67px down). The sprite's light is baked in,
+//from the back (the face about 5% lighter at the back than at the front, the rim about 11%, with a lighter bevel), so only the
+//grain inside the face turns (--jitter-rot, see "wooden discs"): the rim, the side band and their light never do. The turned
+//grain shows fully up to $wooden-disc-grain-fade-start of the face's radius and fades out by $wooden-disc-grain-fade-end, where the
+//unturned face takes over
+$wooden-disc-sprite-face-top: math.div(2, 180);
+$wooden-disc-grain-fade-start: 0.7;
+$wooden-disc-grain-fade-end: 0.86;
+
+//[BGA] hand-piled stacks: every disc is offset a little from its place, across by up to $disc-jitter-x-share of its own width
+//(0.01: about 0.9px on a desktop board disc, 1.5px on a 150px one; until 2026-11-23 3px on a desktop board disc, too strong:
+//neighbours up to 6px apart) and up or down by up to $disc-jitter-y on a disc $disc-jitter-reference-width wide (a desktop board
+//disc: a 108px spot x 0.78 x 1.1), both in proportion
+//elsewhere, so a log snapshot's or a reserve stack's discs move as much for their size. Each disc's own (--jitter-x / -y,
+//from -1 to 1, BoardHandler.getDiscLook), never added to the ones under it, so a stack never leans
+$disc-jitter-reference-width: 92.7px;
+$disc-jitter-x-share: 0.01;
+$disc-jitter-y: 1px;
 
 $pending-tower-opacity: 0.6; //a tower of the turn being drafted
 $replaced-tower-opacity: 0.18; //an enemy tower under a drafted replacement
@@ -572,6 +590,7 @@ $passed-banner-flight-easing: ease-in-out;
     --disc-face-height: calc(var(--disc-width) * #{$disc-face-ratio});
     --disc-thickness: calc(var(--cell-size) * #{$disc-thickness-ratio} * var(--disc-scale, 1));
     --tower-base: calc(var(--cell-size) * #{$tower-base-ratio});
+    --disc-box-ratio: #{$disc-face-ratio + math.div($disc-thickness-ratio, $disc-width-ratio)}; //a disc's box, height over width (the wooden grain's turn)
 
     .tower-disc{ position: absolute; isolation: isolate; left: calc((var(--cell-size) - var(--disc-width)) / 2); bottom: calc(var(--tower-base) + var(--disc-thickness) * var(--disc-index));
         width: var(--disc-width); height: calc(var(--disc-face-height) + var(--disc-thickness));
@@ -583,6 +602,11 @@ $passed-banner-flight-easing: ease-in-out;
         //to nothing at the sides like a real rim
         & + .tower-disc::after{ box-shadow: inset 0 -1px 0 var(--disc-seam-above), 0 1px 0 var(--disc-seam-below); }
     }
+    //hand-piled (BoardHandler.getDiscLook, set once per disc): each disc's own small offset, the separate translate property (never
+    //a transform: towers are cloned to fly, Game.createSlidingClone, and their stacking is left / bottom). The height number
+    //takes the top disc's offset, so it stays centred on its face. A flying copy carries its discs' offsets, so each lands
+    //exactly where it stays
+    .tower-disc, .tower-height-number{ translate: calc(var(--jitter-x, 0) * var(--disc-width) * #{$disc-jitter-x-share}) calc(var(--jitter-y, 0) * var(--disc-width) * #{math.div($disc-jitter-y, $disc-jitter-reference-width)}); }
     //the height, on the top face
     .tower-height-number{ position: absolute; left: 0px; right: 0px; bottom: calc(var(--tower-base) + var(--disc-thickness) * var(--tower-height)); height: var(--disc-face-height);
         display: flex; align-items: center; justify-content: center; font-size: calc(var(--disc-width) * #{math.div(0.27, $disc-width-ratio)}); font-weight: bold; line-height: 1; color: var(--disc-number); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
@@ -594,9 +618,12 @@ $passed-banner-flight-easing: ease-in-out;
     }
 }
 //[BGA] the status bar's allowance (PlaceTowers.getDiscIconsHTML): one disc per disc the turn may use, inline on the text line,
-//a one-disc .nexo-tower box only as tall as its disc. The drafted ones dim (the opponent's view never does)
+//a one-disc .nexo-tower box only as tall as its disc, never offset (a row of icons on a text line). The drafted ones dim (the
+//opponent's view never does)
 .status-discs{ display: inline-flex; vertical-align: middle; white-space: nowrap; }
 .nexo-tower.status-disc{ --cell-size: #{$status-disc-cell-size}; --disc-scale: 1; --disc-thickness: calc(var(--cell-size) * #{$status-disc-thickness-ratio});
+    --disc-box-ratio: #{$disc-face-ratio + math.div($status-disc-thickness-ratio, $disc-width-ratio)};
+    .tower-disc{ translate: none; }
     height: calc(var(--cell-size) * #{$tower-base-ratio + $status-disc-thickness-ratio + $disc-width-ratio * $disc-face-ratio});
     &.used-status-disc{ opacity: $status-disc-used-opacity; }
 }
@@ -607,14 +634,27 @@ html.hide-stack-heights .tower-height-number{ display: none; }
 
 //wooden discs: the "Disc style" preference on Wooden (PrefHandler.applyDiscStyle, a class on <html>, so it reaches every disc: the
 //board, the flying copies in <body>, the reserve stacks, the status bar and the log rows). Each .tower-disc shows its own sprite
-//(--col / --row, set on every disc whatever the style, BoardHandler.setDiscSprite), stretched to its box, so it scales with any
+//(--col / --row, set on every disc whatever the style, BoardHandler.getDiscLook), stretched to its box, so it scales with any
 //size. A stack works as with marble: each disc one thickness above the one under it, its sprite covering that disc's face, so a
 //band of every side shows. The sprite's edge has no line of its own, so without the marble's seams a stack reads as one solid
-//cylinder: the marble's side (::before) is hidden, and its bottom curve (::after) is emptied, fitted to the sprite's and put over
-//it, so it only draws the same seams (--disc-seam-above / -below, $disc-colors) and the bottom disc's shadow. Marble is untouched
+//cylinder: the marble's bottom curve (::after) is emptied, fitted to the sprite's and put over it, so it only draws the same
+//seams (--disc-seam-above / -below, $disc-colors) and the bottom disc's shadow. Marble is untouched (its face is a plain
+//gradient, the same at any angle, so it never turns; only the offsets apply to it).
+//The grain turns (--jitter-rot): the disc's own background stays as it is (the rim, the side band, the baked light), and its
+//::before (the marble's side, unused here) repeats the sprite over it, turned in the face's own plane: squashed back into a
+//circle (scaleY by 1 / --wooden-face-squash, the face's height over its width on screen), turned, squashed again, around the
+//face's centre, so the face's ellipse maps onto itself and only face pixels show inside it. A mask keeps the inside of the face
+//and fades out before the rim. A transform on a pseudo-element: it never reaches the disc's measured box or a flying copy's
+@mixin wooden-disc-sprite-background { background: $wooden-disc-sprite calc(var(--col, 0) * 100% / #{$wooden-disc-sprite-columns - 1}) calc(var(--row, 0) * 100% / #{$wooden-disc-sprite-rows - 1}) / #{$wooden-disc-sprite-columns * 100%} #{$wooden-disc-sprite-rows * 100%} no-repeat; }
 html.nexo-discs-wooden .nexo-tower{
-    .tower-disc{ background: $wooden-disc-sprite calc(var(--col, 0) * 100% / #{$wooden-disc-sprite-columns - 1}) calc(var(--row, 0) * 100% / #{$wooden-disc-sprite-rows - 1}) / #{$wooden-disc-sprite-columns * 100%} #{$wooden-disc-sprite-rows * 100%} no-repeat;
-        &::before{ display: none; }
+    .tower-disc{ @include wooden-disc-sprite-background;
+        --wooden-face-squash: calc(var(--disc-box-ratio) * #{math.div($wooden-disc-sprite-curve-height, 1 - 2 * $wooden-disc-sprite-inset-x)});
+        &::before{ z-index: 0; top: 0px; bottom: 0px; @include wooden-disc-sprite-background;
+            transform-origin: 50% #{($wooden-disc-sprite-face-top + $wooden-disc-sprite-curve-height * 0.5) * 100%};
+            transform: scaleY(var(--wooden-face-squash)) rotate(var(--jitter-rot, 0deg)) scaleY(calc(1 / var(--wooden-face-squash)));
+            $grain-mask: radial-gradient(#{(0.5 - $wooden-disc-sprite-inset-x) * 100%} #{$wooden-disc-sprite-curve-height * 50%} at 50% #{($wooden-disc-sprite-face-top + $wooden-disc-sprite-curve-height * 0.5) * 100%}, #000000 #{$wooden-disc-grain-fade-start * 100%}, transparent #{$wooden-disc-grain-fade-end * 100%});
+            -webkit-mask-image: $grain-mask; mask-image: $grain-mask;
+        }
         &::after{ z-index: 1; left: $wooden-disc-sprite-inset-x * 100%; right: $wooden-disc-sprite-inset-x * 100%; bottom: $wooden-disc-sprite-inset-bottom * 100%; height: $wooden-disc-sprite-curve-height * 100%; background: none; }
     }
     .tower-height-number{ text-shadow: $wooden-disc-number-shadow; }
@@ -920,7 +960,8 @@ body .confirm-popover{ position: fixed; left: 0px; top: 0px; z-index: $confirm-p
     //the reserve (PlayerHandler): the stacks side by side, each a tower box with its own size and disc thickness, its discs
     //bottom first. Every stack shows a faint outline where its bottom disc goes, so an empty one keeps its place
     .reserve-stacks{ display: flex; gap: $reserve-stack-gap; }
-    .nexo-tower.reserve-stack{ --cell-size: #{$reserve-stack-cell-size}; --disc-thickness: calc(var(--cell-size) * #{$reserve-stack-disc-thickness-ratio}); height: calc(var(--cell-size) * #{$reserve-stack-height-ratio});
+    .nexo-tower.reserve-stack{ --cell-size: #{$reserve-stack-cell-size}; --disc-thickness: calc(var(--cell-size) * #{$reserve-stack-disc-thickness-ratio});
+        --disc-box-ratio: #{$disc-face-ratio + math.div($reserve-stack-disc-thickness-ratio, $disc-width-ratio)}; height: calc(var(--cell-size) * #{$reserve-stack-height-ratio});
         &::before{ content: ""; position: absolute; box-sizing: border-box; left: calc((var(--cell-size) - var(--disc-width)) / 2); bottom: var(--tower-base); width: var(--disc-width); height: var(--disc-face-height);
             border: 1px dashed $reserve-slot-color; border-radius: 50%; }
     }

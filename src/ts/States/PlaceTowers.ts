@@ -36,9 +36,6 @@ export class PlaceTowers {
     private clickHistory: NexoSpot[] = []; //the drafted towers in the order last clicked, each once: the last one is active (gold ring, buttons)
     private drafting: boolean = false;
     private confirming: boolean = false; //the turn is on its way to the server
-    //[BGA] the status bar's disc icons' wooden sprites, by color, one per icon slot: the title is rebuilt on every draft change,
-    //and each icon keeps its grain through it (getDiscIconsHTML)
-    private statusDiscSprites: Partial<Record<DiscColor, DiscSprite[]>> = {};
 
     constructor(private game: Game, private bga: Bga<NexoPlayer, NexoGamedatas>) {
     }
@@ -312,12 +309,9 @@ export class PlaceTowers {
     //the text, and an undo brightens the leftmost dimmed one first. HTML for statusBar.setTitle's args, never part of
     //the translated string
     private getDiscIconsHTML(discColor: DiscColor, count: number, usedCount: number): string {
-        const sprites = this.statusDiscSprites[discColor] ??= [];
-        while(sprites.length < count)
-            sprites.push(BoardHandler.getRandomDiscSprite(discColor));
         let discsHTML = '';
         for(let discIndex = 0; discIndex < count; discIndex++)
-            discsHTML += `<span class="nexo-tower status-disc${discIndex >= count - usedCount ? ' used-status-disc' : ''}" data-disc-color="${discColor}"><span class="tower-disc" style="--disc-index: 0; ${BoardHandler.getDiscSpriteStyle(sprites[discIndex])}"></span></span>`;
+            discsHTML += `<span class="nexo-tower status-disc${discIndex >= count - usedCount ? ' used-status-disc' : ''}" data-disc-color="${discColor}"><span class="tower-disc" style="--disc-index: 0; ${BoardHandler.getDiscLookStyle(BoardHandler.getDiscLook(discColor, { kind: 'status', x: discIndex, y: 0, level: 0 }))}"></span></span>`;
         return `<span class="status-discs">${discsHTML}</span>`;
     }
 }

@@ -194,7 +194,7 @@ export class LogMutationObserver{
                 const key = BoardRules.key(x, y);
                 const tower = towers.get(key);
                 const cellClass = 'snapshot-cell' + (tower ? '' : ' empty-snapshot-cell') + (changedKeys.has(key) ? ' changed-snapshot-cell' : '');
-                const towerHTML = tower ? BoardHandler.createTowerDiv(tower.discColor, tower.height, 'snapshot-tower').outerHTML : '';
+                const towerHTML = tower ? BoardHandler.createTowerDiv(tower.discColor, tower.height, { x: x, y: y }, 'snapshot-tower').outerHTML : '';
                 cellsHTML += `<div class="${cellClass}">${towerHTML}</div>`;
             }
         }

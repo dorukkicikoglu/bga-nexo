@@ -40,9 +40,15 @@ interface NexoRulesData {
 
 type DiscColor = 'red' | 'black';
 
-//[BGA] one disc's sprite in img/wooden_discs.webp ("Disc style" Wooden): its column and row, set on the disc as --col / --row
-//(BoardHandler.setDiscSprite)
-type DiscSprite = { col: number; row: number; };
+//[BGA] where a disc sits, which alone decides its look (BoardHandler.getDiscLook): a board spot (board towers, drafted towers,
+//log snapshots: x, y), a player board's reserve stack (x: its index) or a status bar icon (x: its index); level, 0 for the
+//bottom disc. Never an id: the same slot always gives the same disc, after a reload and in a replay too
+type DiscSlot = { kind: 'board' | 'reserve' | 'status'; x: number; y: number; level: number; };
+
+//[BGA] a disc's look, from its slot (BoardHandler.getDiscLook): its wooden sprite in img/wooden_discs.webp ("Disc style" Wooden:
+//column and row) and its hand-piled jitter (x and y offsets from -1 to 1, Game.scss scales them; the wooden grain's rotation in
+//degrees), set on the disc once, when it is made, as --col / --row / --jitter-x / --jitter-y / --jitter-rot
+type DiscLook = { col: number; row: number; jitterX: number; jitterY: number; rotation: number; };
 
 //a spot of the invisible grid: unbounded integers, the first tower of the game at 0 0, y growing downwards
 interface NexoSpot {
