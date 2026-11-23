@@ -70,12 +70,21 @@ export class BoardHandler {
     private towers = new Map<string, NexoTower>();
     private towerElements = new Map<string, HTMLDivElement>();
     private pendingElements = new Map<string, HTMLDivElement>();
+    //[BGA] each drafted tower's wooden sprites, by spot, bottom disc first: renderPending rebuilds the drafted towers on every
+    //draft change, and their discs keep their grain through it
+    private pendingDiscSprites = new Map<string, DiscSprite[]>();
     private draft: DraftView | null = null;
     private draftClickHandlers: DraftClickHandlers | null = null;
     private confirmWasFull: boolean = false; //every disc of the turn was drafted at the last render: the confirm button pulses once on reaching it
     private ringWasFilled: number | null = null; //the confirm ring's filled segments at the last render, null when no confirm button showed
 
     //the undo button's icon: a curved arrow turning back counter-clockwise, drawn with currentColor
+    //[BGA] "Disc style" Wooden (PrefHandler.applyDiscStyle, Game.scss html.nexo-discs-wooden): img/wooden_discs.webp, a grid of
+    //single discs, WOODEN_SPRITE_COLUMNS across and WOODEN_SPRITE_ROWS_PER_COLOR rows per color, from WOODEN_SPRITE_FIRST_ROW
+    //(red rows 0 to 5, black rows 6 to 11). Game.scss holds the sheet's size ($wooden-disc-sprite-columns / -rows): keep in sync
+    private static readonly WOODEN_SPRITE_COLUMNS = 10;
+    private static readonly WOODEN_SPRITE_ROWS_PER_COLOR = 6;
+    private static readonly WOODEN_SPRITE_FIRST_ROW: Record<DiscColor, number> = { red: 0, black: 6 };
     private static readonly UNDO_ICON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12a7 7 0 1 0 2.05-4.95"/><path d="M11 7.05H7.05V3.1"/></svg>';
     //a target ring's dashed outline (legal spots and replaceable towers): Game.scss sizes the SVG to the ring and marches its
     //dashes. pathLength 100 makes the dash pattern a whole number around the ring; the attributes are a fallback for a browser
@@ -291,8 +300,9 @@ export class BoardHandler {
     }
 
     //a tower of height discs in discColor: one .tower-disc per disc, bottom one first, and its height as a number on top. Also
-    //used for log rows and the player boards' reserve, each sized by its own --cell-size
-    public static createTowerDiv(discColor: DiscColor, height: number, extraClass: string = ''): HTMLDivElement {
+    //used for log rows and the player boards' reserve, each sized by its own --cell-size. Disc i takes sprites[i] as its wooden
+    //sprite, a random one of its color when missing (getDiscSpriteStyle)
+    public static createTowerDiv(discColor: DiscColor, height: number, extraClass: string = '', sprites: (DiscSprite | null)[] = []): HTMLDivElement {
         const tower = document.createElement('div');
         tower.className = 'nexo-tower' + (extraClass ? ' ' + extraClass : '');
         tower.setAttribute('data-disc-color', discColor);
@@ -301,9 +311,35 @@ export class BoardHandler {
 
         let discsHTML = '';
         for(let discIndex = 0; discIndex < height; discIndex++)
-            discsHTML += `<div class="tower-disc" style="--disc-index: ${discIndex}"></div>`;
+            discsHTML += `<div class="tower-disc" style="--disc-index: ${discIndex}; ${BoardHandler.getDiscSpriteStyle(sprites[discIndex] ?? BoardHandler.getRandomDiscSprite(discColor))}"></div>`;
         tower.innerHTML = discsHTML + `<div class="tower-height-number">${height}</div>`;
         return tower;
+    }
+
+    //[BGA] "Disc style" Wooden: every disc carries a sprite whatever the style (switching redraws nothing), picked at random when
+    //the disc is made and kept for its whole life: a disc keeps its grain when it moves (the flying copies are clones), when the
+    //drafted towers are rebuilt (pendingDiscSprites), when it flies between a reserve stack and the board (applyPlacement) and when
+    //the stacks are rebuilt (PlayerHandler.setReserve). Not kept across a reload
+    public static getRandomDiscSprite(discColor: DiscColor): DiscSprite {
+        return {
+            col: Math.floor(Math.random() * BoardHandler.WOODEN_SPRITE_COLUMNS),
+            row: BoardHandler.WOODEN_SPRITE_FIRST_ROW[discColor] + Math.floor(Math.random() * BoardHandler.WOODEN_SPRITE_ROWS_PER_COLOR),
+        };
+    }
+
+    //the inline style a disc's sprite takes, for HTML strings (Game.scss reads --col / --row)
+    public static getDiscSpriteStyle(sprite: DiscSprite): string { return `--col: ${sprite.col}; --row: ${sprite.row}`; }
+
+    public static setDiscSprite(disc: HTMLElement, sprite: DiscSprite): void {
+        disc.style.setProperty('--col', sprite.col.toString());
+        disc.style.setProperty('--row', sprite.row.toString());
+    }
+
+    //the sprite a disc was given (setDiscSprite, getDiscSpriteStyle), null if it has none
+    public static getDiscSprite(disc: HTMLElement): DiscSprite | null {
+        const col = parseInt(disc.style.getPropertyValue('--col'));
+        const row = parseInt(disc.style.getPropertyValue('--row'));
+        return (isNaN(col) || isNaN(row)) ? null : { col: col, row: row };
     }
 
     //the spot element now on the page at spot (renderSpots redraws them on every draft change), null if not shown
@@ -317,9 +353,9 @@ export class BoardHandler {
     public getTowers(): NexoTower[] { return Array.from(this.towers.values()); }
     public getTowerMap(): Map<string, NexoTower> { return new Map(this.towers); }
 
-    private addBoardTower(tower: NexoTower): HTMLDivElement {
+    private addBoardTower(tower: NexoTower, sprites: (DiscSprite | null)[] = []): HTMLDivElement {
         const key = BoardRules.key(tower.x, tower.y);
-        const towerElement = BoardHandler.createTowerDiv(this.game.getDiscColor(tower.player_id), tower.height, 'board-tower');
+        const towerElement = BoardHandler.createTowerDiv(this.game.getDiscColor(tower.player_id), tower.height, 'board-tower', sprites);
         BoardHandler.placeOnBoard(towerElement, tower);
         this.towersLayer.appendChild(towerElement);
 
@@ -467,12 +503,22 @@ export class BoardHandler {
         this.pendingElements.forEach(element => element.remove());
         this.pendingElements.clear();
 
+        //each drafted tower keeps its discs' sprites while it stays drafted, one more for each disc it gains; a tower taken back
+        //forgets them
+        const keptSprites = new Map<string, DiscSprite[]>();
         for(const pendingTower of this.draft?.pending ?? []){
-            const pendingElement = BoardHandler.createTowerDiv(this.draft.discColor, pendingTower.height, 'board-tower pending-tower');
+            const key = BoardRules.key(pendingTower.x, pendingTower.y);
+            const sprites = this.pendingDiscSprites.get(key) ?? [];
+            while(sprites.length < pendingTower.height)
+                sprites.push(BoardHandler.getRandomDiscSprite(this.draft.discColor));
+            keptSprites.set(key, sprites);
+
+            const pendingElement = BoardHandler.createTowerDiv(this.draft.discColor, pendingTower.height, 'board-tower pending-tower', sprites);
             BoardHandler.placeOnBoard(pendingElement, pendingTower);
             this.towersLayer.appendChild(pendingElement);
-            this.pendingElements.set(BoardRules.key(pendingTower.x, pendingTower.y), pendingElement);
+            this.pendingElements.set(key, pendingElement);
         }
+        this.pendingDiscSprites = keptSprites;
     }
 
     //on each drafted tower, in a layer over every tower: a badge with its height (the discs it adds) on its top right corner.
@@ -727,6 +773,7 @@ export class BoardHandler {
         this.setDraftClickHandlers(null);
         const draftedElements = new Map(this.pendingElements);
         this.pendingElements.clear();
+        this.pendingDiscSprites.clear();
         this.draft = null;
         this.updateTowerDraftClasses();
         this.renderPendingControls();
@@ -769,7 +816,9 @@ export class BoardHandler {
             const owner = this.game.players[placement.replaced_player_id ?? 0];
             if(owner){
                 const replacedHeight = placement.replaced_height ?? parseInt(replacedElement.getAttribute('data-height'));
-                const placedDiscs = owner.addDiscs(replacedHeight, animate);
+                //each disc lands in the stacks with its own grain: the top one first, like the flights
+                const replacedSprites = Array.from(replacedElement.querySelectorAll<HTMLElement>(':scope > .tower-disc')).map(disc => BoardHandler.getDiscSprite(disc)).reverse();
+                const placedDiscs = owner.addDiscs(replacedHeight, animate, replacedSprites);
                 if(animate){
                     const landingDiscs = Array.from({ length: replacedHeight }, (_, discIndex) => placedDiscs[replacedHeight - 1 - discIndex] ?? null);
                     flights.push(this.game.animateTowerSlideAway(replacedElement, landingDiscs, owner.getReserveRect(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }));
@@ -783,16 +832,17 @@ export class BoardHandler {
         const placeholder = draftedElements.get(key) ?? null;
         draftedElements.delete(key);
 
-        const towerElement = this.addBoardTower({ x: placement.x, y: placement.y, player_id: playerID, height: placement.height });
+        //the new tower's discs leave the player's stacks, bottom disc first: the first disc taken is the bottom one's, and each
+        //keeps its grain on the board. The same flight for every viewer, the player who drafted it included
+        const mover = this.game.players[playerID];
+        const takenDiscs = mover?.takeDiscs(placement.height) ?? [];
+
+        const towerElement = this.addBoardTower({ x: placement.x, y: placement.y, player_id: playerID, height: placement.height }, takenDiscs.map(takenDisc => takenDisc.sprite));
         if(placeholder)
             this.towersLayer.appendChild(placeholder); //in front of the new tower: its upper discs still sit over the discs landed under them
 
-        //the new tower's discs leave the player's stacks, bottom disc first: the first disc taken is the bottom one's. The same
-        //flight for every viewer, the player who drafted it included
-        const mover = this.game.players[playerID];
-        const takenDiscRects = mover?.takeDiscs(placement.height) ?? [];
         if(animate && mover)
-            flights.push(this.game.animateTowerSlide(towerElement, takenDiscRects, mover.getReserveRect(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }, placeholder).finally(() => placeholder?.remove()));
+            flights.push(this.game.animateTowerSlide(towerElement, takenDiscs.map(takenDisc => takenDisc.rect), mover.getReserveRect(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }, placeholder).finally(() => placeholder?.remove()));
         else placeholder?.remove(); //nothing flies: the tower is already whole
         return flights;
     }

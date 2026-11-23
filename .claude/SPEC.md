@@ -24,7 +24,7 @@ Source: official rulebook, English, `misc/Nexo_Rules (EN).pdf` (Marc Rebillet, S
 
 ### Sprite
 
-No image yet: discs, spots, the board and the page background (a white marble surface under a giant black disc's curved edge) are drawn in CSS (placeholder art, see CLAUDE.md > Assets). Every size and color is a variable at the top of `src/scss/Game.scss`, so real art can replace them.
+Discs, spots, the board and the page background (a white marble surface under a giant black disc's curved edge) are drawn in CSS (placeholder art, see CLAUDE.md > Assets). Every size and color is a variable at the top of `src/scss/Game.scss`, so real art can replace them. The one disc sprite so far, `img/wooden_discs.webp`, is the "Disc style" preference's Wooden look (see Preferences and CLAUDE.md > Assets).
 
 ## Setup
 
@@ -72,6 +72,7 @@ None.
 ## Preferences [BGA]
 
 - **Always show stack heights** (pref 100, `show_stack_heights`): Enabled (1, default) / Disabled (2). Disabled hides the height number on top of every tower: on the board, the flying towers and the log rows (a drafted tower's count badge stays). Display only, applied at once (no reload).
+- **Disc style** (pref 101, `disc_style`): Wooden (1, default) / Marble (2, the CSS discs). Wooden draws every disc (the board, the drafted and flying towers, the reserve stacks, the status bar's icons, the log rows) as a wooden disc from `img/wooden_discs.webp`, each one a random sprite of its color, picked when the disc is made and kept while it lives: a disc keeps its grain when the drafted towers redraw, when it flies between a reserve stack and the board, and when the stacks are rebuilt (not across a reload). Stacks keep the marble's thin seams between discs (without them a wooden stack reads as one solid cylinder) and its shadow under the bottom disc; the height number keeps its white with a little more shadow. Display only, applied at once (no reload); back to Marble is exactly the old look.
 
 ## Hidden information
 
@@ -153,4 +154,5 @@ Per player: turns played (10), passes (11), discs placed (12), new towers placed
    - After M1, rings under towers tuned (2026-11-19): the rings under towers (replaceable enemy towers, the gold ring under the active drafted tower, the end-game glow) are a whole spot wide and a little rounder than a disc, centred under the tower, as tuned in the browser; empty targets unchanged. Checklist: `.claude/TESTING.md` > After M1: flat target rings (its occupied items).
    - After M1, flat target rings (2026-11-19): every target ring has a disc's base shape and centre, a little larger than a disc on empty spots and about 15% wider around a replaceable enemy tower (behind it, showing beside and in front of its base), with a thicker dashed line (2.5px on screen, phones included). Disc and grid sizes unchanged. Replaced the same day's first try, rings 1.5 times as tall, which looked rounder than the discs. Checklist: `.claude/TESTING.md` > After M1: flat target rings.
    - After M1, too high to replace (2026-11-19): clicking an enemy tower the discs left this turn can't out-height shakes it and shows "Not enough discs: need N, you have M" in a bubble over it, instead of doing nothing; client only (see Turn sequence, step 1). The same day "discs" became a disc icon in the player's color, and a click on the player's own tower got the same shake and bubble, saying "You cannot add [disc] to your own towers". Checklist: `.claude/TESTING.md` > After M1: too high to replace.
+   - After M1, wooden discs (2026-11-23): a "Disc style" preference (pref 101): Wooden (default) or Marble, a random wooden sprite per disc from `img/wooden_discs.webp` (see Preferences). Client only, plus the preference. Checklist: `.claude/TESTING.md` > After M1: wooden discs.
    - After M1, shorter delay between towers (2026-11-18): a turn's next tower starts leaving halfway through the previous tower's flight instead of after its last disc has landed, then 40% of the way through (20% sooner) and 30% (25% sooner again) the same day; disc stagger and flight speed unchanged (see Turn sequence, step 3). Checklist: `.claude/TESTING.md` > After M1: shorter delay between towers.

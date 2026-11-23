@@ -642,3 +642,18 @@ Deploy `nexo.css` only (no TS or server change); an ongoing table is fine (F5).
 - [ ] Two replaceable enemy towers side by side: their rings meet at their tips, never overlap; an empty ring next to one keeps a gap. A click anywhere on a target's spot (on a replaceable tower, anywhere on the tower) drafts there.
 - [ ] The gold ring under the drafted tower and the end-game glow have the same shape and place as a replaceable tower's ring; empty rings look exactly as before this change.
 - [ ] Discs, towers and the board's spacing look exactly as before.
+
+## After M1: wooden discs
+
+Deploy `gamepreferences.jsonc`, `img/wooden_discs.webp`, `modules/` and `nexo.css`, then Studio's game page > "Reload game options configuration". No schema change; open a new table, or F5 an ongoing one after the reload.
+
+- [ ] BGA's preferences menu (the cog) lists "Disc style", Wooden by default; a new player and a spectator see wooden discs.
+- [ ] With Wooden on, every disc is wood: the board's towers, the drafted towers, the reserve stacks on both player boards, the status bar's disc icons, the "Not enough" / "own towers" bubble's icon and the log rows' snapshots. Red discs red wood, black discs black wood; neighbouring discs show different grains.
+- [ ] Stacks of 2 to 5 discs show each disc on its own: a thin seam between discs (lighter over maroon on red, a dark gap over a grey line on black), the seam lying on the disc's curved edge (no gap or overlap at the sides), on the board, in the stacks and in the log. A 1-disc tower has a soft shadow under it.
+- [ ] The height number is white and readable on both colors, on the board and in the log (and hidden with "Show stack heights" Disabled).
+- [ ] Draft a tower and click it up to 5 discs, then draft a second one: no disc already drafted changes its grain on any click; undo and redraft: the new tower may get new grains.
+- [ ] Watch the opponent's turn: each disc keeps its grain from the reserve stack, through the flight, to the board. A replaced tower's discs land on their owner's stacks with the grains they had on the board.
+- [ ] The status bar's icons keep their grains while drafting (only their dimming changes).
+- [ ] No disc shows a sliver of a neighbouring sprite at its edges, at desktop size, on a phone and in the log's small snapshots.
+- [ ] Switch to Marble: at once, with no reload, every disc is exactly the old marble look (seams, gradients, shadow); back to Wooden, the same discs get their same grains again. F5 keeps your choice; the opponent's screen follows their own preference.
+- [ ] Replay (`replayFrom`) of a game begun before "Disc style" existed: it loads (no `disc_style` error in the console), and switching the preference during the replay applies at once.

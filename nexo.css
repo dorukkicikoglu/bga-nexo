@@ -293,6 +293,24 @@ html.hide-stack-heights .tower-height-number {
   display: none;
 }
 
+html.nexo-discs-wooden .nexo-tower .tower-disc {
+  background: url(img/wooden_discs.webp) calc(var(--col, 0) * 100% / 9) calc(var(--row, 0) * 100% / 11)/1000% 1200% no-repeat;
+}
+html.nexo-discs-wooden .nexo-tower .tower-disc::before {
+  display: none;
+}
+html.nexo-discs-wooden .nexo-tower .tower-disc::after {
+  z-index: 1;
+  left: 0.625%;
+  right: 0.625%;
+  bottom: 1.1111111111%;
+  height: 72.2222222222%;
+  background: none;
+}
+html.nexo-discs-wooden .nexo-tower .tower-height-number {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7), 0 0 3px rgba(0, 0, 0, 0.55);
+}
+
 #nexo-board-container {
   display: flex;
   flex-direction: column;

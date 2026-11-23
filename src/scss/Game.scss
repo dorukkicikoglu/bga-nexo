@@ -14,7 +14,7 @@
  */
 
 //placeholder art: discs and spots are drawn in CSS. Every size and color is a variable below, so real art can replace them
-//(a disc sprite would go in .tower-disc's background, see "towers")
+//(the "Disc style" Wooden preference puts a sprite in .tower-disc's background instead, see "wooden discs")
 $cell-size: min(5.6vw, 72px); //one spot of the grid on desktop, the default; the board sets its own (BoardHandler.fitToViewport)
 $mobile-cell-size: 76px; //BGA lays the game out at 740px or more and scales it down on a phone (gameinfos game_interface_width)
 $log-snapshot-cell-size: 24px; //one spot of a log row's board snapshot (a 5x5 board: 5 of them across), scaled down only in a row too narrow for it
@@ -68,6 +68,22 @@ $disc-colors: (
     "red": (face: #d42a20, face-light: #ff6a5c, side: #a8150e, side-dark: #6a0905, number: #ffffff, seam-above: rgba(255, 150, 135, 0.75), seam-below: #240100),
     "black": (face: #2b2c31, face-light: #63656e, side: #17181b, side-dark: #050506, number: #ffffff, seam-above: #000000, seam-below: rgba(178, 181, 192, 0.8)),
 );
+
+//[BGA] "Disc style" Wooden (pref 101): img/wooden_discs.webp, 3200 x 2160, single discs (no stacks, no numbers, transparent),
+//$wooden-disc-sprite-columns x $wooden-disc-sprite-rows cells of 320 x 180 (2x), each a whole disc edge to edge: its top face
+//(about 0.41 of its width) and side band (about 0.14). Red rows 0 to 5, black rows 6 to 11 (BoardHandler.WOODEN_SPRITE_*: keep in
+//sync). A cell is 16:9 (0.5625); a disc's box is 0.578 on the board and in the log, 0.629 in the reserve stacks and the status
+//bar's icons (thicker discs), so the sprite stretches a little taller there
+$wooden-disc-sprite: url(img/wooden_discs.webp);
+$wooden-disc-sprite-columns: 10;
+$wooden-disc-sprite-rows: 12;
+//where the disc's bottom curve is in a cell (the same in every cell): 2px in from its left and right edges and its bottom, the
+//ellipse 130px of the 180 tall. The seams and the bottom disc's shadow follow it
+$wooden-disc-sprite-inset-x: math.div(2, 320);
+$wooden-disc-sprite-inset-bottom: math.div(2, 180);
+$wooden-disc-sprite-curve-height: math.div(130, 180);
+//the height number on a wooden disc: the marble's shadow plus a soft dark halo, so it reads over the grain
+$wooden-disc-number-shadow: 0 1px 2px rgba(0, 0, 0, 0.7), 0 0 3px rgba(0, 0, 0, 0.55);
 
 $pending-tower-opacity: 0.6; //a tower of the turn being drafted
 $replaced-tower-opacity: 0.18; //an enemy tower under a drafted replacement
@@ -588,6 +604,21 @@ $passed-banner-flight-easing: ease-in-out;
 //the "Always show stack heights" preference off (PrefHandler.applyStackHeights, a class on <html>): no number on any tower, on the
 //board, the flying copies or the log rows (a drafted tower's count badge stays). The numbers stay in the page, only hidden
 html.hide-stack-heights .tower-height-number{ display: none; }
+
+//wooden discs: the "Disc style" preference on Wooden (PrefHandler.applyDiscStyle, a class on <html>, so it reaches every disc: the
+//board, the flying copies in <body>, the reserve stacks, the status bar and the log rows). Each .tower-disc shows its own sprite
+//(--col / --row, set on every disc whatever the style, BoardHandler.setDiscSprite), stretched to its box, so it scales with any
+//size. A stack works as with marble: each disc one thickness above the one under it, its sprite covering that disc's face, so a
+//band of every side shows. The sprite's edge has no line of its own, so without the marble's seams a stack reads as one solid
+//cylinder: the marble's side (::before) is hidden, and its bottom curve (::after) is emptied, fitted to the sprite's and put over
+//it, so it only draws the same seams (--disc-seam-above / -below, $disc-colors) and the bottom disc's shadow. Marble is untouched
+html.nexo-discs-wooden .nexo-tower{
+    .tower-disc{ background: $wooden-disc-sprite calc(var(--col, 0) * 100% / #{$wooden-disc-sprite-columns - 1}) calc(var(--row, 0) * 100% / #{$wooden-disc-sprite-rows - 1}) / #{$wooden-disc-sprite-columns * 100%} #{$wooden-disc-sprite-rows * 100%} no-repeat;
+        &::before{ display: none; }
+        &::after{ z-index: 1; left: $wooden-disc-sprite-inset-x * 100%; right: $wooden-disc-sprite-inset-x * 100%; bottom: $wooden-disc-sprite-inset-bottom * 100%; height: $wooden-disc-sprite-curve-height * 100%; background: none; }
+    }
+    .tower-height-number{ text-shadow: $wooden-disc-number-shadow; }
+}
 //end towers
 
 //board (BoardHandler): --board-size spots across and down (GRID_SIZE + 2). .board-layer holds the spots and towers at their

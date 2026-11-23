@@ -27,6 +27,7 @@ interface NexoGamedatas extends Gamedatas<NexoPlayer> {
 //gamepreferences.jsonc's ids, by name (Game.php $userPrefs)
 interface GamePrefs{
     show_stack_heights: number;
+    disc_style: number;
 }
 
 //material.inc.php's constants, sent once in gamedatas
@@ -38,6 +39,10 @@ interface NexoRulesData {
 }
 
 type DiscColor = 'red' | 'black';
+
+//[BGA] one disc's sprite in img/wooden_discs.webp ("Disc style" Wooden): its column and row, set on the disc as --col / --row
+//(BoardHandler.setDiscSprite)
+type DiscSprite = { col: number; row: number; };
 
 //a spot of the invisible grid: unbounded integers, the first tower of the game at 0 0, y growing downwards
 interface NexoSpot {

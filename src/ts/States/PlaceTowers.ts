@@ -11,6 +11,7 @@
  */
 import { Game } from "../Game";
 import { BoardRules } from "../BoardRules";
+import { BoardHandler } from "../BoardHandler";
 
 /**
  * [BGA] The active player drafts their turn on the client, then confirms it. A click on a highlighted spot (an empty spot next to
@@ -35,6 +36,9 @@ export class PlaceTowers {
     private clickHistory: NexoSpot[] = []; //the drafted towers in the order last clicked, each once: the last one is active (gold ring, buttons)
     private drafting: boolean = false;
     private confirming: boolean = false; //the turn is on its way to the server
+    //[BGA] the status bar's disc icons' wooden sprites, by color, one per icon slot: the title is rebuilt on every draft change,
+    //and each icon keeps its grain through it (getDiscIconsHTML)
+    private statusDiscSprites: Partial<Record<DiscColor, DiscSprite[]>> = {};
 
     constructor(private game: Game, private bga: Bga<NexoPlayer, NexoGamedatas>) {
     }
@@ -308,9 +312,12 @@ export class PlaceTowers {
     //the text, and an undo brightens the leftmost dimmed one first. HTML for statusBar.setTitle's args, never part of
     //the translated string
     private getDiscIconsHTML(discColor: DiscColor, count: number, usedCount: number): string {
+        const sprites = this.statusDiscSprites[discColor] ??= [];
+        while(sprites.length < count)
+            sprites.push(BoardHandler.getRandomDiscSprite(discColor));
         let discsHTML = '';
         for(let discIndex = 0; discIndex < count; discIndex++)
-            discsHTML += `<span class="nexo-tower status-disc${discIndex >= count - usedCount ? ' used-status-disc' : ''}" data-disc-color="${discColor}"><span class="tower-disc" style="--disc-index: 0"></span></span>`;
+            discsHTML += `<span class="nexo-tower status-disc${discIndex >= count - usedCount ? ' used-status-disc' : ''}" data-disc-color="${discColor}"><span class="tower-disc" style="--disc-index: 0; ${BoardHandler.getDiscSpriteStyle(sprites[discIndex])}"></span></span>`;
         return `<span class="status-discs">${discsHTML}</span>`;
     }
 }

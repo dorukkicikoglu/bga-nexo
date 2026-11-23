@@ -97,6 +97,755 @@ class BoardRules {
     }
 }
 
+/**
+ *------
+ * BGA framework: Gregory Isabelli & Emmanuel Colin & BoardGameArena
+ * Nexo implementation : © Doruk Kicikoglu <doruk.kicikoglu@gmail.com>
+ *
+ * This code has been produced on the BGA studio platform for use on http://boardgamearena.com.
+ * See http://en.boardgamearena.com/#!doc/Studio for more information.
+ * -----
+ *
+ * BoardHandler.ts
+ */
+/**
+ * The board, with Yaxha's grid logic (reference/yaxha/src/PyramidHandler.ts): towers and legal spots sit in .board-layer at
+ * their own board coordinates (--x, --y times --cell-size), in a frame anchored to the first tower (0 0) for the whole game, so
+ * a tower's grid position never changes. Only the layer moves: like Yaxha's centerCubesContainer(), its translate centres the
+ * bounding box of the towers plus the legal spots in the board (centerContents), sliding over BOARD_RECENTER_DURATION when
+ * that box changes, at once on load. The legal spots count in the box for everyone but only the player drafting sees them.
+ * Nothing else is drawn: no empty spots, no grid outline. The board is (gridSize + 1 + 2 * --board-edge-padding) spots across
+ * and down (readBoardSize): the largest box is gridSize + 1 (4 columns of towers with a legal spot on each side; with 5, no spot
+ * beyond them is legal), plus Game.scss's $board-edge-padding on each side (smaller on BGA's mobile layout). Its spot size
+ * (--cell-size) comes from the window, never from the box.
+ */
+class BoardHandler {
+    constructor(game, towers) {
+        this.game = game;
+        this.towerMessage = null; //the bubble over a warning tower (showTowerWarning), one at a time
+        this.fitFrame = 0; //the one pending fit (requestFit), 0 when none
+        //what the spot size was last computed from (fitToViewport): the room for the board, in the board's own px, and its span
+        this.fittedRoom = null;
+        //the last time the fit shrank the board for lack of width alone, and the room it had just before: growing straight back into
+        //that room soon after, with no window resize between, is the board answering its own shrink (a scrollbar going away), so it doesn't
+        this.lastShrink = null;
+        this.lastWindowResizeAt = 0;
+        this.contentsCenterX = null; //the middle of the towers' and legal spots' bounding box, in spots, once centred
+        this.contentsCenterY = null;
+        //[BGA] while my draft has towers, the centre is frozen where it was when the first one was drafted (centerContents), until
+        //the turn's towers have landed (recenter) or the draft is emptied (setDraft)
+        this.frozenCenter = null;
+        this.boxLegalSpots = []; //the legal spots the box is centred on, shown or not (getBoxLegalSpots)
+        this.towers = new Map();
+        this.towerElements = new Map();
+        this.pendingElements = new Map();
+        //[BGA] each drafted tower's wooden sprites, by spot, bottom disc first: renderPending rebuilds the drafted towers on every
+        //draft change, and their discs keep their grain through it
+        this.pendingDiscSprites = new Map();
+        this.draft = null;
+        this.draftClickHandlers = null;
+        this.confirmWasFull = false; //every disc of the turn was drafted at the last render: the confirm button pulses once on reaching it
+        this.ringWasFilled = null; //the confirm ring's filled segments at the last render, null when no confirm button showed
+        this.boardElement = document.getElementById('nexo-board');
+        this.boardSize = this.readBoardSize();
+        this.boardElement.style.setProperty('--board-size', this.boardSize.toString());
+        this.boardElement.innerHTML = `
+            <div class="board-layer">
+                <div class="spots-layer"></div>
+                <div class="towers-layer"></div>
+                <div class="draft-controls-layer"></div>
+                <div class="board-message-layer"></div>
+            </div>
+        `;
+        this.layerElement = this.boardElement.querySelector('.board-layer');
+        this.spotsLayer = this.boardElement.querySelector('.spots-layer');
+        this.towersLayer = this.boardElement.querySelector('.towers-layer');
+        this.controlsLayer = this.boardElement.querySelector('.draft-controls-layer');
+        this.messageLayer = this.boardElement.querySelector('.board-message-layer');
+        for (const tower of towers)
+            this.addBoardTower(tower);
+        this.fitToViewport();
+        this.renderSpots();
+        this.centerContents(false); //on load (F5, a replay's start): no slide
+        //BGA's onScreenWidthChange (Game) only follows the width, and the page above the board is still being laid out when
+        //setup measures it (a board measured too low stayed too small): fit again on every window resize and whenever the
+        //layout around the board changes, one fit per frame (requestFit). Never on anything whose size follows the board's (body,
+        //the page's height, the container's height): a fit there would answer its own resize. So: the container's width only
+        //(the columns settling), and everything laid out before the board, whose height moves the board's top (BGA's bars,
+        //the status bar, panels above the game area; observeLayoutAboveBoard)
+        window.addEventListener('resize', () => {
+            this.lastWindowResizeAt = performance.now();
+            this.requestFit();
+        });
+        let observedContainerWidth = -1;
+        const widthObserver = new ResizeObserver(entries => {
+            const width = entries[entries.length - 1].contentRect.width;
+            if (width !== observedContainerWidth) {
+                observedContainerWidth = width;
+                this.requestFit();
+            }
+        });
+        if (this.boardElement.parentElement)
+            widthObserver.observe(this.boardElement.parentElement);
+        this.observeLayoutAboveBoard(new ResizeObserver(() => this.requestFit()));
+        this.layerElement.addEventListener('click', (event) => this.onBoardClick(event));
+    }
+    //fits the board on the next frame, once, however many times it is asked for before then (resize, BGA's onScreenWidthChange,
+    //the layout observers)
+    requestFit() {
+        if (this.fitFrame)
+            return;
+        this.fitFrame = requestAnimationFrame(() => {
+            this.fitFrame = 0;
+            this.fitToViewport();
+        });
+    }
+    //observes every element laid out before the board: the earlier siblings of the board's container and of each of its
+    //ancestors up to body (BGA's top bar, the status bar, anything above the game area). Their size moves the board's top, never
+    //the other way round. One added before the board later (or removed from there) is observed and fits again; anything added
+    //after it (the flying copies, popins and dialogs at the end of body) is ignored
+    observeLayoutAboveBoard(observer) {
+        const ancestors = [];
+        for (let node = this.boardElement.parentElement; node && node !== document.documentElement; node = node.parentElement)
+            ancestors.push(node);
+        for (const ancestor of ancestors)
+            for (let sibling = ancestor.previousElementSibling; sibling; sibling = sibling.previousElementSibling)
+                observer.observe(sibling);
+        const statusBar = document.getElementById('page-title');
+        if (statusBar)
+            observer.observe(statusBar); //already among them in BGA's layout; observing it twice does nothing
+        //a node at or before the board in the page's order: it holds the board, or the board comes after it
+        const isAboveBoard = (node) => !!node && (node.contains(this.boardElement) || !!(node.compareDocumentPosition(this.boardElement) & Node.DOCUMENT_POSITION_FOLLOWING));
+        const childrenObserver = new MutationObserver(mutations => {
+            let moved = false;
+            for (const mutation of mutations) {
+                mutation.addedNodes.forEach(node => {
+                    if (node instanceof Element && isAboveBoard(node) && !node.contains(this.boardElement)) {
+                        observer.observe(node);
+                        moved = true;
+                    }
+                });
+                if (mutation.removedNodes.length > 0 && isAboveBoard(mutation.nextSibling))
+                    moved = true;
+            }
+            if (moved)
+                this.requestFit();
+        });
+        for (const ancestor of ancestors)
+            childrenObserver.observe(ancestor, { childList: true });
+    }
+    /**
+     * [BGA] The board as big as the window allows: square, from #nexo-board-container's padding under the status bar down to
+     * BOARD_VIEWPORT_MARGIN above the window's bottom when the page is at its top (then the gap under it, $below-board-gap-*,
+     * and BGA's settings below), never wider than the game area, nor smaller than MIN_BOARD_CELL_SIZE spots. Sized through --cell-size
+     * on #nexo-board, so the towers, spots and the layer's translate scale with it. Measured on screen, converted with the
+     * container's measured zoom (BGA scales the game area down on a phone). The room is measured from what doesn't follow the
+     * board's size: the container's width (html's scrollbar-gutter keeps a scrollbar from changing it), and the window's height
+     * under the board's top edge. The spot size is only computed again when that room changed by FIT_ROOM_THRESHOLD or more
+     * since the last time (or the board no longer fits across), so a few px of jitter can never make it flip between two sizes;
+     * and right after a shrink, it never grows straight back into the room it shrank from unless the window was resized (a
+     * board whose own size made a scrollbar come and go would otherwise flip between two sizes forever)
+     */
+    fitToViewport() {
+        const container = this.boardElement.parentElement;
+        if (!container)
+            return;
+        //BGA switches to and from its mobile layout as the window changes, and the edge padding with it: centre again at once
+        const boardSize = this.readBoardSize();
+        const boardSizeChanged = boardSize !== this.boardSize;
+        if (boardSizeChanged) {
+            this.boardSize = boardSize;
+            this.boardElement.style.setProperty('--board-size', boardSize.toString());
+        }
+        const containerRect = container.getBoundingClientRect();
+        const containerWidth = parseFloat(getComputedStyle(container).width); //unrounded, unlike offsetWidth
+        if (!(containerWidth > 0))
+            return;
+        const zoom = containerRect.width / containerWidth;
+        const boardTop = this.boardElement.getBoundingClientRect().top + window.scrollY; //on the page, in screen px
+        const borders = this.boardElement.offsetWidth - this.boardElement.clientWidth; //the board's own border, both sides
+        const maxHeight = (window.innerHeight - boardTop - Game.BOARD_VIEWPORT_MARGIN) / zoom - borders;
+        const maxWidth = containerWidth - borders;
+        const currentCellSize = parseFloat(this.boardElement.style.getPropertyValue('--cell-size'));
+        const fitted = this.fittedRoom;
+        const roomUnchanged = !!fitted && fitted.boardSize === this.boardSize && currentCellSize > 0
+            && Math.abs(maxWidth - fitted.width) < Game.FIT_ROOM_THRESHOLD && Math.abs(maxHeight - fitted.height) < Game.FIT_ROOM_THRESHOLD
+            && (currentCellSize * this.boardSize <= maxWidth + 0.5 || currentCellSize <= Game.MIN_BOARD_CELL_SIZE); //a board too wide for the container always shrinks
+        let cellSize = roomUnchanged ? currentCellSize : Math.max(Game.MIN_BOARD_CELL_SIZE, Math.floor(Math.min(maxHeight, maxWidth) / this.boardSize));
+        if (!roomUnchanged) {
+            const now = performance.now();
+            const shrink = this.lastShrink;
+            const growsBack = cellSize > currentCellSize && !!shrink && now - shrink.at < Game.FIT_GROW_BACK_WINDOW && this.lastWindowResizeAt < shrink.at
+                && shrink.roomBefore.boardSize === this.boardSize
+                && Math.abs(maxWidth - shrink.roomBefore.width) < Game.FIT_ROOM_THRESHOLD && Math.abs(maxHeight - shrink.roomBefore.height) < Game.FIT_ROOM_THRESHOLD;
+            if (growsBack)
+                cellSize = currentCellSize; //stays at the smaller size, which fits both rooms
+            else if (cellSize < currentCellSize && fitted && Math.abs(maxHeight - fitted.height) < Game.FIT_ROOM_THRESHOLD)
+                this.lastShrink = { at: now, roomBefore: fitted }; //only a shrink the width alone caused (a scrollbar): never the status bar's height flickering
+            this.fittedRoom = { width: maxWidth, height: maxHeight, boardSize: this.boardSize };
+        }
+        if (this.boardElement.style.getPropertyValue('--cell-size') !== cellSize + 'px')
+            this.boardElement.style.setProperty('--cell-size', cellSize + 'px');
+        //the draft's controls keep a minimum size on screen (Game.scss: $pending-undo-min-size), whatever BGA's scaling
+        const boardZoom = zoom.toFixed(4);
+        if (zoom > 0 && this.boardElement.style.getPropertyValue('--board-zoom') !== boardZoom)
+            this.boardElement.style.setProperty('--board-zoom', boardZoom);
+        //the gap under the board (Game.scss: #nexo-board-container) keeps BGA's content after the game area under the window's
+        //bottom with the page at its top: the board's bottom on the page, screen px, measured at its new size
+        const boardPageBottom = Math.ceil(this.boardElement.getBoundingClientRect().bottom + window.scrollY) + 'px';
+        if (container.style.getPropertyValue('--board-page-bottom') !== boardPageBottom)
+            container.style.setProperty('--board-page-bottom', boardPageBottom);
+        this.measureForBackgroundDisc(cellSize * zoom);
+        if (boardSizeChanged && this.contentsCenterX !== null) {
+            this.contentsCenterX = null; //applies again, without a slide
+            this.contentsCenterY = null;
+            this.centerContents(false);
+        }
+    }
+    //the board's span in spots: the largest box (gridSize + 1) plus Game.scss's --board-edge-padding on each side
+    readBoardSize() {
+        const padding = parseFloat(getComputedStyle(this.boardElement).getPropertyValue('--board-edge-padding'));
+        return this.game.getRules().gridSize + 1 + 2 * (padding >= 0 ? padding : 0.5);
+    }
+    /**
+     * The page background's red disc ($bg-red-disc-* in Game.scss) is outside the board and can't read its --cell-size: hand
+     * it, on body, the board's spot size on screen and where the board and the player boards are, from the window's right edge
+     * (the player boards only when beside the board) and its bottom edge (page at its top; the window's stable height, which a
+     * mobile browser's address bar showing or hiding doesn't change, BackgroundHandler.getStableViewportHeight). Game.scss
+     * decides the disc's size and place from these (and its rise from BackgroundHandler's --floating-buttons-height). Set only
+     * when they change
+     */
+    measureForBackgroundDisc(cellScreenSize) {
+        const viewport = document.documentElement;
+        const boardRect = this.boardElement.getBoundingClientRect();
+        const panelsRect = document.getElementById('player_boards')?.getBoundingClientRect();
+        const panelsBeside = !!panelsRect && panelsRect.width > 0 && panelsRect.left >= boardRect.right;
+        const viewportHeight = this.game.backgroundHandler?.getStableViewportHeight() || viewport.clientHeight;
+        const values = {
+            '--board-cell-screen-size': cellScreenSize,
+            '--board-right-gap': viewport.clientWidth - boardRect.right,
+            '--panels-right-gap': panelsBeside ? viewport.clientWidth - panelsRect.left : 0,
+            '--panels-bottom-gap': panelsBeside ? viewportHeight - (panelsRect.bottom + window.scrollY) : 0,
+            '--board-bottom-gap': viewportHeight - (boardRect.bottom + window.scrollY),
+        };
+        for (const [name, value] of Object.entries(values)) {
+            const px = Math.round(value) + 'px';
+            if (document.body.style.getPropertyValue(name) !== px)
+                document.body.style.setProperty(name, px);
+        }
+    }
+    //a tower of height discs in discColor: one .tower-disc per disc, bottom one first, and its height as a number on top. Also
+    //used for log rows and the player boards' reserve, each sized by its own --cell-size. Disc i takes sprites[i] as its wooden
+    //sprite, a random one of its color when missing (getDiscSpriteStyle)
+    static createTowerDiv(discColor, height, extraClass = '', sprites = []) {
+        const tower = document.createElement('div');
+        tower.className = 'nexo-tower' + (extraClass ? ' ' + extraClass : '');
+        tower.setAttribute('data-disc-color', discColor);
+        tower.setAttribute('data-height', height.toString());
+        tower.style.setProperty('--tower-height', height.toString());
+        let discsHTML = '';
+        for (let discIndex = 0; discIndex < height; discIndex++)
+            discsHTML += `<div class="tower-disc" style="--disc-index: ${discIndex}; ${BoardHandler.getDiscSpriteStyle(sprites[discIndex] ?? BoardHandler.getRandomDiscSprite(discColor))}"></div>`;
+        tower.innerHTML = discsHTML + `<div class="tower-height-number">${height}</div>`;
+        return tower;
+    }
+    //[BGA] "Disc style" Wooden: every disc carries a sprite whatever the style (switching redraws nothing), picked at random when
+    //the disc is made and kept for its whole life: a disc keeps its grain when it moves (the flying copies are clones), when the
+    //drafted towers are rebuilt (pendingDiscSprites), when it flies between a reserve stack and the board (applyPlacement) and when
+    //the stacks are rebuilt (PlayerHandler.setReserve). Not kept across a reload
+    static getRandomDiscSprite(discColor) {
+        return {
+            col: Math.floor(Math.random() * BoardHandler.WOODEN_SPRITE_COLUMNS),
+            row: BoardHandler.WOODEN_SPRITE_FIRST_ROW[discColor] + Math.floor(Math.random() * BoardHandler.WOODEN_SPRITE_ROWS_PER_COLOR),
+        };
+    }
+    //the inline style a disc's sprite takes, for HTML strings (Game.scss reads --col / --row)
+    static getDiscSpriteStyle(sprite) { return `--col: ${sprite.col}; --row: ${sprite.row}`; }
+    static setDiscSprite(disc, sprite) {
+        disc.style.setProperty('--col', sprite.col.toString());
+        disc.style.setProperty('--row', sprite.row.toString());
+    }
+    //the sprite a disc was given (setDiscSprite, getDiscSpriteStyle), null if it has none
+    static getDiscSprite(disc) {
+        const col = parseInt(disc.style.getPropertyValue('--col'));
+        const row = parseInt(disc.style.getPropertyValue('--row'));
+        return (isNaN(col) || isNaN(row)) ? null : { col: col, row: row };
+    }
+    //the spot element now on the page at spot (renderSpots redraws them on every draft change), null if not shown
+    getSpotElement(spot) {
+        return this.spotsLayer.querySelector(`.board-spot[data-x="${spot.x}"][data-y="${spot.y}"]`);
+    }
+    //the confirm button under the active drafted tower, null when none shows (renderPendingControls rebuilds it on every draft change)
+    getConfirmButton() { return this.controlsLayer.querySelector('.pending-confirm-button'); }
+    getTowers() { return Array.from(this.towers.values()); }
+    getTowerMap() { return new Map(this.towers); }
+    addBoardTower(tower, sprites = []) {
+        const key = BoardRules.key(tower.x, tower.y);
+        const towerElement = BoardHandler.createTowerDiv(this.game.getDiscColor(tower.player_id), tower.height, 'board-tower', sprites);
+        BoardHandler.placeOnBoard(towerElement, tower);
+        this.towersLayer.appendChild(towerElement);
+        this.towers.set(key, { x: tower.x, y: tower.y, player_id: tower.player_id, height: tower.height });
+        this.towerElements.set(key, towerElement);
+        return towerElement;
+    }
+    static placeOnBoard(element, spot) {
+        element.style.setProperty('--x', spot.x.toString());
+        element.style.setProperty('--y', spot.y.toString());
+        element.setAttribute('data-x', spot.x.toString());
+        element.setAttribute('data-y', spot.y.toString());
+    }
+    /**
+     * Yaxha's centerCubesContainer(): the layer's translate puts the middle of the bounding box of the towers, the draft's new
+     * towers and the legal spots (shown or not, getBoxLegalSpots) in the middle of the board. Computed from board coordinates rather than measured on the
+     * page (Yaxha measures its cubes), so every viewer, a reload and a replay get the very same layout. Slides when animate
+     * (BOARD_RECENTER_DURATION) and animations are on, else applies at once (on load). Resolves once it has slid.
+     * [BGA] While my draft has towers (frozenCenter), the contents keep the centre they had when it began, even off-centre: they
+     * only move when the draft would leave the board (a line of new towers from the edge of the box, whose own new legal spots
+     * may be built on this turn), by the least that keeps the whole box on it; the box is never wider than the board
+     */
+    async centerContents(animate) {
+        const contents = new Map(this.towers);
+        for (const pendingTower of this.draft?.pending ?? [])
+            contents.set(BoardRules.key(pendingTower.x, pendingTower.y), pendingTower);
+        for (const spot of this.boxLegalSpots)
+            contents.set(BoardRules.key(spot.x, spot.y), spot);
+        const bounds = BoardRules.getBounds(contents);
+        let centerX = bounds ? (bounds.minX + bounds.maxX + 1) / 2 : 0.5; //spot x covers x to x + 1
+        let centerY = bounds ? (bounds.minY + bounds.maxY + 1) / 2 : 0.5;
+        if (this.frozenCenter) {
+            const halfBoard = this.boardSize / 2;
+            if (bounds) {
+                this.frozenCenter.x = Math.min(Math.max(this.frozenCenter.x, bounds.maxX + 1 - halfBoard), bounds.minX + halfBoard);
+                this.frozenCenter.y = Math.min(Math.max(this.frozenCenter.y, bounds.maxY + 1 - halfBoard), bounds.minY + halfBoard);
+            }
+            centerX = this.frozenCenter.x;
+            centerY = this.frozenCenter.y;
+        }
+        if (centerX === this.contentsCenterX && centerY === this.contentsCenterY)
+            return;
+        const slide = animate && this.contentsCenterX !== null && this.game.bga.gameui.bgaAnimationsActive();
+        this.contentsCenterX = centerX;
+        this.contentsCenterY = centerY;
+        //a slide set while another runs carries on from where the layer is, so the layer never jumps
+        this.layerElement.style.transition = slide ? `translate ${Game.BOARD_RECENTER_DURATION}ms ${Game.BOARD_RECENTER_EASING}` : 'none';
+        this.layerElement.style.translate = `calc(${this.boardSize / 2 - centerX} * var(--cell-size)) calc(${this.boardSize / 2 - centerY} * var(--cell-size))`;
+        //the same offsets, in spots, for what must stay inside the board (Game.scss: .pending-actions)
+        this.layerElement.style.setProperty('--layer-offset-x', (this.boardSize / 2 - centerX).toString());
+        this.layerElement.style.setProperty('--layer-offset-y', (this.boardSize / 2 - centerY).toString());
+        if (slide)
+            await this.game.bga.gameui.wait(Game.BOARD_RECENTER_DURATION);
+    }
+    //after a turn (notif_towersPlaced, once the towers have landed, so my own confirmed towers land on the frozen layout): the
+    //centre is free again, the spots for the new board, then the layer slides to centre the new bounding box
+    async recenter() {
+        this.frozenCenter = null;
+        this.renderSpots();
+        await this.centerContents(true);
+    }
+    //the legal spots the box is centred on (centerContents), for every viewer: the draft's while I draft, otherwise the empty
+    //spots where the active player could put a new tower, from the towers on the board alone (so the same for every viewer and
+    //the same as the draft's when a turn starts: the board doesn't slide when the turn passes), none once the game is over.
+    //Only the drafting player sees them (renderSpots)
+    getBoxLegalSpots() {
+        if (this.draft)
+            return this.draft.legalNewSpots;
+        if (this.game.isGameOver())
+            return [];
+        return this.game.boardRules.getLegalNewSpots(this.towers);
+    }
+    //the spots only the player drafting their turn sees (nobody else, spectators and replays included, so nothing looks
+    //clickable to them): the legal spots (an ellipse ring where the tower's bottom disc would go, in their own disc color),
+    //the replaceable enemy towers and the gold ring under the drafted tower clicked last. Empty spots and the grid's outline are never drawn
+    renderSpots() {
+        this.spotsLayer.innerHTML = '';
+        //every ring's dashes march on one clock (Game.scss: spot-ring-march): rebuilt spots carry on instead of starting over
+        this.spotsLayer.style.setProperty('--spot-ring-march-delay', `-${Math.round(performance.now())}ms`);
+        this.boxLegalSpots = this.getBoxLegalSpots();
+        if (this.draft && !this.game.isReplay()) {
+            const legalKeys = new Set(this.draft.legalNewSpots.map(spot => BoardRules.key(spot.x, spot.y)));
+            const replaceableKeys = new Set(this.draft.replaceableTowers.map(tower => BoardRules.key(tower.x, tower.y)));
+            const selectedSpot = this.draft.selectedSpot;
+            const selectedKey = selectedSpot ? BoardRules.key(selectedSpot.x, selectedSpot.y) : null;
+            const shownSpots = new Map();
+            for (const spot of [...this.draft.legalNewSpots, ...this.draft.replaceableTowers, ...(selectedSpot ? [selectedSpot] : [])])
+                shownSpots.set(BoardRules.key(spot.x, spot.y), { x: spot.x, y: spot.y });
+            shownSpots.forEach((shownSpot, key) => {
+                const spot = document.createElement('div');
+                spot.className = 'board-spot';
+                BoardHandler.placeOnBoard(spot, shownSpot);
+                if (legalKeys.has(key))
+                    spot.classList.add('legal-spot', 'clickable-spot');
+                if (replaceableKeys.has(key))
+                    spot.classList.add('replaceable-spot', 'clickable-spot');
+                if (key === selectedKey)
+                    spot.classList.add('selected-spot');
+                if (legalKeys.has(key) || replaceableKeys.has(key))
+                    spot.innerHTML = BoardHandler.SPOT_RING_SVG; //the dashed outline (the fill is the spot's ::before)
+                this.spotsLayer.appendChild(spot);
+            });
+        }
+        if (this.draft)
+            this.boardElement.setAttribute('data-legal-spot-color', this.draft.discColor); //the drafting player's own disc color
+        else
+            this.boardElement.removeAttribute('data-legal-spot-color');
+    }
+    //the turn being drafted (PlaceTowers), or null once it is over: its towers shown semi-transparent on their spots (a replaced
+    //enemy tower fades under its replacement) with their count badges and undo buttons, legal spots and replaceable towers highlighted
+    setDraft(draft) {
+        this.draft = draft;
+        //[BGA] the first drafted tower freezes the centre where it is (centerContents has not seen it yet); an empty draft frees
+        //it, which moves nothing: the box is the same as when the turn began, unless the draft had to shift it at the board's edge
+        if ((draft?.pending.length ?? 0) === 0)
+            this.frozenCenter = null;
+        else if (!this.frozenCenter && this.contentsCenterX !== null)
+            this.frozenCenter = { x: this.contentsCenterX, y: this.contentsCenterY };
+        this.renderPending();
+        this.renderPendingControls();
+        this.updateTowerDraftClasses();
+        this.renderSpots();
+        this.centerContents(true); //frozen while drafting (frozenCenter): moves only to keep the draft on the board
+    }
+    setDraftClickHandlers(handlers) {
+        this.draftClickHandlers = handlers;
+    }
+    renderPending() {
+        this.pendingElements.forEach(element => element.remove());
+        this.pendingElements.clear();
+        //each drafted tower keeps its discs' sprites while it stays drafted, one more for each disc it gains; a tower taken back
+        //forgets them
+        const keptSprites = new Map();
+        for (const pendingTower of this.draft?.pending ?? []) {
+            const key = BoardRules.key(pendingTower.x, pendingTower.y);
+            const sprites = this.pendingDiscSprites.get(key) ?? [];
+            while (sprites.length < pendingTower.height)
+                sprites.push(BoardHandler.getRandomDiscSprite(this.draft.discColor));
+            keptSprites.set(key, sprites);
+            const pendingElement = BoardHandler.createTowerDiv(this.draft.discColor, pendingTower.height, 'board-tower pending-tower', sprites);
+            BoardHandler.placeOnBoard(pendingElement, pendingTower);
+            this.towersLayer.appendChild(pendingElement);
+            this.pendingElements.set(key, pendingElement);
+        }
+        this.pendingDiscSprites = keptSprites;
+    }
+    //on each drafted tower, in a layer over every tower: a badge with its height (the discs it adds) on its top right corner.
+    //Under the active tower only, round buttons side by side: undo (takes it back) and confirm (sends the whole turn).
+    //Game.scss keeps them inside the board (nudged sideways, or above the tower on the bottom row). Their clicks never reach
+    //the tower or spot underneath. While the turn is on its way to the server, both are disabled. The confirm button wears a
+    //ring of one segment per disc the turn may use, filled for each drafted disc (createConfirmRing): light green while discs
+    //are left (still a live button: a turn may stop early), solid green once every disc is drafted, with one pulse when it
+    //gets there (not on a render that was already full, nor with animations off or reduced motion)
+    renderPendingControls() {
+        this.controlsLayer.innerHTML = '';
+        const draft = this.draft;
+        const full = !!draft && draft.discsThisTurn > 0 && draft.discsUsed >= draft.discsThisTurn;
+        const animate = this.game.bga.gameui.bgaAnimationsActive() && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const pulse = full && !this.confirmWasFull && animate;
+        this.confirmWasFull = full;
+        const ringWasFilled = this.ringWasFilled;
+        this.ringWasFilled = null; //set again below if the confirm button shows
+        if (!draft)
+            return;
+        const activeKey = draft.selectedSpot ? BoardRules.key(draft.selectedSpot.x, draft.selectedSpot.y) : null;
+        for (const pendingTower of draft.pending) {
+            const spot = { x: pendingTower.x, y: pendingTower.y };
+            const controls = document.createElement('div');
+            controls.className = 'pending-controls';
+            BoardHandler.placeOnBoard(controls, spot);
+            const badge = document.createElement('div');
+            badge.className = 'pending-count-badge';
+            badge.textContent = pendingTower.height.toString();
+            controls.appendChild(badge);
+            if (BoardRules.key(spot.x, spot.y) === activeKey) {
+                const actions = document.createElement('div');
+                actions.className = 'pending-actions';
+                actions.style.setProperty('--pending-actions-count', '2');
+                const confirmButton = this.createPendingButton('pending-confirm-button', _('Confirm'), BoardHandler.CONFIRM_ICON_SVG, draft.confirming, () => this.draftClickHandlers?.confirmClicked());
+                confirmButton.setAttribute('data-full', full.toString());
+                const ringFilled = Math.min(draft.discsUsed, draft.discsThisTurn);
+                this.createConfirmRing(confirmButton, draft.discsThisTurn, ringFilled, animate ? ringWasFilled : ringFilled);
+                this.ringWasFilled = ringFilled;
+                if (pulse) {
+                    confirmButton.classList.add('confirm-full-pulse');
+                    confirmButton.addEventListener('animationend', (event) => {
+                        if (event.target === confirmButton)
+                            confirmButton.classList.remove('confirm-full-pulse');
+                    });
+                }
+                actions.append(this.createPendingButton('pending-undo-button', _('Take this tower back'), BoardHandler.UNDO_ICON_SVG, draft.confirming, () => this.draftClickHandlers?.undoClicked(spot)), confirmButton);
+                controls.appendChild(actions);
+            }
+            this.controlsLayer.appendChild(controls);
+        }
+    }
+    /**
+     * The confirm button's ring: one .confirm-ring-segment per disc the turn may use, the first `filled` green (Game.scss draws
+     * and colors them). The board redraws its controls on every draft change, so a CSS transition would never run: the
+     * segments that changed since the last render (`wasFilled`) get a one-shot class instead, removed once it has played.
+     * The ring follows the turn's total, wherever the buttons are, so moving them to another tower changes nothing: a drafted
+     * disc fills its segment (ring-segment-fill), an undo empties its own (ring-segment-empty). When the button first shows
+     * (`wasFilled` null), its filled segments fill one after another, CONFIRM_RING_STAGGER apart. `wasFilled` equal to
+     * `filled`: nothing plays (animations off, reduced motion)
+     */
+    createConfirmRing(confirmButton, segments, filled, wasFilled) {
+        confirmButton.style.setProperty('--ring-segments', segments.toString());
+        for (let segmentIndex = 0; segmentIndex < segments; segmentIndex++) {
+            const segment = document.createElement('div');
+            segment.className = 'confirm-ring-segment';
+            segment.style.setProperty('--segment-index', segmentIndex.toString());
+            segment.classList.toggle('filled', segmentIndex < filled);
+            let changeClass = null;
+            if (wasFilled === null && segmentIndex < filled) {
+                changeClass = 'ring-segment-fill';
+                segment.style.setProperty('--segment-delay', `${segmentIndex * Game.CONFIRM_RING_STAGGER}ms`);
+            }
+            else if (wasFilled !== null && segmentIndex >= wasFilled && segmentIndex < filled)
+                changeClass = 'ring-segment-fill';
+            else if (wasFilled !== null && segmentIndex >= filled && segmentIndex < wasFilled)
+                changeClass = 'ring-segment-empty';
+            if (changeClass) {
+                segment.classList.add(changeClass);
+                segment.addEventListener('animationend', (event) => {
+                    if (event.target === segment && !event.pseudoElement) //its own pop, not its ::before's color fade (same length)
+                        segment.classList.remove(changeClass);
+                });
+            }
+            confirmButton.appendChild(segment);
+        }
+    }
+    createPendingButton(className, label, iconSVG, disabled, onClick) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'pending-button ' + className;
+        button.title = label;
+        button.setAttribute('aria-label', label);
+        button.innerHTML = iconSVG;
+        button.disabled = disabled;
+        button.addEventListener('click', (event) => {
+            event.stopPropagation(); //not a click on the drafted tower under it, which would add a disc
+            if (!button.disabled)
+                onClick();
+        });
+        return button;
+    }
+    //an enemy tower under a drafted replacement fades (being-replaced)
+    updateTowerDraftClasses() {
+        const replacedKeys = new Set((this.draft?.pending ?? []).filter(tower => tower.kind === 'replace').map(tower => BoardRules.key(tower.x, tower.y)));
+        //clickable only for the player drafting, as the rings are (never in a replay, nor while the turn is on its way)
+        const showWarnings = !!this.draft && !this.draft.confirming && !this.game.isReplay();
+        const warningKeys = new Set(showWarnings ? this.draft.warningTowers.map(tower => BoardRules.key(tower.x, tower.y)) : []);
+        this.towerElements.forEach((element, key) => {
+            element.classList.toggle('being-replaced', replacedKeys.has(key));
+            element.classList.toggle('warning-tower', warningKeys.has(key));
+        });
+        if (!this.draft)
+            this.clearTowerMessage();
+    }
+    /**
+     * [BGA] A board tower the player clicked but can't draft on (PlaceTowers.getTowerWarningHTML: their own, or an enemy tower too
+     * high for the discs left), every case alike: it shakes (shakeTower) and a bubble over it says why (showTowerMessage), one
+     * bubble at a time, a new one replacing it. Client only: nothing changes on the board
+     */
+    showTowerWarning(spot, messageHTML) {
+        const towerElement = this.towerElements.get(BoardRules.key(spot.x, spot.y));
+        if (!towerElement)
+            return;
+        this.showTowerMessage(spot, towerElement, messageHTML); //measured before the shake moves it
+        this.shakeTower(towerElement);
+    }
+    //a short shake (one-shot .shaking-tower, the translate property, so it never fights a transform), restarted by a click
+    //mid-shake; none with reduced motion or animations off
+    shakeTower(towerElement) {
+        if (!this.game.bga.gameui.bgaAnimationsActive() || window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+            return;
+        towerElement.classList.remove('shaking-tower');
+        void towerElement.offsetWidth; //restarts it when clicked again mid-shake
+        towerElement.classList.add('shaking-tower');
+        towerElement.addEventListener('animationend', function onEnd(event) {
+            if (event.target !== towerElement)
+                return;
+            towerElement.classList.remove('shaking-tower');
+            towerElement.removeEventListener('animationend', onEnd);
+        });
+    }
+    //a speech bubble just over the tower's top face, its arrow pointing down at it, in its own layer over everything on the board
+    //(the board clips it, so it never leaves the board). Nudged sideways to stay TOWER_MESSAGE_EDGE_MARGIN inside the board's
+    //edges (the arrow keeps pointing at the tower), under the tower instead when there is no room above. Fades in, stays
+    //TOWER_MESSAGE_HOLD, fades out and leaves the page; a new one replaces it. No clicks. messageHTML: a translated sentence
+    //(from _(), with our own disc icon and numbers in it)
+    showTowerMessage(spot, towerElement, messageHTML) {
+        this.clearTowerMessage();
+        const message = document.createElement('div');
+        message.className = 'tower-message';
+        message.setAttribute('role', 'status');
+        message.style.setProperty('--tower-message-fade-in', `${Game.TOWER_MESSAGE_FADE_IN}ms`);
+        message.style.setProperty('--tower-message-fade-out', `${Game.TOWER_MESSAGE_FADE_OUT}ms`);
+        const textElement = document.createElement('span');
+        textElement.className = 'tower-message-text';
+        textElement.innerHTML = messageHTML;
+        const arrow = document.createElement('span');
+        arrow.className = 'tower-message-arrow';
+        message.append(textElement, arrow);
+        //anchored in the layer's own px: across, the spot's middle; up and down, the tower's top face (or bottom, below it)
+        const zoom = parseFloat(this.boardElement.style.getPropertyValue('--board-zoom')) || 1;
+        const cellSize = parseFloat(this.boardElement.style.getPropertyValue('--cell-size')) || 0;
+        const layerRect = this.layerElement.getBoundingClientRect();
+        const discs = towerElement.querySelectorAll(':scope > .tower-disc');
+        const topRect = discs[discs.length - 1]?.getBoundingClientRect() ?? towerElement.getBoundingClientRect();
+        const bottomRect = discs[0]?.getBoundingClientRect() ?? towerElement.getBoundingClientRect();
+        message.style.setProperty('--message-x', `${(spot.x + 0.5) * cellSize}px`);
+        message.style.setProperty('--message-above-y', `${(topRect.top - layerRect.top) / zoom}px`);
+        message.style.setProperty('--message-below-y', `${(bottomRect.bottom - layerRect.top) / zoom}px`);
+        message.setAttribute('data-placement', 'above');
+        this.messageLayer.appendChild(message);
+        //kept inside the board: measured where it landed, in screen px, converted back with the board's zoom
+        const boardRect = this.boardElement.getBoundingClientRect();
+        const margin = Game.TOWER_MESSAGE_EDGE_MARGIN;
+        if (message.getBoundingClientRect().top < boardRect.top + margin)
+            message.setAttribute('data-placement', 'below');
+        const messageRect = message.getBoundingClientRect();
+        let shift = 0;
+        if (messageRect.left < boardRect.left + margin)
+            shift = boardRect.left + margin - messageRect.left;
+        else if (messageRect.right > boardRect.right - margin)
+            shift = boardRect.right - margin - messageRect.right;
+        message.style.setProperty('--message-shift', `${shift / zoom}px`);
+        const timers = [
+            window.setTimeout(() => message.classList.add('leaving-tower-message'), Game.TOWER_MESSAGE_FADE_IN + Game.TOWER_MESSAGE_HOLD),
+            window.setTimeout(() => this.clearTowerMessage(message), Game.TOWER_MESSAGE_FADE_IN + Game.TOWER_MESSAGE_HOLD + Game.TOWER_MESSAGE_FADE_OUT),
+        ];
+        this.towerMessage = { element: message, timers: timers };
+    }
+    //removes the bubble at once (only `message` when given, so an old timer never removes a newer one)
+    clearTowerMessage(message = null) {
+        if (!this.towerMessage || (message && this.towerMessage.element !== message))
+            return;
+        this.towerMessage.timers.forEach(timer => window.clearTimeout(timer));
+        this.towerMessage.element.remove();
+        this.towerMessage = null;
+    }
+    //a click on a highlighted spot (empty or an enemy tower) or on a tower of the draft: PlaceTowers drafts or cycles its height
+    onBoardClick(event) {
+        if (!this.draftClickHandlers)
+            return;
+        const target = event.target;
+        if (target.closest('.pending-actions'))
+            return; //a disabled button's click, which no listener of its own receives: never a click on the tower under it
+        const warningTower = target.closest('.warning-tower');
+        if (warningTower) {
+            this.draftClickHandlers.warningTowerClicked({ x: parseInt(warningTower.getAttribute('data-x')), y: parseInt(warningTower.getAttribute('data-y')) });
+            return;
+        }
+        const clicked = (target.closest('.pending-tower') ?? target.closest('.board-spot.clickable-spot'));
+        if (!clicked)
+            return;
+        this.draftClickHandlers.spotClicked({ x: parseInt(clicked.getAttribute('data-x')), y: parseInt(clicked.getAttribute('data-y')) });
+    }
+    /**
+     * A confirmed turn, played one spot at a time in the order the turn was drafted (the payload's order): on each spot, the
+     * replaced enemy tower (if any) flies back onto its owner's reserve stacks on their player board, top disc first, while
+     * the new tower's discs fly from the top of the player's stacks onto it, bottom disc first (discs TOWER_DISC_STAGGER
+     * apart); the next spot starts TOWER_SPOT_DELAY_SHARE (0.3) of the way through this one's flight. Every viewer sees the same flights, the player who drafted
+     * the turn included: their drafted towers only stay as placeholders until their spot's turn, then fly in from their
+     * stacks like anyone's. With animations off nothing flies and nothing is awaited: every spot applies at once, stacks
+     * included. Resolves once every tower has landed.
+     */
+    async applyPlacements(playerID, placements) {
+        //the turn is over: no more clicks while it animates (the next PlaceTowers sets its handlers again), no more badges or
+        //undo buttons
+        this.setDraftClickHandlers(null);
+        const draftedElements = new Map(this.pendingElements);
+        this.pendingElements.clear();
+        this.pendingDiscSprites.clear();
+        this.draft = null;
+        this.updateTowerDraftClasses();
+        this.renderPendingControls();
+        draftedElements.forEach((draftedElement, key) => {
+            draftedElement.classList.add('confirmed-tower'); //no more hover or click while it waits for its spot's turn
+            this.towerElements.get(key)?.classList.add('being-replaced'); //the enemy tower it replaces stays faded until then
+        });
+        //each spot's flights start TOWER_SPOT_DELAY_SHARE of the previous spot's flight time after it (or once it has landed,
+        //if that comes first); the turn ends once every disc has landed
+        const animate = this.game.bga.gameui.bgaAnimationsActive();
+        const allFlights = [];
+        for (const placement of placements) {
+            const flights = this.applyPlacement(playerID, placement, draftedElements, animate);
+            if (flights.length === 0)
+                continue;
+            allFlights.push(...flights);
+            const spotDiscCount = Math.max(placement.height, placement.replaced_height ?? 0);
+            const spotFlightMs = Game.TOWER_SLIDE_DURATION + (spotDiscCount - 1) * Game.TOWER_DISC_STAGGER;
+            await Promise.race([Promise.all(flights), this.game.bga.gameui.wait(spotFlightMs * Game.TOWER_SPOT_DELAY_SHARE)]);
+        }
+        if (allFlights.length > 0)
+            await Promise.all(allFlights);
+        draftedElements.forEach(element => element.remove()); //never expected: the server keeps every drafted tower
+        this.renderSpots();
+    }
+    //one spot of a confirmed turn: swaps its towers on the board, moves their discs between the player boards' reserve stacks
+    //(with animations off too, so the stacks match the turn) and returns the flights to await (none with animations off)
+    applyPlacement(playerID, placement, draftedElements, animate) {
+        const key = BoardRules.key(placement.x, placement.y);
+        const flights = [];
+        //the replaced tower's discs go back onto its owner's stacks, top disc first: the first disc placed is the top one's
+        const replacedElement = this.towerElements.get(key);
+        if (replacedElement) {
+            this.towerElements.delete(key);
+            const owner = this.game.players[placement.replaced_player_id ?? 0];
+            if (owner) {
+                const replacedHeight = placement.replaced_height ?? parseInt(replacedElement.getAttribute('data-height'));
+                //each disc lands in the stacks with its own grain: the top one first, like the flights
+                const replacedSprites = Array.from(replacedElement.querySelectorAll(':scope > .tower-disc')).map(disc => BoardHandler.getDiscSprite(disc)).reverse();
+                const placedDiscs = owner.addDiscs(replacedHeight, animate, replacedSprites);
+                if (animate) {
+                    const landingDiscs = Array.from({ length: replacedHeight }, (_, discIndex) => placedDiscs[replacedHeight - 1 - discIndex] ?? null);
+                    flights.push(this.game.animateTowerSlideAway(replacedElement, landingDiscs, owner.getReserveRect(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }));
+                }
+            }
+            replacedElement.remove();
+        }
+        //a tower I drafted waited here as a placeholder until its spot's turn: it stays while its discs fly in, each of its discs
+        //hiding as the real one lands on it, and goes once the top one has landed
+        const placeholder = draftedElements.get(key) ?? null;
+        draftedElements.delete(key);
+        //the new tower's discs leave the player's stacks, bottom disc first: the first disc taken is the bottom one's, and each
+        //keeps its grain on the board. The same flight for every viewer, the player who drafted it included
+        const mover = this.game.players[playerID];
+        const takenDiscs = mover?.takeDiscs(placement.height) ?? [];
+        const towerElement = this.addBoardTower({ x: placement.x, y: placement.y, player_id: playerID, height: placement.height }, takenDiscs.map(takenDisc => takenDisc.sprite));
+        if (placeholder)
+            this.towersLayer.appendChild(placeholder); //in front of the new tower: its upper discs still sit over the discs landed under them
+        if (animate && mover)
+            flights.push(this.game.animateTowerSlide(towerElement, takenDiscs.map(takenDisc => takenDisc.rect), mover.getReserveRect(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }, placeholder).finally(() => placeholder?.remove()));
+        else
+            placeholder?.remove(); //nothing flies: the tower is already whole
+        return flights;
+    }
+    //end of the game: each player's largest group(s) glow in their color, every other tower dims
+    highlightLargestGroups(groups) {
+        this.boardElement.classList.add('showing-largest-groups');
+        for (const playerID in groups) {
+            for (const group of groups[playerID]) {
+                for (const spot of group)
+                    this.towerElements.get(BoardRules.key(spot.x, spot.y))?.classList.add('largest-group-tower');
+            }
+        }
+    }
+}
+//the undo button's icon: a curved arrow turning back counter-clockwise, drawn with currentColor
+//[BGA] "Disc style" Wooden (PrefHandler.applyDiscStyle, Game.scss html.nexo-discs-wooden): img/wooden_discs.webp, a grid of
+//single discs, WOODEN_SPRITE_COLUMNS across and WOODEN_SPRITE_ROWS_PER_COLOR rows per color, from WOODEN_SPRITE_FIRST_ROW
+//(red rows 0 to 5, black rows 6 to 11). Game.scss holds the sheet's size ($wooden-disc-sprite-columns / -rows): keep in sync
+BoardHandler.WOODEN_SPRITE_COLUMNS = 10;
+BoardHandler.WOODEN_SPRITE_ROWS_PER_COLOR = 6;
+BoardHandler.WOODEN_SPRITE_FIRST_ROW = { red: 0, black: 6 };
+BoardHandler.UNDO_ICON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12a7 7 0 1 0 2.05-4.95"/><path d="M11 7.05H7.05V3.1"/></svg>';
+//a target ring's dashed outline (legal spots and replaceable towers): Game.scss sizes the SVG to the ring and marches its
+//dashes. pathLength 100 makes the dash pattern a whole number around the ring; the attributes are a fallback for a browser
+//without CSS ellipse geometry (the stroke then centred on the box's edge)
+BoardHandler.SPOT_RING_SVG = '<svg class="spot-ring" aria-hidden="true" focusable="false"><ellipse cx="50%" cy="50%" rx="50%" ry="50%" pathLength="100"/></svg>';
+//the confirm button's icon: a tick
+BoardHandler.CONFIRM_ICON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+
 class PlaceTowers {
     constructor(game, bga) {
         this.game = game;
@@ -106,6 +855,9 @@ class PlaceTowers {
         this.clickHistory = []; //the drafted towers in the order last clicked, each once: the last one is active (gold ring, buttons)
         this.drafting = false;
         this.confirming = false; //the turn is on its way to the server
+        //[BGA] the status bar's disc icons' wooden sprites, by color, one per icon slot: the title is rebuilt on every draft change,
+        //and each icon keeps its grain through it (getDiscIconsHTML)
+        this.statusDiscSprites = {};
     }
     /**
      * This method is called each time we are entering the game state. You can use this method to perform some user interface changes at this moment.
@@ -341,9 +1093,13 @@ class PlaceTowers {
     //the text, and an undo brightens the leftmost dimmed one first. HTML for statusBar.setTitle's args, never part of
     //the translated string
     getDiscIconsHTML(discColor, count, usedCount) {
+        var _a;
+        const sprites = (_a = this.statusDiscSprites)[discColor] ?? (_a[discColor] = []);
+        while (sprites.length < count)
+            sprites.push(BoardHandler.getRandomDiscSprite(discColor));
         let discsHTML = '';
         for (let discIndex = 0; discIndex < count; discIndex++)
-            discsHTML += `<span class="nexo-tower status-disc${discIndex >= count - usedCount ? ' used-status-disc' : ''}" data-disc-color="${discColor}"><span class="tower-disc" style="--disc-index: 0"></span></span>`;
+            discsHTML += `<span class="nexo-tower status-disc${discIndex >= count - usedCount ? ' used-status-disc' : ''}" data-disc-color="${discColor}"><span class="tower-disc" style="--disc-index: 0; ${BoardHandler.getDiscSpriteStyle(sprites[discIndex])}"></span></span>`;
         return `<span class="status-discs">${discsHTML}</span>`;
     }
 }
@@ -431,45 +1187,49 @@ class PlayerHandler {
      * exactly this many discs, filled left to right, they are rebuilt from it, so they never drift from the real count.
      * After a turn's flights (takeDiscs, addDiscs) they normally match already. Discs leave from the top of the rightmost
      * stack that has any and come back onto the top of the leftmost stack with room, so a reserve of n is always the first n
-     * slots, stack by stack
+     * slots, stack by stack. A rebuild keeps the discs' wooden sprites in slot order (BoardHandler.getDiscSprite)
      */
     setReserve(reserve) {
         this.reserve = Math.max(0, reserve);
-        if (!this.reserveStacks.every((stack, stackIndex) => PlayerHandler.getStackDiscs(stack).length === this.getStackHeight(stackIndex)))
+        if (!this.reserveStacks.every((stack, stackIndex) => PlayerHandler.getStackDiscs(stack).length === this.getStackHeight(stackIndex))) {
+            const sprites = this.reserveStacks.flatMap(stack => PlayerHandler.getStackDiscs(stack).map(disc => BoardHandler.getDiscSprite(disc)));
             this.reserveStacks.forEach((stack, stackIndex) => {
                 PlayerHandler.getStackDiscs(stack).forEach(disc => disc.remove());
                 for (let level = 0; level < this.getStackHeight(stackIndex); level++)
-                    PlayerHandler.addStackDisc(stack);
+                    this.addStackDisc(stack, sprites.shift() ?? null);
             });
+        }
         this.game.tooltipHandler?.updateReserveTooltip(this.playerID, this.reserve);
     }
     //a turn's tower takes count discs, one at a time, each from the top of the rightmost stack that has any. Returns where each
     //was on screen, in the order taken (Game.animateTowerSlide starts the tower's discs there, bottom disc first), measured
-    //just before it goes; fewer if the stacks run out (setReserve sets them right after the turn)
+    //just before it goes, and its wooden sprite (the tower's disc keeps it); fewer if the stacks run out (setReserve sets them
+    //right after the turn)
     takeDiscs(count) {
-        const takenRects = [];
+        const takenDiscs = [];
         for (let taken = 0; taken < count; taken++) {
             const stack = [...this.reserveStacks].reverse().find(stack => PlayerHandler.getStackDiscs(stack).length > 0);
             if (!stack)
                 break;
             const disc = PlayerHandler.getStackDiscs(stack).pop();
-            takenRects.push(disc.getBoundingClientRect());
+            takenDiscs.push({ rect: disc.getBoundingClientRect(), sprite: BoardHandler.getDiscSprite(disc) });
             disc.remove();
         }
         this.reserve = Math.max(0, this.reserve - count);
         this.game.tooltipHandler?.updateReserveTooltip(this.playerID, this.reserve);
-        return takenRects;
+        return takenDiscs;
     }
     //a replaced tower's count discs come back, one at a time, each onto the top of the leftmost stack with room. Returns the new
     //discs in the order placed (Game.animateTowerSlideAway lands the tower's discs on them, top disc first). Hidden, they keep
-    //their place until their flight lands and shows them; fewer if the stacks are full (setReserve sets them right after the turn)
-    addDiscs(count, hidden) {
+    //their place until their flight lands and shows them; fewer if the stacks are full (setReserve sets them right after the turn).
+    //Disc i takes sprites[i] (the replaced tower's, top disc first), a random one when missing
+    addDiscs(count, hidden, sprites = []) {
         const addedDiscs = [];
         for (let added = 0; added < count; added++) {
             const stack = this.reserveStacks.find(stack => PlayerHandler.getStackDiscs(stack).length < PlayerHandler.RESERVE_STACK_SIZE);
             if (!stack)
                 break;
-            const disc = PlayerHandler.addStackDisc(stack);
+            const disc = this.addStackDisc(stack, sprites[added] ?? null);
             if (hidden)
                 disc.style.visibility = 'hidden';
             addedDiscs.push(disc);
@@ -485,11 +1245,13 @@ class PlayerHandler {
     static getStackDiscs(stack) {
         return Array.from(stack.querySelectorAll(':scope > .tower-disc'));
     }
-    //a disc on top of the stack, drawn like a tower's (.tower-disc at its --disc-index)
-    static addStackDisc(stack) {
+    //a disc on top of the stack, drawn like a tower's (.tower-disc at its --disc-index), with sprite as its wooden sprite (a random
+    //one of the player's color when null)
+    addStackDisc(stack, sprite) {
         const disc = document.createElement('div');
         disc.className = 'tower-disc';
         disc.style.setProperty('--disc-index', PlayerHandler.getStackDiscs(stack).length.toString());
+        BoardHandler.setDiscSprite(disc, sprite ?? BoardHandler.getRandomDiscSprite(this.game.getDiscColor(this.playerID)));
         stack.appendChild(disc);
         return disc;
     }
@@ -576,711 +1338,6 @@ PlayerHandler.BOUNCE_CLASS = 'bouncing-player-board'; //the one shared bounce cl
 //the reserve: RESERVE_STACK_COUNT stacks of up to RESERVE_STACK_SIZE discs side by side, DISCS_PER_PLAYER (25) in all
 PlayerHandler.RESERVE_STACK_COUNT = 5;
 PlayerHandler.RESERVE_STACK_SIZE = 5;
-
-/**
- *------
- * BGA framework: Gregory Isabelli & Emmanuel Colin & BoardGameArena
- * Nexo implementation : © Doruk Kicikoglu <doruk.kicikoglu@gmail.com>
- *
- * This code has been produced on the BGA studio platform for use on http://boardgamearena.com.
- * See http://en.boardgamearena.com/#!doc/Studio for more information.
- * -----
- *
- * BoardHandler.ts
- */
-/**
- * The board, with Yaxha's grid logic (reference/yaxha/src/PyramidHandler.ts): towers and legal spots sit in .board-layer at
- * their own board coordinates (--x, --y times --cell-size), in a frame anchored to the first tower (0 0) for the whole game, so
- * a tower's grid position never changes. Only the layer moves: like Yaxha's centerCubesContainer(), its translate centres the
- * bounding box of the towers plus the legal spots in the board (centerContents), sliding over BOARD_RECENTER_DURATION when
- * that box changes, at once on load. The legal spots count in the box for everyone but only the player drafting sees them.
- * Nothing else is drawn: no empty spots, no grid outline. The board is (gridSize + 1 + 2 * --board-edge-padding) spots across
- * and down (readBoardSize): the largest box is gridSize + 1 (4 columns of towers with a legal spot on each side; with 5, no spot
- * beyond them is legal), plus Game.scss's $board-edge-padding on each side (smaller on BGA's mobile layout). Its spot size
- * (--cell-size) comes from the window, never from the box.
- */
-class BoardHandler {
-    constructor(game, towers) {
-        this.game = game;
-        this.towerMessage = null; //the bubble over a warning tower (showTowerWarning), one at a time
-        this.fitFrame = 0; //the one pending fit (requestFit), 0 when none
-        //what the spot size was last computed from (fitToViewport): the room for the board, in the board's own px, and its span
-        this.fittedRoom = null;
-        //the last time the fit shrank the board for lack of width alone, and the room it had just before: growing straight back into
-        //that room soon after, with no window resize between, is the board answering its own shrink (a scrollbar going away), so it doesn't
-        this.lastShrink = null;
-        this.lastWindowResizeAt = 0;
-        this.contentsCenterX = null; //the middle of the towers' and legal spots' bounding box, in spots, once centred
-        this.contentsCenterY = null;
-        //[BGA] while my draft has towers, the centre is frozen where it was when the first one was drafted (centerContents), until
-        //the turn's towers have landed (recenter) or the draft is emptied (setDraft)
-        this.frozenCenter = null;
-        this.boxLegalSpots = []; //the legal spots the box is centred on, shown or not (getBoxLegalSpots)
-        this.towers = new Map();
-        this.towerElements = new Map();
-        this.pendingElements = new Map();
-        this.draft = null;
-        this.draftClickHandlers = null;
-        this.confirmWasFull = false; //every disc of the turn was drafted at the last render: the confirm button pulses once on reaching it
-        this.ringWasFilled = null; //the confirm ring's filled segments at the last render, null when no confirm button showed
-        this.boardElement = document.getElementById('nexo-board');
-        this.boardSize = this.readBoardSize();
-        this.boardElement.style.setProperty('--board-size', this.boardSize.toString());
-        this.boardElement.innerHTML = `
-            <div class="board-layer">
-                <div class="spots-layer"></div>
-                <div class="towers-layer"></div>
-                <div class="draft-controls-layer"></div>
-                <div class="board-message-layer"></div>
-            </div>
-        `;
-        this.layerElement = this.boardElement.querySelector('.board-layer');
-        this.spotsLayer = this.boardElement.querySelector('.spots-layer');
-        this.towersLayer = this.boardElement.querySelector('.towers-layer');
-        this.controlsLayer = this.boardElement.querySelector('.draft-controls-layer');
-        this.messageLayer = this.boardElement.querySelector('.board-message-layer');
-        for (const tower of towers)
-            this.addBoardTower(tower);
-        this.fitToViewport();
-        this.renderSpots();
-        this.centerContents(false); //on load (F5, a replay's start): no slide
-        //BGA's onScreenWidthChange (Game) only follows the width, and the page above the board is still being laid out when
-        //setup measures it (a board measured too low stayed too small): fit again on every window resize and whenever the
-        //layout around the board changes, one fit per frame (requestFit). Never on anything whose size follows the board's (body,
-        //the page's height, the container's height): a fit there would answer its own resize. So: the container's width only
-        //(the columns settling), and everything laid out before the board, whose height moves the board's top (BGA's bars,
-        //the status bar, panels above the game area; observeLayoutAboveBoard)
-        window.addEventListener('resize', () => {
-            this.lastWindowResizeAt = performance.now();
-            this.requestFit();
-        });
-        let observedContainerWidth = -1;
-        const widthObserver = new ResizeObserver(entries => {
-            const width = entries[entries.length - 1].contentRect.width;
-            if (width !== observedContainerWidth) {
-                observedContainerWidth = width;
-                this.requestFit();
-            }
-        });
-        if (this.boardElement.parentElement)
-            widthObserver.observe(this.boardElement.parentElement);
-        this.observeLayoutAboveBoard(new ResizeObserver(() => this.requestFit()));
-        this.layerElement.addEventListener('click', (event) => this.onBoardClick(event));
-    }
-    //fits the board on the next frame, once, however many times it is asked for before then (resize, BGA's onScreenWidthChange,
-    //the layout observers)
-    requestFit() {
-        if (this.fitFrame)
-            return;
-        this.fitFrame = requestAnimationFrame(() => {
-            this.fitFrame = 0;
-            this.fitToViewport();
-        });
-    }
-    //observes every element laid out before the board: the earlier siblings of the board's container and of each of its
-    //ancestors up to body (BGA's top bar, the status bar, anything above the game area). Their size moves the board's top, never
-    //the other way round. One added before the board later (or removed from there) is observed and fits again; anything added
-    //after it (the flying copies, popins and dialogs at the end of body) is ignored
-    observeLayoutAboveBoard(observer) {
-        const ancestors = [];
-        for (let node = this.boardElement.parentElement; node && node !== document.documentElement; node = node.parentElement)
-            ancestors.push(node);
-        for (const ancestor of ancestors)
-            for (let sibling = ancestor.previousElementSibling; sibling; sibling = sibling.previousElementSibling)
-                observer.observe(sibling);
-        const statusBar = document.getElementById('page-title');
-        if (statusBar)
-            observer.observe(statusBar); //already among them in BGA's layout; observing it twice does nothing
-        //a node at or before the board in the page's order: it holds the board, or the board comes after it
-        const isAboveBoard = (node) => !!node && (node.contains(this.boardElement) || !!(node.compareDocumentPosition(this.boardElement) & Node.DOCUMENT_POSITION_FOLLOWING));
-        const childrenObserver = new MutationObserver(mutations => {
-            let moved = false;
-            for (const mutation of mutations) {
-                mutation.addedNodes.forEach(node => {
-                    if (node instanceof Element && isAboveBoard(node) && !node.contains(this.boardElement)) {
-                        observer.observe(node);
-                        moved = true;
-                    }
-                });
-                if (mutation.removedNodes.length > 0 && isAboveBoard(mutation.nextSibling))
-                    moved = true;
-            }
-            if (moved)
-                this.requestFit();
-        });
-        for (const ancestor of ancestors)
-            childrenObserver.observe(ancestor, { childList: true });
-    }
-    /**
-     * [BGA] The board as big as the window allows: square, from #nexo-board-container's padding under the status bar down to
-     * BOARD_VIEWPORT_MARGIN above the window's bottom when the page is at its top (then the gap under it, $below-board-gap-*,
-     * and BGA's settings below), never wider than the game area, nor smaller than MIN_BOARD_CELL_SIZE spots. Sized through --cell-size
-     * on #nexo-board, so the towers, spots and the layer's translate scale with it. Measured on screen, converted with the
-     * container's measured zoom (BGA scales the game area down on a phone). The room is measured from what doesn't follow the
-     * board's size: the container's width (html's scrollbar-gutter keeps a scrollbar from changing it), and the window's height
-     * under the board's top edge. The spot size is only computed again when that room changed by FIT_ROOM_THRESHOLD or more
-     * since the last time (or the board no longer fits across), so a few px of jitter can never make it flip between two sizes;
-     * and right after a shrink, it never grows straight back into the room it shrank from unless the window was resized (a
-     * board whose own size made a scrollbar come and go would otherwise flip between two sizes forever)
-     */
-    fitToViewport() {
-        const container = this.boardElement.parentElement;
-        if (!container)
-            return;
-        //BGA switches to and from its mobile layout as the window changes, and the edge padding with it: centre again at once
-        const boardSize = this.readBoardSize();
-        const boardSizeChanged = boardSize !== this.boardSize;
-        if (boardSizeChanged) {
-            this.boardSize = boardSize;
-            this.boardElement.style.setProperty('--board-size', boardSize.toString());
-        }
-        const containerRect = container.getBoundingClientRect();
-        const containerWidth = parseFloat(getComputedStyle(container).width); //unrounded, unlike offsetWidth
-        if (!(containerWidth > 0))
-            return;
-        const zoom = containerRect.width / containerWidth;
-        const boardTop = this.boardElement.getBoundingClientRect().top + window.scrollY; //on the page, in screen px
-        const borders = this.boardElement.offsetWidth - this.boardElement.clientWidth; //the board's own border, both sides
-        const maxHeight = (window.innerHeight - boardTop - Game.BOARD_VIEWPORT_MARGIN) / zoom - borders;
-        const maxWidth = containerWidth - borders;
-        const currentCellSize = parseFloat(this.boardElement.style.getPropertyValue('--cell-size'));
-        const fitted = this.fittedRoom;
-        const roomUnchanged = !!fitted && fitted.boardSize === this.boardSize && currentCellSize > 0
-            && Math.abs(maxWidth - fitted.width) < Game.FIT_ROOM_THRESHOLD && Math.abs(maxHeight - fitted.height) < Game.FIT_ROOM_THRESHOLD
-            && (currentCellSize * this.boardSize <= maxWidth + 0.5 || currentCellSize <= Game.MIN_BOARD_CELL_SIZE); //a board too wide for the container always shrinks
-        let cellSize = roomUnchanged ? currentCellSize : Math.max(Game.MIN_BOARD_CELL_SIZE, Math.floor(Math.min(maxHeight, maxWidth) / this.boardSize));
-        if (!roomUnchanged) {
-            const now = performance.now();
-            const shrink = this.lastShrink;
-            const growsBack = cellSize > currentCellSize && !!shrink && now - shrink.at < Game.FIT_GROW_BACK_WINDOW && this.lastWindowResizeAt < shrink.at
-                && shrink.roomBefore.boardSize === this.boardSize
-                && Math.abs(maxWidth - shrink.roomBefore.width) < Game.FIT_ROOM_THRESHOLD && Math.abs(maxHeight - shrink.roomBefore.height) < Game.FIT_ROOM_THRESHOLD;
-            if (growsBack)
-                cellSize = currentCellSize; //stays at the smaller size, which fits both rooms
-            else if (cellSize < currentCellSize && fitted && Math.abs(maxHeight - fitted.height) < Game.FIT_ROOM_THRESHOLD)
-                this.lastShrink = { at: now, roomBefore: fitted }; //only a shrink the width alone caused (a scrollbar): never the status bar's height flickering
-            this.fittedRoom = { width: maxWidth, height: maxHeight, boardSize: this.boardSize };
-        }
-        if (this.boardElement.style.getPropertyValue('--cell-size') !== cellSize + 'px')
-            this.boardElement.style.setProperty('--cell-size', cellSize + 'px');
-        //the draft's controls keep a minimum size on screen (Game.scss: $pending-undo-min-size), whatever BGA's scaling
-        const boardZoom = zoom.toFixed(4);
-        if (zoom > 0 && this.boardElement.style.getPropertyValue('--board-zoom') !== boardZoom)
-            this.boardElement.style.setProperty('--board-zoom', boardZoom);
-        //the gap under the board (Game.scss: #nexo-board-container) keeps BGA's content after the game area under the window's
-        //bottom with the page at its top: the board's bottom on the page, screen px, measured at its new size
-        const boardPageBottom = Math.ceil(this.boardElement.getBoundingClientRect().bottom + window.scrollY) + 'px';
-        if (container.style.getPropertyValue('--board-page-bottom') !== boardPageBottom)
-            container.style.setProperty('--board-page-bottom', boardPageBottom);
-        this.measureForBackgroundDisc(cellSize * zoom);
-        if (boardSizeChanged && this.contentsCenterX !== null) {
-            this.contentsCenterX = null; //applies again, without a slide
-            this.contentsCenterY = null;
-            this.centerContents(false);
-        }
-    }
-    //the board's span in spots: the largest box (gridSize + 1) plus Game.scss's --board-edge-padding on each side
-    readBoardSize() {
-        const padding = parseFloat(getComputedStyle(this.boardElement).getPropertyValue('--board-edge-padding'));
-        return this.game.getRules().gridSize + 1 + 2 * (padding >= 0 ? padding : 0.5);
-    }
-    /**
-     * The page background's red disc ($bg-red-disc-* in Game.scss) is outside the board and can't read its --cell-size: hand
-     * it, on body, the board's spot size on screen and where the board and the player boards are, from the window's right edge
-     * (the player boards only when beside the board) and its bottom edge (page at its top; the window's stable height, which a
-     * mobile browser's address bar showing or hiding doesn't change, BackgroundHandler.getStableViewportHeight). Game.scss
-     * decides the disc's size and place from these (and its rise from BackgroundHandler's --floating-buttons-height). Set only
-     * when they change
-     */
-    measureForBackgroundDisc(cellScreenSize) {
-        const viewport = document.documentElement;
-        const boardRect = this.boardElement.getBoundingClientRect();
-        const panelsRect = document.getElementById('player_boards')?.getBoundingClientRect();
-        const panelsBeside = !!panelsRect && panelsRect.width > 0 && panelsRect.left >= boardRect.right;
-        const viewportHeight = this.game.backgroundHandler?.getStableViewportHeight() || viewport.clientHeight;
-        const values = {
-            '--board-cell-screen-size': cellScreenSize,
-            '--board-right-gap': viewport.clientWidth - boardRect.right,
-            '--panels-right-gap': panelsBeside ? viewport.clientWidth - panelsRect.left : 0,
-            '--panels-bottom-gap': panelsBeside ? viewportHeight - (panelsRect.bottom + window.scrollY) : 0,
-            '--board-bottom-gap': viewportHeight - (boardRect.bottom + window.scrollY),
-        };
-        for (const [name, value] of Object.entries(values)) {
-            const px = Math.round(value) + 'px';
-            if (document.body.style.getPropertyValue(name) !== px)
-                document.body.style.setProperty(name, px);
-        }
-    }
-    //a tower of height discs in discColor: one .tower-disc per disc, bottom one first, and its height as a number on top. Also
-    //used for log rows and the player boards' reserve, each sized by its own --cell-size
-    static createTowerDiv(discColor, height, extraClass = '') {
-        const tower = document.createElement('div');
-        tower.className = 'nexo-tower' + (extraClass ? ' ' + extraClass : '');
-        tower.setAttribute('data-disc-color', discColor);
-        tower.setAttribute('data-height', height.toString());
-        tower.style.setProperty('--tower-height', height.toString());
-        let discsHTML = '';
-        for (let discIndex = 0; discIndex < height; discIndex++)
-            discsHTML += `<div class="tower-disc" style="--disc-index: ${discIndex}"></div>`;
-        tower.innerHTML = discsHTML + `<div class="tower-height-number">${height}</div>`;
-        return tower;
-    }
-    //the spot element now on the page at spot (renderSpots redraws them on every draft change), null if not shown
-    getSpotElement(spot) {
-        return this.spotsLayer.querySelector(`.board-spot[data-x="${spot.x}"][data-y="${spot.y}"]`);
-    }
-    //the confirm button under the active drafted tower, null when none shows (renderPendingControls rebuilds it on every draft change)
-    getConfirmButton() { return this.controlsLayer.querySelector('.pending-confirm-button'); }
-    getTowers() { return Array.from(this.towers.values()); }
-    getTowerMap() { return new Map(this.towers); }
-    addBoardTower(tower) {
-        const key = BoardRules.key(tower.x, tower.y);
-        const towerElement = BoardHandler.createTowerDiv(this.game.getDiscColor(tower.player_id), tower.height, 'board-tower');
-        BoardHandler.placeOnBoard(towerElement, tower);
-        this.towersLayer.appendChild(towerElement);
-        this.towers.set(key, { x: tower.x, y: tower.y, player_id: tower.player_id, height: tower.height });
-        this.towerElements.set(key, towerElement);
-        return towerElement;
-    }
-    static placeOnBoard(element, spot) {
-        element.style.setProperty('--x', spot.x.toString());
-        element.style.setProperty('--y', spot.y.toString());
-        element.setAttribute('data-x', spot.x.toString());
-        element.setAttribute('data-y', spot.y.toString());
-    }
-    /**
-     * Yaxha's centerCubesContainer(): the layer's translate puts the middle of the bounding box of the towers, the draft's new
-     * towers and the legal spots (shown or not, getBoxLegalSpots) in the middle of the board. Computed from board coordinates rather than measured on the
-     * page (Yaxha measures its cubes), so every viewer, a reload and a replay get the very same layout. Slides when animate
-     * (BOARD_RECENTER_DURATION) and animations are on, else applies at once (on load). Resolves once it has slid.
-     * [BGA] While my draft has towers (frozenCenter), the contents keep the centre they had when it began, even off-centre: they
-     * only move when the draft would leave the board (a line of new towers from the edge of the box, whose own new legal spots
-     * may be built on this turn), by the least that keeps the whole box on it; the box is never wider than the board
-     */
-    async centerContents(animate) {
-        const contents = new Map(this.towers);
-        for (const pendingTower of this.draft?.pending ?? [])
-            contents.set(BoardRules.key(pendingTower.x, pendingTower.y), pendingTower);
-        for (const spot of this.boxLegalSpots)
-            contents.set(BoardRules.key(spot.x, spot.y), spot);
-        const bounds = BoardRules.getBounds(contents);
-        let centerX = bounds ? (bounds.minX + bounds.maxX + 1) / 2 : 0.5; //spot x covers x to x + 1
-        let centerY = bounds ? (bounds.minY + bounds.maxY + 1) / 2 : 0.5;
-        if (this.frozenCenter) {
-            const halfBoard = this.boardSize / 2;
-            if (bounds) {
-                this.frozenCenter.x = Math.min(Math.max(this.frozenCenter.x, bounds.maxX + 1 - halfBoard), bounds.minX + halfBoard);
-                this.frozenCenter.y = Math.min(Math.max(this.frozenCenter.y, bounds.maxY + 1 - halfBoard), bounds.minY + halfBoard);
-            }
-            centerX = this.frozenCenter.x;
-            centerY = this.frozenCenter.y;
-        }
-        if (centerX === this.contentsCenterX && centerY === this.contentsCenterY)
-            return;
-        const slide = animate && this.contentsCenterX !== null && this.game.bga.gameui.bgaAnimationsActive();
-        this.contentsCenterX = centerX;
-        this.contentsCenterY = centerY;
-        //a slide set while another runs carries on from where the layer is, so the layer never jumps
-        this.layerElement.style.transition = slide ? `translate ${Game.BOARD_RECENTER_DURATION}ms ${Game.BOARD_RECENTER_EASING}` : 'none';
-        this.layerElement.style.translate = `calc(${this.boardSize / 2 - centerX} * var(--cell-size)) calc(${this.boardSize / 2 - centerY} * var(--cell-size))`;
-        //the same offsets, in spots, for what must stay inside the board (Game.scss: .pending-actions)
-        this.layerElement.style.setProperty('--layer-offset-x', (this.boardSize / 2 - centerX).toString());
-        this.layerElement.style.setProperty('--layer-offset-y', (this.boardSize / 2 - centerY).toString());
-        if (slide)
-            await this.game.bga.gameui.wait(Game.BOARD_RECENTER_DURATION);
-    }
-    //after a turn (notif_towersPlaced, once the towers have landed, so my own confirmed towers land on the frozen layout): the
-    //centre is free again, the spots for the new board, then the layer slides to centre the new bounding box
-    async recenter() {
-        this.frozenCenter = null;
-        this.renderSpots();
-        await this.centerContents(true);
-    }
-    //the legal spots the box is centred on (centerContents), for every viewer: the draft's while I draft, otherwise the empty
-    //spots where the active player could put a new tower, from the towers on the board alone (so the same for every viewer and
-    //the same as the draft's when a turn starts: the board doesn't slide when the turn passes), none once the game is over.
-    //Only the drafting player sees them (renderSpots)
-    getBoxLegalSpots() {
-        if (this.draft)
-            return this.draft.legalNewSpots;
-        if (this.game.isGameOver())
-            return [];
-        return this.game.boardRules.getLegalNewSpots(this.towers);
-    }
-    //the spots only the player drafting their turn sees (nobody else, spectators and replays included, so nothing looks
-    //clickable to them): the legal spots (an ellipse ring where the tower's bottom disc would go, in their own disc color),
-    //the replaceable enemy towers and the gold ring under the drafted tower clicked last. Empty spots and the grid's outline are never drawn
-    renderSpots() {
-        this.spotsLayer.innerHTML = '';
-        //every ring's dashes march on one clock (Game.scss: spot-ring-march): rebuilt spots carry on instead of starting over
-        this.spotsLayer.style.setProperty('--spot-ring-march-delay', `-${Math.round(performance.now())}ms`);
-        this.boxLegalSpots = this.getBoxLegalSpots();
-        if (this.draft && !this.game.isReplay()) {
-            const legalKeys = new Set(this.draft.legalNewSpots.map(spot => BoardRules.key(spot.x, spot.y)));
-            const replaceableKeys = new Set(this.draft.replaceableTowers.map(tower => BoardRules.key(tower.x, tower.y)));
-            const selectedSpot = this.draft.selectedSpot;
-            const selectedKey = selectedSpot ? BoardRules.key(selectedSpot.x, selectedSpot.y) : null;
-            const shownSpots = new Map();
-            for (const spot of [...this.draft.legalNewSpots, ...this.draft.replaceableTowers, ...(selectedSpot ? [selectedSpot] : [])])
-                shownSpots.set(BoardRules.key(spot.x, spot.y), { x: spot.x, y: spot.y });
-            shownSpots.forEach((shownSpot, key) => {
-                const spot = document.createElement('div');
-                spot.className = 'board-spot';
-                BoardHandler.placeOnBoard(spot, shownSpot);
-                if (legalKeys.has(key))
-                    spot.classList.add('legal-spot', 'clickable-spot');
-                if (replaceableKeys.has(key))
-                    spot.classList.add('replaceable-spot', 'clickable-spot');
-                if (key === selectedKey)
-                    spot.classList.add('selected-spot');
-                if (legalKeys.has(key) || replaceableKeys.has(key))
-                    spot.innerHTML = BoardHandler.SPOT_RING_SVG; //the dashed outline (the fill is the spot's ::before)
-                this.spotsLayer.appendChild(spot);
-            });
-        }
-        if (this.draft)
-            this.boardElement.setAttribute('data-legal-spot-color', this.draft.discColor); //the drafting player's own disc color
-        else
-            this.boardElement.removeAttribute('data-legal-spot-color');
-    }
-    //the turn being drafted (PlaceTowers), or null once it is over: its towers shown semi-transparent on their spots (a replaced
-    //enemy tower fades under its replacement) with their count badges and undo buttons, legal spots and replaceable towers highlighted
-    setDraft(draft) {
-        this.draft = draft;
-        //[BGA] the first drafted tower freezes the centre where it is (centerContents has not seen it yet); an empty draft frees
-        //it, which moves nothing: the box is the same as when the turn began, unless the draft had to shift it at the board's edge
-        if ((draft?.pending.length ?? 0) === 0)
-            this.frozenCenter = null;
-        else if (!this.frozenCenter && this.contentsCenterX !== null)
-            this.frozenCenter = { x: this.contentsCenterX, y: this.contentsCenterY };
-        this.renderPending();
-        this.renderPendingControls();
-        this.updateTowerDraftClasses();
-        this.renderSpots();
-        this.centerContents(true); //frozen while drafting (frozenCenter): moves only to keep the draft on the board
-    }
-    setDraftClickHandlers(handlers) {
-        this.draftClickHandlers = handlers;
-    }
-    renderPending() {
-        this.pendingElements.forEach(element => element.remove());
-        this.pendingElements.clear();
-        for (const pendingTower of this.draft?.pending ?? []) {
-            const pendingElement = BoardHandler.createTowerDiv(this.draft.discColor, pendingTower.height, 'board-tower pending-tower');
-            BoardHandler.placeOnBoard(pendingElement, pendingTower);
-            this.towersLayer.appendChild(pendingElement);
-            this.pendingElements.set(BoardRules.key(pendingTower.x, pendingTower.y), pendingElement);
-        }
-    }
-    //on each drafted tower, in a layer over every tower: a badge with its height (the discs it adds) on its top right corner.
-    //Under the active tower only, round buttons side by side: undo (takes it back) and confirm (sends the whole turn).
-    //Game.scss keeps them inside the board (nudged sideways, or above the tower on the bottom row). Their clicks never reach
-    //the tower or spot underneath. While the turn is on its way to the server, both are disabled. The confirm button wears a
-    //ring of one segment per disc the turn may use, filled for each drafted disc (createConfirmRing): light green while discs
-    //are left (still a live button: a turn may stop early), solid green once every disc is drafted, with one pulse when it
-    //gets there (not on a render that was already full, nor with animations off or reduced motion)
-    renderPendingControls() {
-        this.controlsLayer.innerHTML = '';
-        const draft = this.draft;
-        const full = !!draft && draft.discsThisTurn > 0 && draft.discsUsed >= draft.discsThisTurn;
-        const animate = this.game.bga.gameui.bgaAnimationsActive() && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        const pulse = full && !this.confirmWasFull && animate;
-        this.confirmWasFull = full;
-        const ringWasFilled = this.ringWasFilled;
-        this.ringWasFilled = null; //set again below if the confirm button shows
-        if (!draft)
-            return;
-        const activeKey = draft.selectedSpot ? BoardRules.key(draft.selectedSpot.x, draft.selectedSpot.y) : null;
-        for (const pendingTower of draft.pending) {
-            const spot = { x: pendingTower.x, y: pendingTower.y };
-            const controls = document.createElement('div');
-            controls.className = 'pending-controls';
-            BoardHandler.placeOnBoard(controls, spot);
-            const badge = document.createElement('div');
-            badge.className = 'pending-count-badge';
-            badge.textContent = pendingTower.height.toString();
-            controls.appendChild(badge);
-            if (BoardRules.key(spot.x, spot.y) === activeKey) {
-                const actions = document.createElement('div');
-                actions.className = 'pending-actions';
-                actions.style.setProperty('--pending-actions-count', '2');
-                const confirmButton = this.createPendingButton('pending-confirm-button', _('Confirm'), BoardHandler.CONFIRM_ICON_SVG, draft.confirming, () => this.draftClickHandlers?.confirmClicked());
-                confirmButton.setAttribute('data-full', full.toString());
-                const ringFilled = Math.min(draft.discsUsed, draft.discsThisTurn);
-                this.createConfirmRing(confirmButton, draft.discsThisTurn, ringFilled, animate ? ringWasFilled : ringFilled);
-                this.ringWasFilled = ringFilled;
-                if (pulse) {
-                    confirmButton.classList.add('confirm-full-pulse');
-                    confirmButton.addEventListener('animationend', (event) => {
-                        if (event.target === confirmButton)
-                            confirmButton.classList.remove('confirm-full-pulse');
-                    });
-                }
-                actions.append(this.createPendingButton('pending-undo-button', _('Take this tower back'), BoardHandler.UNDO_ICON_SVG, draft.confirming, () => this.draftClickHandlers?.undoClicked(spot)), confirmButton);
-                controls.appendChild(actions);
-            }
-            this.controlsLayer.appendChild(controls);
-        }
-    }
-    /**
-     * The confirm button's ring: one .confirm-ring-segment per disc the turn may use, the first `filled` green (Game.scss draws
-     * and colors them). The board redraws its controls on every draft change, so a CSS transition would never run: the
-     * segments that changed since the last render (`wasFilled`) get a one-shot class instead, removed once it has played.
-     * The ring follows the turn's total, wherever the buttons are, so moving them to another tower changes nothing: a drafted
-     * disc fills its segment (ring-segment-fill), an undo empties its own (ring-segment-empty). When the button first shows
-     * (`wasFilled` null), its filled segments fill one after another, CONFIRM_RING_STAGGER apart. `wasFilled` equal to
-     * `filled`: nothing plays (animations off, reduced motion)
-     */
-    createConfirmRing(confirmButton, segments, filled, wasFilled) {
-        confirmButton.style.setProperty('--ring-segments', segments.toString());
-        for (let segmentIndex = 0; segmentIndex < segments; segmentIndex++) {
-            const segment = document.createElement('div');
-            segment.className = 'confirm-ring-segment';
-            segment.style.setProperty('--segment-index', segmentIndex.toString());
-            segment.classList.toggle('filled', segmentIndex < filled);
-            let changeClass = null;
-            if (wasFilled === null && segmentIndex < filled) {
-                changeClass = 'ring-segment-fill';
-                segment.style.setProperty('--segment-delay', `${segmentIndex * Game.CONFIRM_RING_STAGGER}ms`);
-            }
-            else if (wasFilled !== null && segmentIndex >= wasFilled && segmentIndex < filled)
-                changeClass = 'ring-segment-fill';
-            else if (wasFilled !== null && segmentIndex >= filled && segmentIndex < wasFilled)
-                changeClass = 'ring-segment-empty';
-            if (changeClass) {
-                segment.classList.add(changeClass);
-                segment.addEventListener('animationend', (event) => {
-                    if (event.target === segment && !event.pseudoElement) //its own pop, not its ::before's color fade (same length)
-                        segment.classList.remove(changeClass);
-                });
-            }
-            confirmButton.appendChild(segment);
-        }
-    }
-    createPendingButton(className, label, iconSVG, disabled, onClick) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'pending-button ' + className;
-        button.title = label;
-        button.setAttribute('aria-label', label);
-        button.innerHTML = iconSVG;
-        button.disabled = disabled;
-        button.addEventListener('click', (event) => {
-            event.stopPropagation(); //not a click on the drafted tower under it, which would add a disc
-            if (!button.disabled)
-                onClick();
-        });
-        return button;
-    }
-    //an enemy tower under a drafted replacement fades (being-replaced)
-    updateTowerDraftClasses() {
-        const replacedKeys = new Set((this.draft?.pending ?? []).filter(tower => tower.kind === 'replace').map(tower => BoardRules.key(tower.x, tower.y)));
-        //clickable only for the player drafting, as the rings are (never in a replay, nor while the turn is on its way)
-        const showWarnings = !!this.draft && !this.draft.confirming && !this.game.isReplay();
-        const warningKeys = new Set(showWarnings ? this.draft.warningTowers.map(tower => BoardRules.key(tower.x, tower.y)) : []);
-        this.towerElements.forEach((element, key) => {
-            element.classList.toggle('being-replaced', replacedKeys.has(key));
-            element.classList.toggle('warning-tower', warningKeys.has(key));
-        });
-        if (!this.draft)
-            this.clearTowerMessage();
-    }
-    /**
-     * [BGA] A board tower the player clicked but can't draft on (PlaceTowers.getTowerWarningHTML: their own, or an enemy tower too
-     * high for the discs left), every case alike: it shakes (shakeTower) and a bubble over it says why (showTowerMessage), one
-     * bubble at a time, a new one replacing it. Client only: nothing changes on the board
-     */
-    showTowerWarning(spot, messageHTML) {
-        const towerElement = this.towerElements.get(BoardRules.key(spot.x, spot.y));
-        if (!towerElement)
-            return;
-        this.showTowerMessage(spot, towerElement, messageHTML); //measured before the shake moves it
-        this.shakeTower(towerElement);
-    }
-    //a short shake (one-shot .shaking-tower, the translate property, so it never fights a transform), restarted by a click
-    //mid-shake; none with reduced motion or animations off
-    shakeTower(towerElement) {
-        if (!this.game.bga.gameui.bgaAnimationsActive() || window.matchMedia('(prefers-reduced-motion: reduce)').matches)
-            return;
-        towerElement.classList.remove('shaking-tower');
-        void towerElement.offsetWidth; //restarts it when clicked again mid-shake
-        towerElement.classList.add('shaking-tower');
-        towerElement.addEventListener('animationend', function onEnd(event) {
-            if (event.target !== towerElement)
-                return;
-            towerElement.classList.remove('shaking-tower');
-            towerElement.removeEventListener('animationend', onEnd);
-        });
-    }
-    //a speech bubble just over the tower's top face, its arrow pointing down at it, in its own layer over everything on the board
-    //(the board clips it, so it never leaves the board). Nudged sideways to stay TOWER_MESSAGE_EDGE_MARGIN inside the board's
-    //edges (the arrow keeps pointing at the tower), under the tower instead when there is no room above. Fades in, stays
-    //TOWER_MESSAGE_HOLD, fades out and leaves the page; a new one replaces it. No clicks. messageHTML: a translated sentence
-    //(from _(), with our own disc icon and numbers in it)
-    showTowerMessage(spot, towerElement, messageHTML) {
-        this.clearTowerMessage();
-        const message = document.createElement('div');
-        message.className = 'tower-message';
-        message.setAttribute('role', 'status');
-        message.style.setProperty('--tower-message-fade-in', `${Game.TOWER_MESSAGE_FADE_IN}ms`);
-        message.style.setProperty('--tower-message-fade-out', `${Game.TOWER_MESSAGE_FADE_OUT}ms`);
-        const textElement = document.createElement('span');
-        textElement.className = 'tower-message-text';
-        textElement.innerHTML = messageHTML;
-        const arrow = document.createElement('span');
-        arrow.className = 'tower-message-arrow';
-        message.append(textElement, arrow);
-        //anchored in the layer's own px: across, the spot's middle; up and down, the tower's top face (or bottom, below it)
-        const zoom = parseFloat(this.boardElement.style.getPropertyValue('--board-zoom')) || 1;
-        const cellSize = parseFloat(this.boardElement.style.getPropertyValue('--cell-size')) || 0;
-        const layerRect = this.layerElement.getBoundingClientRect();
-        const discs = towerElement.querySelectorAll(':scope > .tower-disc');
-        const topRect = discs[discs.length - 1]?.getBoundingClientRect() ?? towerElement.getBoundingClientRect();
-        const bottomRect = discs[0]?.getBoundingClientRect() ?? towerElement.getBoundingClientRect();
-        message.style.setProperty('--message-x', `${(spot.x + 0.5) * cellSize}px`);
-        message.style.setProperty('--message-above-y', `${(topRect.top - layerRect.top) / zoom}px`);
-        message.style.setProperty('--message-below-y', `${(bottomRect.bottom - layerRect.top) / zoom}px`);
-        message.setAttribute('data-placement', 'above');
-        this.messageLayer.appendChild(message);
-        //kept inside the board: measured where it landed, in screen px, converted back with the board's zoom
-        const boardRect = this.boardElement.getBoundingClientRect();
-        const margin = Game.TOWER_MESSAGE_EDGE_MARGIN;
-        if (message.getBoundingClientRect().top < boardRect.top + margin)
-            message.setAttribute('data-placement', 'below');
-        const messageRect = message.getBoundingClientRect();
-        let shift = 0;
-        if (messageRect.left < boardRect.left + margin)
-            shift = boardRect.left + margin - messageRect.left;
-        else if (messageRect.right > boardRect.right - margin)
-            shift = boardRect.right - margin - messageRect.right;
-        message.style.setProperty('--message-shift', `${shift / zoom}px`);
-        const timers = [
-            window.setTimeout(() => message.classList.add('leaving-tower-message'), Game.TOWER_MESSAGE_FADE_IN + Game.TOWER_MESSAGE_HOLD),
-            window.setTimeout(() => this.clearTowerMessage(message), Game.TOWER_MESSAGE_FADE_IN + Game.TOWER_MESSAGE_HOLD + Game.TOWER_MESSAGE_FADE_OUT),
-        ];
-        this.towerMessage = { element: message, timers: timers };
-    }
-    //removes the bubble at once (only `message` when given, so an old timer never removes a newer one)
-    clearTowerMessage(message = null) {
-        if (!this.towerMessage || (message && this.towerMessage.element !== message))
-            return;
-        this.towerMessage.timers.forEach(timer => window.clearTimeout(timer));
-        this.towerMessage.element.remove();
-        this.towerMessage = null;
-    }
-    //a click on a highlighted spot (empty or an enemy tower) or on a tower of the draft: PlaceTowers drafts or cycles its height
-    onBoardClick(event) {
-        if (!this.draftClickHandlers)
-            return;
-        const target = event.target;
-        if (target.closest('.pending-actions'))
-            return; //a disabled button's click, which no listener of its own receives: never a click on the tower under it
-        const warningTower = target.closest('.warning-tower');
-        if (warningTower) {
-            this.draftClickHandlers.warningTowerClicked({ x: parseInt(warningTower.getAttribute('data-x')), y: parseInt(warningTower.getAttribute('data-y')) });
-            return;
-        }
-        const clicked = (target.closest('.pending-tower') ?? target.closest('.board-spot.clickable-spot'));
-        if (!clicked)
-            return;
-        this.draftClickHandlers.spotClicked({ x: parseInt(clicked.getAttribute('data-x')), y: parseInt(clicked.getAttribute('data-y')) });
-    }
-    /**
-     * A confirmed turn, played one spot at a time in the order the turn was drafted (the payload's order): on each spot, the
-     * replaced enemy tower (if any) flies back onto its owner's reserve stacks on their player board, top disc first, while
-     * the new tower's discs fly from the top of the player's stacks onto it, bottom disc first (discs TOWER_DISC_STAGGER
-     * apart); the next spot starts TOWER_SPOT_DELAY_SHARE (0.3) of the way through this one's flight. Every viewer sees the same flights, the player who drafted
-     * the turn included: their drafted towers only stay as placeholders until their spot's turn, then fly in from their
-     * stacks like anyone's. With animations off nothing flies and nothing is awaited: every spot applies at once, stacks
-     * included. Resolves once every tower has landed.
-     */
-    async applyPlacements(playerID, placements) {
-        //the turn is over: no more clicks while it animates (the next PlaceTowers sets its handlers again), no more badges or
-        //undo buttons
-        this.setDraftClickHandlers(null);
-        const draftedElements = new Map(this.pendingElements);
-        this.pendingElements.clear();
-        this.draft = null;
-        this.updateTowerDraftClasses();
-        this.renderPendingControls();
-        draftedElements.forEach((draftedElement, key) => {
-            draftedElement.classList.add('confirmed-tower'); //no more hover or click while it waits for its spot's turn
-            this.towerElements.get(key)?.classList.add('being-replaced'); //the enemy tower it replaces stays faded until then
-        });
-        //each spot's flights start TOWER_SPOT_DELAY_SHARE of the previous spot's flight time after it (or once it has landed,
-        //if that comes first); the turn ends once every disc has landed
-        const animate = this.game.bga.gameui.bgaAnimationsActive();
-        const allFlights = [];
-        for (const placement of placements) {
-            const flights = this.applyPlacement(playerID, placement, draftedElements, animate);
-            if (flights.length === 0)
-                continue;
-            allFlights.push(...flights);
-            const spotDiscCount = Math.max(placement.height, placement.replaced_height ?? 0);
-            const spotFlightMs = Game.TOWER_SLIDE_DURATION + (spotDiscCount - 1) * Game.TOWER_DISC_STAGGER;
-            await Promise.race([Promise.all(flights), this.game.bga.gameui.wait(spotFlightMs * Game.TOWER_SPOT_DELAY_SHARE)]);
-        }
-        if (allFlights.length > 0)
-            await Promise.all(allFlights);
-        draftedElements.forEach(element => element.remove()); //never expected: the server keeps every drafted tower
-        this.renderSpots();
-    }
-    //one spot of a confirmed turn: swaps its towers on the board, moves their discs between the player boards' reserve stacks
-    //(with animations off too, so the stacks match the turn) and returns the flights to await (none with animations off)
-    applyPlacement(playerID, placement, draftedElements, animate) {
-        const key = BoardRules.key(placement.x, placement.y);
-        const flights = [];
-        //the replaced tower's discs go back onto its owner's stacks, top disc first: the first disc placed is the top one's
-        const replacedElement = this.towerElements.get(key);
-        if (replacedElement) {
-            this.towerElements.delete(key);
-            const owner = this.game.players[placement.replaced_player_id ?? 0];
-            if (owner) {
-                const replacedHeight = placement.replaced_height ?? parseInt(replacedElement.getAttribute('data-height'));
-                const placedDiscs = owner.addDiscs(replacedHeight, animate);
-                if (animate) {
-                    const landingDiscs = Array.from({ length: replacedHeight }, (_, discIndex) => placedDiscs[replacedHeight - 1 - discIndex] ?? null);
-                    flights.push(this.game.animateTowerSlideAway(replacedElement, landingDiscs, owner.getReserveRect(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }));
-                }
-            }
-            replacedElement.remove();
-        }
-        //a tower I drafted waited here as a placeholder until its spot's turn: it stays while its discs fly in, each of its discs
-        //hiding as the real one lands on it, and goes once the top one has landed
-        const placeholder = draftedElements.get(key) ?? null;
-        draftedElements.delete(key);
-        const towerElement = this.addBoardTower({ x: placement.x, y: placement.y, player_id: playerID, height: placement.height });
-        if (placeholder)
-            this.towersLayer.appendChild(placeholder); //in front of the new tower: its upper discs still sit over the discs landed under them
-        //the new tower's discs leave the player's stacks, bottom disc first: the first disc taken is the bottom one's. The same
-        //flight for every viewer, the player who drafted it included
-        const mover = this.game.players[playerID];
-        const takenDiscRects = mover?.takeDiscs(placement.height) ?? [];
-        if (animate && mover)
-            flights.push(this.game.animateTowerSlide(towerElement, takenDiscRects, mover.getReserveRect(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }, placeholder).finally(() => placeholder?.remove()));
-        else
-            placeholder?.remove(); //nothing flies: the tower is already whole
-        return flights;
-    }
-    //end of the game: each player's largest group(s) glow in their color, every other tower dims
-    highlightLargestGroups(groups) {
-        this.boardElement.classList.add('showing-largest-groups');
-        for (const playerID in groups) {
-            for (const group of groups[playerID]) {
-                for (const spot of group)
-                    this.towerElements.get(BoardRules.key(spot.x, spot.y))?.classList.add('largest-group-tower');
-            }
-        }
-    }
-}
-//the undo button's icon: a curved arrow turning back counter-clockwise, drawn with currentColor
-BoardHandler.UNDO_ICON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12a7 7 0 1 0 2.05-4.95"/><path d="M11 7.05H7.05V3.1"/></svg>';
-//a target ring's dashed outline (legal spots and replaceable towers): Game.scss sizes the SVG to the ring and marches its
-//dashes. pathLength 100 makes the dash pattern a whole number around the ring; the attributes are a fallback for a browser
-//without CSS ellipse geometry (the stroke then centred on the box's edge)
-BoardHandler.SPOT_RING_SVG = '<svg class="spot-ring" aria-hidden="true" focusable="false"><ellipse cx="50%" cy="50%" rx="50%" ry="50%" pathLength="100"/></svg>';
-//the confirm button's icon: a tick
-BoardHandler.CONFIRM_ICON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 
 class LogMutationObserver {
     constructor(game) {
@@ -1512,6 +1569,9 @@ class PrefHandler {
             case this.prefNameToIndex.show_stack_heights:
                 this.applyStackHeights(prefValue);
                 break;
+            case this.prefNameToIndex.disc_style:
+                this.applyDiscStyle(prefValue);
+                break;
         }
     }
     //game specific functions
@@ -1520,13 +1580,23 @@ class PrefHandler {
     applyStackHeights(prefValue) {
         document.documentElement.classList.toggle('hide-stack-heights', prefValue == PrefHandler.STACK_HEIGHTS_DISABLED);
     }
+    //one class on <html> like applyStackHeights, so every disc switches at once, wherever it is (the board, the flying copies, the
+    //reserve stacks, the status bar, the log rows). Every disc always carries its wooden sprite (BoardHandler.setDiscSprite), so
+    //nothing is redrawn. Any value other than Marble is Wooden (the default; also a missing value, as for a spectator with no
+    //saved preference)
+    applyDiscStyle(prefValue) {
+        document.documentElement.classList.toggle('nexo-discs-wooden', prefValue != PrefHandler.DISC_STYLE_MARBLE);
+    }
 }
 //"Always show stack heights" (gamepreferences.jsonc, pref 100): the height number on top of every tower, 1 Enabled, 2 Disabled
 PrefHandler.STACK_HEIGHTS_DISABLED = 2;
+//"Disc style" (pref 101): 1 Wooden (img/wooden_discs.webp), 2 Marble (the CSS discs)
+PrefHandler.DISC_STYLE_MARBLE = 2;
 //Game.php $userPrefs, for gamedatas without pref_names: a replay starts from the gamedatas saved when its game began, so a
 //game begun before a preference existed has no pref_names (or lacks the newer ones). Keep in sync with Game.php
 PrefHandler.DEFAULT_PREF_NAMES = {
     show_stack_heights: 100,
+    disc_style: 101,
 };
 
 /**

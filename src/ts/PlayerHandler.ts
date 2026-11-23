@@ -10,6 +10,7 @@
  * PlayerHandler.ts
  */
 import { Game } from "./Game";
+import { BoardHandler } from "./BoardHandler";
 
 export class PlayerHandler{
     private static readonly BOUNCE_CLASS = 'bouncing-player-board'; //the one shared bounce class, its timing lives in Game.scss
@@ -72,47 +73,51 @@ export class PlayerHandler{
      * exactly this many discs, filled left to right, they are rebuilt from it, so they never drift from the real count.
      * After a turn's flights (takeDiscs, addDiscs) they normally match already. Discs leave from the top of the rightmost
      * stack that has any and come back onto the top of the leftmost stack with room, so a reserve of n is always the first n
-     * slots, stack by stack
+     * slots, stack by stack. A rebuild keeps the discs' wooden sprites in slot order (BoardHandler.getDiscSprite)
      */
     public setReserve(reserve: number): void {
         this.reserve = Math.max(0, reserve);
-        if(!this.reserveStacks.every((stack, stackIndex) => PlayerHandler.getStackDiscs(stack).length === this.getStackHeight(stackIndex)))
+        if(!this.reserveStacks.every((stack, stackIndex) => PlayerHandler.getStackDiscs(stack).length === this.getStackHeight(stackIndex))){
+            const sprites = this.reserveStacks.flatMap(stack => PlayerHandler.getStackDiscs(stack).map(disc => BoardHandler.getDiscSprite(disc)));
             this.reserveStacks.forEach((stack, stackIndex) => {
                 PlayerHandler.getStackDiscs(stack).forEach(disc => disc.remove());
                 for(let level = 0; level < this.getStackHeight(stackIndex); level++)
-                    PlayerHandler.addStackDisc(stack);
+                    this.addStackDisc(stack, sprites.shift() ?? null);
             });
+        }
         this.game.tooltipHandler?.updateReserveTooltip(this.playerID, this.reserve);
     }
 
     //a turn's tower takes count discs, one at a time, each from the top of the rightmost stack that has any. Returns where each
     //was on screen, in the order taken (Game.animateTowerSlide starts the tower's discs there, bottom disc first), measured
-    //just before it goes; fewer if the stacks run out (setReserve sets them right after the turn)
-    public takeDiscs(count: number): DOMRect[] {
-        const takenRects: DOMRect[] = [];
+    //just before it goes, and its wooden sprite (the tower's disc keeps it); fewer if the stacks run out (setReserve sets them
+    //right after the turn)
+    public takeDiscs(count: number): { rect: DOMRect; sprite: DiscSprite | null; }[] {
+        const takenDiscs: { rect: DOMRect; sprite: DiscSprite | null; }[] = [];
         for(let taken = 0; taken < count; taken++){
             const stack = [...this.reserveStacks].reverse().find(stack => PlayerHandler.getStackDiscs(stack).length > 0);
             if(!stack)
                 break;
             const disc = PlayerHandler.getStackDiscs(stack).pop();
-            takenRects.push(disc.getBoundingClientRect());
+            takenDiscs.push({ rect: disc.getBoundingClientRect(), sprite: BoardHandler.getDiscSprite(disc) });
             disc.remove();
         }
         this.reserve = Math.max(0, this.reserve - count);
         this.game.tooltipHandler?.updateReserveTooltip(this.playerID, this.reserve);
-        return takenRects;
+        return takenDiscs;
     }
 
     //a replaced tower's count discs come back, one at a time, each onto the top of the leftmost stack with room. Returns the new
     //discs in the order placed (Game.animateTowerSlideAway lands the tower's discs on them, top disc first). Hidden, they keep
-    //their place until their flight lands and shows them; fewer if the stacks are full (setReserve sets them right after the turn)
-    public addDiscs(count: number, hidden: boolean): HTMLDivElement[] {
+    //their place until their flight lands and shows them; fewer if the stacks are full (setReserve sets them right after the turn).
+    //Disc i takes sprites[i] (the replaced tower's, top disc first), a random one when missing
+    public addDiscs(count: number, hidden: boolean, sprites: (DiscSprite | null)[] = []): HTMLDivElement[] {
         const addedDiscs: HTMLDivElement[] = [];
         for(let added = 0; added < count; added++){
             const stack = this.reserveStacks.find(stack => PlayerHandler.getStackDiscs(stack).length < PlayerHandler.RESERVE_STACK_SIZE);
             if(!stack)
                 break;
-            const disc = PlayerHandler.addStackDisc(stack);
+            const disc = this.addStackDisc(stack, sprites[added] ?? null);
             if(hidden)
                 disc.style.visibility = 'hidden';
             addedDiscs.push(disc);
@@ -131,11 +136,13 @@ export class PlayerHandler{
         return Array.from(stack.querySelectorAll<HTMLDivElement>(':scope > .tower-disc'));
     }
 
-    //a disc on top of the stack, drawn like a tower's (.tower-disc at its --disc-index)
-    private static addStackDisc(stack: HTMLDivElement): HTMLDivElement {
+    //a disc on top of the stack, drawn like a tower's (.tower-disc at its --disc-index), with sprite as its wooden sprite (a random
+    //one of the player's color when null)
+    private addStackDisc(stack: HTMLDivElement, sprite: DiscSprite | null): HTMLDivElement {
         const disc = document.createElement('div');
         disc.className = 'tower-disc';
         disc.style.setProperty('--disc-index', PlayerHandler.getStackDiscs(stack).length.toString());
+        BoardHandler.setDiscSprite(disc, sprite ?? BoardHandler.getRandomDiscSprite(this.game.getDiscColor(this.playerID)));
         stack.appendChild(disc);
         return disc;
     }
