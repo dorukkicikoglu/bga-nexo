@@ -71,7 +71,9 @@ class PlaceTowers extends GameState
         if($result['discs_returned'] > 0)
             $this->game->bga->playerStats->inc('discsReturned', $result['discs_returned'], $this->game->tableManager->getOpponentID($activePlayerId));
 
-        $heightsLog = array_map(fn(array $placement) => $placement['kind'] === PLACEMENT_REPLACE ? $placement['height'].' (replacing '.$placement['replaced_height'].')' : (string) $placement['height'], $validatedPlacements);
+        //each tower's height and spot, in the board's own x,y (the first tower at 0,0, y growing downwards), so every move is
+        //identifiable on the replay page, which shows only this plain fallback
+        $heightsLog = array_map(fn(array $placement) => $placement['height'].' at ('.NEXOTableManager::cellKey($placement['x'], $placement['y']).')'.($placement['kind'] === PLACEMENT_REPLACE ? ' replacing '.$placement['replaced_height'] : ''), $validatedPlacements);
         $this->bga->notify->all('towersPlaced', '${TOWERS_PLACED_LOG_STR}', [
             'preserve' => ['player_id', 'placements', 'board_snapshot'],
             'player_id' => $activePlayerId,
