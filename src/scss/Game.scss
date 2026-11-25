@@ -17,7 +17,7 @@
 //(the "Disc style" Wooden preference puts a sprite in .tower-disc's background instead, see "wooden discs")
 $cell-size: min(5.6vw, 72px); //one spot of the grid on desktop, the default; the board sets its own (BoardHandler.fitToViewport)
 $mobile-cell-size: 76px; //BGA lays the game out at 740px or more and scales it down on a phone (gameinfos game_interface_width)
-$log-snapshot-cell-size: 24px; //one spot of a log row's board snapshot (a 5x5 board: 5 of them across), scaled down only in a row too narrow for it
+$log-cell-size: 30px; //towers in log rows, at most: a row too narrow for its towers scales them down (.log-towers)
 
 //a tower's discs, as shares of --cell-size: each disc's width, its top face's height (a share of the disc's width: the
 //perspective), each disc's thickness, and the gap under the bottom disc. A 5-disc tower stays inside its own spot
@@ -26,7 +26,7 @@ $disc-face-ratio: 0.45;
 $disc-thickness-ratio: 0.1;
 $tower-base-ratio: 0.08;
 //[BGA] the board's discs against the spot pitch (--nexo-disc-scale, the one knob to tune them): the disc's width, face and
-//thickness times this on the board and its flying copies; the log snapshots, reserve stacks and status bar icons keep 1.
+//thickness times this on the board and its flying copies; the log rows' towers, reserve stacks and status bar icons keep 1.
 //Everything on the board sized from a disc follows it: the height number, the target rings, the end-game glow, the draft's
 //badge and buttons. Desktop, then BGA's mobile layout (body.mobile_version). At 1.1 a disc is 0.86 of a spot (0.14 spot between
 //neighbours); at 1.11, 0.87. Capped at $board-disc-max-scale: a 5-disc tower (5 thicknesses and a face) then still stays clear
@@ -97,7 +97,7 @@ $wooden-disc-grain-fade-end: 0.86;
 //(0.01: about 0.9px on a desktop board disc, 1.5px on a 150px one; until 2026-11-23 3px on a desktop board disc, too strong:
 //neighbours up to 6px apart) and up or down by up to $disc-jitter-y on a disc $disc-jitter-reference-width wide (a desktop board
 //disc: a 108px spot x 0.78 x 1.1), both in proportion
-//elsewhere, so a log snapshot's or a reserve stack's discs move as much for their size. Each disc's own (--jitter-x / -y,
+//elsewhere, so a log row tower's or a reserve stack's discs move as much for their size. Each disc's own (--jitter-x / -y,
 //from -1 to 1, BoardHandler.getDiscLook), never added to the ones under it, so a stack never leans
 $disc-jitter-reference-width: 92.7px;
 $disc-jitter-x-share: 0.01;
@@ -366,14 +366,14 @@ $log-divider-color: rgba($material-charcoal, 0.08); //the soft line under each r
 $log-accent-width: 3px; //the bar on each row's left edge, in its player's color
 $log-accent-colors: ("red": $material-red, "black": $material-charcoal);
 $log-accent-neutral: rgba($material-charcoal, 0.18); //a row of no single player (a shared victory)
-//a turn's board snapshot in its log row (LogMutationObserver.getBoardSnapshotHTML)
-$log-snapshot-name-min-width: 56px; //what the row keeps for the player name when it scales the snapshot down
-$log-snapshot-padding: 2px;
-$log-snapshot-background: rgba($material-charcoal, 0.035);
-$log-snapshot-border-color: rgba($material-charcoal, 0.12);
-$log-snapshot-dot-color: rgba($material-charcoal, 0.22); //an empty spot inside the snapshot
-$log-snapshot-changed-color: #e0a400; //a spot the turn touched: gold, never a player color
-$log-snapshot-changed-fill: rgba($selected-spot-color, 0.22);
+//[BGA] a log row's spots on the board (LogHighlightHandler, BoardHandler.showLogHighlight): a gold ring like the one under the
+//active drafted tower in a deeper gold, a lighter fill and a soft glow; it fades in and, after a tap's hold, fades out
+$log-highlight-color: #e0a400; //a deeper gold than $selected-spot-color: it must read on the board's white marble with no fill behind it
+$log-highlight-glow-color: $selected-spot-color;
+$log-highlight-stroke-scale: 1.5; //times a target ring's stroke (--spot-ring-stroke)
+$log-highlight-fill: rgba($selected-spot-color, 0.28);
+$log-highlight-glow-share: 0.12; //of a spot: the glow's blur
+$log-highlight-fade-in: 120ms;
 
 :root{
     --cell-size: #{$cell-size};
@@ -684,7 +684,7 @@ html.nexo-discs-wooden .nexo-tower{
 #nexo-board{ --board-edge-padding: #{$board-edge-padding}; }
 .mobile_version #nexo-board{ --board-edge-padding: #{$board-edge-mobile-padding}; }
 .board-layer{ position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
-.spots-layer, .towers-layer, .draft-controls-layer, .board-message-layer{ position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
+.spots-layer, .log-highlight-layer, .towers-layer, .draft-controls-layer, .board-message-layer{ position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
 
 //one spot's box, from its board coordinates
 @mixin board-place(){ position: absolute; left: calc(var(--x) * var(--cell-size)); top: calc(var(--y) * var(--cell-size)); width: var(--cell-size); height: var(--cell-size); }
@@ -704,7 +704,7 @@ html.nexo-discs-wooden .nexo-tower{
     --ring-box-left: calc((var(--cell-size) - var(--ring-box-width)) / 2);
     --ring-box-bottom: calc(var(--spot-ring-center) - var(--ring-box-height) / 2);
     &.clickable-spot{ cursor: pointer; }
-    &.clickable-spot, &.legal-spot, &.selected-spot{
+    &.clickable-spot, &.legal-spot, &.selected-spot, &.log-highlight-spot{
         &::before{ content: ""; position: absolute; box-sizing: border-box; left: var(--ring-box-left); bottom: var(--ring-box-bottom); width: var(--ring-box-width); height: var(--ring-box-height); border-radius: 50%; transition: background-color 0.15s ease, box-shadow 0.15s ease; }
     }
     //a legal spot, and an enemy tower that can be replaced (a legal spot too): shown only to the player drafting, in their own
@@ -717,7 +717,7 @@ html.nexo-discs-wooden .nexo-tower{
     //board around it: $spot-ring-occupied-width-scale times the bottom disc (at most $spot-ring-max-share of the spot),
     //$spot-ring-occupied-height-scale times as tall as a flat ellipse of that width, centred on the footprint plus the offsets
     //(shares of a spot, so it stays put under the tower at any spot size and BGA zoom). The fill and the outline share the box
-    &.replaceable-spot, &.selected-spot{
+    &.replaceable-spot, &.selected-spot, &.log-highlight-spot.occupied-log-highlight{
         --ring-box-width: min(calc(var(--spot-ring-width) * #{$spot-ring-occupied-width-scale}), calc(var(--cell-size) * #{$spot-ring-max-share}));
         --ring-box-height: calc(var(--ring-box-width) * #{$disc-face-ratio * $spot-ring-occupied-height-scale});
         --ring-box-left: calc((var(--cell-size) - var(--ring-box-width)) / 2 + var(--cell-size) * #{$spot-ring-occupied-offset-x});
@@ -736,6 +736,17 @@ html.nexo-discs-wooden .nexo-tower{
     &.replaceable-spot .spot-ring ellipse{ stroke-dasharray: #{math.div(100 * $spot-ring-dash-share, $spot-ring-occupied-dashes)} #{math.div(100 * (1 - $spot-ring-dash-share), $spot-ring-occupied-dashes)}; }
     &.legal-spot.clickable-spot:hover .spot-ring ellipse, &.replaceable-spot:hover .spot-ring ellipse{ stroke-dasharray: none; }
     &.selected-spot::before{ border: 3px solid $selected-spot-color !important; background-color: rgba($selected-spot-color, 0.35) !important; box-shadow: 0 0 10px $selected-spot-color; }
+}
+//[BGA] a log row's spots (BoardHandler.showLogHighlight), in their own layer between the spots and the towers: an occupied ring
+//under a tower (.occupied-log-highlight), the empty ring on an empty spot. No clicks: they go to the spots and towers
+.log-highlight-layer{ pointer-events: none; }
+.board-spot.log-highlight-spot{ pointer-events: none; animation: log-highlight-in $log-highlight-fade-in ease-out;
+    &::before{ border: calc(var(--spot-ring-stroke) * #{$log-highlight-stroke-scale}) solid $log-highlight-color; background-color: $log-highlight-fill; box-shadow: 0 0 calc(var(--cell-size) * #{$log-highlight-glow-share}) $log-highlight-glow-color; }
+    &.fading-log-highlight{ opacity: 0; transition: opacity var(--log-highlight-fade-out, 400ms) ease; }
+}
+@keyframes log-highlight-in{ from{ opacity: 0; } }
+@media (prefers-reduced-motion: reduce){
+    .board-spot.log-highlight-spot{ animation: none; }
 }
 //the marching dashes: only the legal spots' and replaceable towers' rings, never the gold ring under the active drafted
 //tower, nor anything in the towers or controls layers (drafted towers, badges, buttons). Only stroke-dashoffset moves, one
@@ -1010,7 +1021,15 @@ body .passed-banner{ position: fixed; inset: 0px; margin: auto; width: fit-conte
 //display: block on each row, hence !important
 #logs .log:not(.a-game-log), [id^="chatwindowlogs_zone_tablelog_"] .log:not(.a-game-log), [id^="replaylogs"] .gamelogreview:not(.a-game-log){ display: none !important; }
 
-$log-name-max-width: 110px; //longer names are cut with an ellipsis (full name on hover)
+$log-name-min-width: 3em; //about 5 characters ("You" fits): a name shows whole when the row has room, and is cut with an ellipsis down to this, never less, only when the icons need the room (full name on hover)
+$log-name-gap: 6px; //between the name and what follows it
+//a turn row's icons, every size a share of one tower ($log-cell-size, or less in a narrow row), so the row scales as a whole:
+//the gap between two of the turn's towers, and a replacement's pill (its padding, the gap inside it, the arrow's box)
+$log-towers-gap-share: 0.067; //2px at 30px
+$log-replacement-padding-share: 0.1; //3px
+$log-replacement-gap-share: 0.033; //1px
+$log-replacement-arrow-share: 0.4; //12px: the arrow's font size and box width
+$log-replacement-extra-share: 2 * $log-replacement-padding-share + 2 * $log-replacement-gap-share + $log-replacement-arrow-share; //what a pill adds to its two towers
 $log-types: "towers-placed", "player-passed", "game-end", "game-end-draw"; //game-end-draw after game-end: a draw row has both classes
 .log, .gamelogreview{
     //the &.…roundedbox selectors: the mobile table log's row is itself the .roundedbox (see the default background above)
@@ -1028,28 +1047,31 @@ $log-types: "towers-placed", "player-passed", "game-end", "game-end-draw"; //gam
         &.#{$log-type}-log .roundedbox, &.#{$log-type}-log.roundedbox, &.gamelogreview.#{$log-type}-log{ background: var(--bg-log-#{$log-type}); }
     }
 
-    //"name [board snapshot]": the name on the left, the board as it stood after the turn on its right. The row is a size
-    //container, so the snapshot's spots (its --cell-size) shrink below $log-snapshot-cell-size only when the row can't fit
-    //the snapshot plus $log-snapshot-name-min-width: the whole snapshot scales, it never overflows the log
-    .towers-placed-row{ display: flex; align-items: center; gap: 6px; color: $log-text-color; container-type: inline-size;
-        .playername{ display: block; min-width: 0; max-width: $log-name-max-width; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    //"name [tower] [tower] [enemy tower → tower]" (the row of 2026-11-17, before the board snapshot)
+    //[BGA] always one line (2026-11-25): the name, whole when there is room, else cut down to $log-name-min-width, then the icons, which never wrap or shrink as a box. The row is a size
+    //container: its towers are $log-cell-size, or smaller when the row can't fit them beside the name at its narrowest ($log-name-min-width). Their size is
+    //worked out from the row's counts (LogMutationObserver: --log-tower-count, every tower drawn, replaced ones included;
+    //--log-replacement-count; --log-item-count, the turn's towers), since every icon size is a share of it. Two replacements
+    //and a tower, the widest turn (5 discs), are 6.47 towers wide
+    .towers-placed-row{ display: flex; align-items: center; flex-wrap: nowrap; gap: $log-name-gap; color: $log-text-color; container-type: inline-size;
+        //the name's narrowest is $log-name-min-width, guaranteed by the towers' size below (they always leave it that much), not by a
+        //min-width, which would pad a shorter name ("You") with empty space before its icons
+        .playername{ flex: 0 1 auto; display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .log-towers{ flex: 0 0 auto; display: flex; align-items: center; flex-wrap: nowrap;
+            --log-row-units: calc(var(--log-tower-count, 1) + var(--log-replacement-count, 0) * #{$log-replacement-extra-share} + (var(--log-item-count, 1) - 1) * #{$log-towers-gap-share});
+            --log-tower-size: min(#{$log-cell-size}, calc((100cqw - #{$log-name-min-width} - #{$log-name-gap}) / var(--log-row-units)));
+            gap: calc(var(--log-tower-size) * #{$log-towers-gap-share}); }
+        .log-replacement{ flex: none; display: inline-flex; align-items: center; gap: calc(var(--log-tower-size) * #{$log-replacement-gap-share}); padding: 0px calc(var(--log-tower-size) * #{$log-replacement-padding-share});
+            border-radius: calc(var(--log-tower-size) * 0.27); background: rgba(255, 145, 0, 0.18); }
+        .log-replacement-arrow{ flex: none; width: calc(var(--log-tower-size) * #{$log-replacement-arrow-share}); font-size: calc(var(--log-tower-size) * #{$log-replacement-arrow-share}); line-height: 1; text-align: center; color: rgba($material-charcoal, 0.6); }
     }
-    .log-board-snapshot{ flex: none; display: grid; grid-template-columns: repeat(var(--snapshot-columns), var(--cell-size)); grid-auto-rows: var(--cell-size);
-        padding: $log-snapshot-padding; border: 1px solid $log-snapshot-border-color; border-radius: 4px; background: $log-snapshot-background;
-        --cell-size: min(#{$log-snapshot-cell-size}, calc((100cqw - #{$log-snapshot-name-min-width} - 6px - #{2 * $log-snapshot-padding + 2px}) / var(--snapshot-columns)));
-
-        .snapshot-cell{ position: relative; border-radius: 3px; }
-        //an empty spot: a faint dot where a tower's bottom disc would sit
-        .empty-snapshot-cell::before{ content: ""; position: absolute; left: 50%; bottom: calc(var(--cell-size) * #{$tower-base-ratio + math.div($disc-width-ratio * $disc-face-ratio, 2)}); width: 3px; height: 3px;
-            translate: -50% 50%; border-radius: 50%; background: $log-snapshot-dot-color; }
-        //a spot the turn touched (a new tower or a replacement): a gold ring and a soft gold glow
-        .changed-snapshot-cell{ background: $log-snapshot-changed-fill; box-shadow: inset 0 0 0 1.5px $log-snapshot-changed-color, 0 0 4px rgba($log-snapshot-changed-color, 0.55); }
-        //the board's towers at snapshot size: a larger number, readable on a small face
-        .snapshot-tower .tower-height-number{ font-size: calc(var(--cell-size) * 0.36); }
+    .log-tower{ --cell-size: var(--log-tower-size, #{$log-cell-size}); }
+    .log-tower.replaced-log-tower{ opacity: 0.55;
+        &::after{ content: ""; position: absolute; left: 10%; right: 10%; top: 50%; height: 2px; background: #c62828; rotate: -30deg; }
     }
     //"name [ban]": the name cut like the turn row's, then a grey ban sign (hover: what it means)
     .player-passed-row{ display: flex; align-items: center; gap: 6px; color: $log-text-color;
-        .playername{ display: block; min-width: 0; max-width: $log-name-max-width; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .playername{ flex: 0 1 auto; display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .player-passed-icon{ flex: none; font-size: 15px; line-height: 1; color: #5a5f6e; cursor: help; }
     }
     //"[icon] name wins / 13-9 [icon]" (a draw: "Draw / 11-11"): three columns, the icons at the row's edges and centred on the

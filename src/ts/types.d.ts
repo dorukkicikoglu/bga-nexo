@@ -41,7 +41,7 @@ interface NexoRulesData {
 type DiscColor = 'red' | 'black';
 
 //[BGA] where a disc sits, which alone decides its look (BoardHandler.getDiscLook): a board spot (board towers, drafted towers,
-//log snapshots: x, y), a player board's reserve stack (x: its index) or a status bar icon (x: its index); level, 0 for the
+//log tower icons: x, y), a player board's reserve stack (x: its index) or a status bar icon (x: its index); level, 0 for the
 //bottom disc. Never an id: the same slot always gives the same disc, after a reload and in a replay too
 type DiscSlot = { kind: 'board' | 'reserve' | 'status'; x: number; y: number; level: number; };
 
@@ -104,7 +104,7 @@ interface PlaceTowersArgs {
 interface TowersPlacedArgs {
     player_id: number;
     placements: NexoPlacement[];
-    board_snapshot?: string; //the board after the turn, for its log row (NEXOTableManager::getBoardSnapshot): "x,y" + r/b + height per tower, space separated. Missing in turns logged before it existed
+    log_spots?: NexoSpot[]; //every spot the turn touched, for its log row's highlight on the board (LogHighlightHandler). Missing in turns logged before it existed (the placements' spots are the same)
     reserves: Record<number, number>;
     scores: Record<number, number>;
 }

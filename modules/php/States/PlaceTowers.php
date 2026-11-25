@@ -75,10 +75,12 @@ class PlaceTowers extends GameState
         //identifiable on the replay page, which shows only this plain fallback
         $heightsLog = array_map(fn(array $placement) => $placement['height'].' at ('.NEXOTableManager::cellKey($placement['x'], $placement['y']).')'.($placement['kind'] === PLACEMENT_REPLACE ? ' replacing '.$placement['replaced_height'] : ''), $validatedPlacements);
         $this->bga->notify->all('towersPlaced', '${TOWERS_PLACED_LOG_STR}', [
-            'preserve' => ['player_id', 'placements', 'board_snapshot'],
+            'preserve' => ['player_id', 'placements', 'log_spots'],
             'player_id' => $activePlayerId,
             'placements' => $validatedPlacements,
-            'board_snapshot' => $this->game->tableManager->getBoardSnapshot(), //the board after the turn, for the log row
+            //[BGA] every spot the turn touched, in the board's own x,y: the client rings them on the board when the turn's log row is
+            //hovered or tapped (LogHighlightHandler), after a reload and in replays too
+            'log_spots' => array_map(fn(array $placement) => ['x' => $placement['x'], 'y' => $placement['y']], $validatedPlacements),
             'reserves' => $this->game->tableManager->getReserves(),
             'scores' => $scores,
             'TOWERS_PLACED_LOG_STR' => $this->game->getPlayerNameById($activePlayerId).' places towers: '.implode(', ', $heightsLog), //plain fallback: the client builds the row from placements

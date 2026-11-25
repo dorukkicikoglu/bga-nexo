@@ -140,6 +140,7 @@ class BoardHandler {
         this.towerElements = new Map();
         this.pendingElements = new Map();
         this.draft = null;
+        this.logHighlightSpots = []; //the spots a log row points at (showLogHighlight)
         this.draftClickHandlers = null;
         this.confirmWasFull = false; //every disc of the turn was drafted at the last render: the confirm button pulses once on reaching it
         this.ringWasFilled = null; //the confirm ring's filled segments at the last render, null when no confirm button showed
@@ -149,6 +150,7 @@ class BoardHandler {
         this.boardElement.innerHTML = `
             <div class="board-layer">
                 <div class="spots-layer"></div>
+                <div class="log-highlight-layer"></div>
                 <div class="towers-layer"></div>
                 <div class="draft-controls-layer"></div>
                 <div class="board-message-layer"></div>
@@ -156,6 +158,7 @@ class BoardHandler {
         `;
         this.layerElement = this.boardElement.querySelector('.board-layer');
         this.spotsLayer = this.boardElement.querySelector('.spots-layer');
+        this.logHighlightLayer = this.boardElement.querySelector('.log-highlight-layer');
         this.towersLayer = this.boardElement.querySelector('.towers-layer');
         this.controlsLayer = this.boardElement.querySelector('.draft-controls-layer');
         this.messageLayer = this.boardElement.querySelector('.board-message-layer');
@@ -354,7 +357,7 @@ class BoardHandler {
     /**
      * [BGA] A disc's look (its wooden sprite and its hand-piled jitter: offsets and the grain's rotation), from a hash of its color
      * and its slot alone, never Math.random(): discs have no ids, so the same slot always gives the same disc, after a reload, in a
-     * replay, in the log's snapshot and while the drafted towers are rebuilt on every click. Set once, inline, when the disc's
+     * replay, in the log's tower icons and while the drafted towers are rebuilt on every click. Set once, inline, when the disc's
      * element is made (getDiscLookStyle), whatever the disc style, so switching style redraws nothing; nothing ever writes it
      * again. Each disc's offsets are its own, not added to the ones below, so a stack never leans, and a disc added on top never
      * changes the ones under it. A disc flying between a reserve stack and the board is a copy of the tower it lands in, so it
@@ -838,6 +841,40 @@ class BoardHandler {
             }
         }
     }
+    /**
+     * [BGA] The spots a log row touched (LogHighlightHandler, on hovering or tapping it): a gold ring on each, in its own layer
+     * under the towers, at the spot's board coordinates, so it follows the board however the grid grew or the contents slid
+     * since. A spot with a tower gets an occupied ring (under the tower, like the gold ring under the active drafted tower), an
+     * empty one the empty ring. Replaces any earlier highlight. Never throws: a spot that isn't two whole numbers is skipped
+     */
+    showLogHighlight(spots) {
+        this.clearLogHighlight(false);
+        for (const spot of spots) {
+            if (!Number.isInteger(spot?.x) || !Number.isInteger(spot?.y))
+                continue;
+            const highlight = document.createElement('div');
+            highlight.className = 'board-spot log-highlight-spot' + (this.towers.has(BoardRules.key(spot.x, spot.y)) ? ' occupied-log-highlight' : '');
+            BoardHandler.placeOnBoard(highlight, spot);
+            this.logHighlightLayer.appendChild(highlight);
+            this.logHighlightSpots.push(highlight);
+        }
+    }
+    //takes the log highlight away: at once, or fading out (LOG_HIGHLIGHT_FADE_OUT; at once with animations off or reduced motion)
+    clearLogHighlight(fade) {
+        const highlights = this.logHighlightSpots;
+        this.logHighlightSpots = [];
+        const fadeOut = fade && this.game.bga.gameui.bgaAnimationsActive() && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        for (const highlight of highlights) {
+            if (!fadeOut) {
+                highlight.remove();
+                continue;
+            }
+            highlight.style.setProperty('--log-highlight-fade-out', `${Game.LOG_HIGHLIGHT_FADE_OUT}ms`);
+            highlight.classList.add('fading-log-highlight');
+            window.setTimeout(() => highlight.remove(), Game.LOG_HIGHLIGHT_FADE_OUT);
+        }
+    }
+    getBoardElement() { return this.boardElement; }
 }
 //the undo button's icon: a curved arrow turning back counter-clockwise, drawn with currentColor
 //[BGA] "Disc style" Wooden (PrefHandler.applyDiscStyle, Game.scss html.nexo-discs-wooden): img/wooden_discs.webp, a grid of
@@ -1407,13 +1444,28 @@ class LogMutationObserver {
         return `<div log-class-tag="${this.game.getDiscColor(player_id)}-disc-log"></div>`;
     }
     //create specific log types
-    //"name [board]": the board as it stood at the end of the turn (board_snapshot), cropped to its towers, every spot the turn
-    //touched ringed in gold (the placements: a new tower or a replacement)
-    createLogTowersPlaced(player_id, placements, boardSnapshot) {
+    //"name [tower] [tower] [enemy tower → tower]": every tower of the turn as a mini tower in the player's color, in the order
+    //they were drafted; a replacement shows the enemy tower it replaced, faded and crossed, then the new one (the row of
+    //2026-11-17, before the board snapshot). [BGA] The row carries the spots the turn touched (data-log-spots, the board's own
+    //x,y, from log_spots; a turn logged before log_spots existed takes its placements' spots, the same ones), which
+    //LogHighlightHandler rings on the board when the row is hovered or tapped
+    createLogTowersPlaced(player_id, placements, logSpots) {
+        const discColor = this.game.getDiscColor(player_id);
+        const towersHTML = placements.map(placement => {
+            const towerHTML = this.getMiniTowerHTML(discColor, placement.height, placement);
+            if (placement.kind !== 'replace' || placement.replaced_player_id === null)
+                return towerHTML;
+            const replacedHTML = this.getMiniTowerHTML(this.game.getDiscColor(placement.replaced_player_id), placement.replaced_height ?? 1, placement, 'replaced-log-tower');
+            return `<span class="log-replacement">${replacedHTML}<i class="fa6 fa-arrow-right log-replacement-arrow" aria-hidden="true"></i>${towerHTML}</span>`;
+        }).join('');
+        //the row's counts, from which Game.scss sizes its towers to fit one line (.log-towers)
+        const replacementCount = placements.filter(placement => placement.kind === 'replace' && placement.replaced_player_id !== null).length;
+        const countsStyle = `--log-tower-count: ${placements.length + replacementCount}; --log-replacement-count: ${replacementCount}; --log-item-count: ${Math.max(1, placements.length)}`;
+        const spots = (Array.isArray(logSpots) && logSpots.length > 0) ? logSpots : placements;
         let logHTML = `
-            <div class="towers-placed-row">
+            <div class="towers-placed-row" data-log-spots="${LogMutationObserver.getLogSpotsAttribute(spots)}">
                 ${this.getCutPlayerNameHTML(player_id)}
-                ${this.getBoardSnapshotHTML(player_id, placements, boardSnapshot)}
+                <span class="log-towers" style="${countsStyle}">${towersHTML}</span>
             </div>` + this.getDiscColorTag(player_id) + ' &nbsp;';
         return this.addLogClassTag(logHTML, 'towers-placed-log');
     }
@@ -1463,51 +1515,155 @@ class LogMutationObserver {
             </div>` + (isDraw ? '<div log-class-tag="game-end-draw-log"></div>' : this.getDiscColorTag(winner_ids[0])) + '<span class="nexo-log-result-spacer"> &nbsp;</span>';
         return this.addLogClassTag(logHTML, 'game-end-log');
     }
-    /**
-     * [BGA] A turn's board snapshot: one .snapshot-cell per spot of the bounding box of the towers (BoardRules.getBounds, the
-     * main board's own coordinates, so negative ones too), row by row, each holding its tower (createTowerDiv, sized by the
-     * snapshot's --cell-size) or a faint dot. The turn's spots (placements) get .changed-snapshot-cell, a gold ring. Built
-     * from the notification's args alone, so a reload and a
-     * replay draw the same. A turn logged before board_snapshot existed shows its own towers only
-     */
-    getBoardSnapshotHTML(player_id, placements, boardSnapshot) {
-        const towers = new Map();
-        if (typeof boardSnapshot === 'string') {
-            for (const cellText of boardSnapshot.split(' ')) {
-                const cell = cellText.match(/^(-?\d+),(-?\d+)([rb])(\d+)$/);
-                if (cell)
-                    towers.set(BoardRules.key(parseInt(cell[1]), parseInt(cell[2])), { discColor: cell[3] === 'b' ? 'black' : 'red', height: parseInt(cell[4]) });
-            }
-        }
-        else {
-            for (const placement of placements)
-                towers.set(BoardRules.key(placement.x, placement.y), { discColor: this.game.getDiscColor(player_id), height: placement.height });
-        }
-        const changedKeys = new Set(placements.map(placement => BoardRules.key(placement.x, placement.y)));
-        const spots = new Map();
-        for (const key of [...towers.keys(), ...changedKeys]) {
-            const [x, y] = key.split(',').map(Number);
-            spots.set(key, { x, y });
-        }
-        const bounds = BoardRules.getBounds(spots);
-        if (!bounds)
-            return '';
-        let cellsHTML = '';
-        for (let y = bounds.minY; y <= bounds.maxY; y++) {
-            for (let x = bounds.minX; x <= bounds.maxX; x++) {
-                const key = BoardRules.key(x, y);
-                const tower = towers.get(key);
-                const cellClass = 'snapshot-cell' + (tower ? '' : ' empty-snapshot-cell') + (changedKeys.has(key) ? ' changed-snapshot-cell' : '');
-                const towerHTML = tower ? BoardHandler.createTowerDiv(tower.discColor, tower.height, { x: x, y: y }, 'snapshot-tower').outerHTML : '';
-                cellsHTML += `<div class="${cellClass}">${towerHTML}</div>`;
-            }
-        }
-        return `<div class="log-board-snapshot" style="--snapshot-columns: ${bounds.maxX - bounds.minX + 1}; --snapshot-rows: ${bounds.maxY - bounds.minY + 1}">${cellsHTML}</div>`;
+    //a tower drawn at log size (.log-tower sets its own --cell-size), with the discs of the board's tower on its spot
+    getMiniTowerHTML(discColor, height, spot, extraClass = '') {
+        return BoardHandler.createTowerDiv(discColor, height, spot, 'log-tower' + (extraClass ? ' ' + extraClass : '')).outerHTML;
     }
-    //a player name the row's CSS cuts with an ellipsis (max-width), so its title shows it whole
+    //"x,y;x,y": the spots a row points at, read back by LogHighlightHandler.getRowSpots
+    static getLogSpotsAttribute(spots) {
+        return spots.filter(spot => Number.isInteger(Number(spot?.x)) && Number.isInteger(Number(spot?.y))).map(spot => `${Number(spot.x)},${Number(spot.y)}`).join(';');
+    }
+    //a player name the row's CSS cuts with an ellipsis (max-width), so its title shows the player's whole name (on my own rows
+    //too, where it reads "You"). A plain title: it takes no events, so the row's hover and tap (LogHighlightHandler) still apply
     getCutPlayerNameHTML(player_id) {
-        const nameText = (player_id === this.game.getMyPlayerID()) ? _('You') : this.game.getPlayerName(player_id);
-        return this.game.divColoredPlayer(player_id, { class: 'playername', title: nameText.replace(/"/g, '&quot;') });
+        return this.game.divColoredPlayer(player_id, { class: 'playername', title: this.game.getPlayerName(player_id).replace(/"/g, '&quot;') });
+    }
+}
+
+/**
+ *------
+ * BGA framework: Gregory Isabelli & Emmanuel Colin & BoardGameArena
+ * Nexo implementation : © Doruk Kicikoglu <doruk.kicikoglu@gmail.com>
+ *
+ * This code has been produced on the BGA studio platform for use on http://boardgamearena.com.
+ * See http://en.boardgamearena.com/#!doc/Studio for more information.
+ * -----
+ *
+ * LogHighlightHandler.ts
+ */
+/**
+ * [BGA] A log row's spots on the board: every row that touched the board (a tower placed) carries them as data-log-spots
+ * (LogMutationObserver), in the board's own x,y, so they still point at the right spots however the grid grew or the board
+ * slid since. A mouse over a row rings them (BoardHandler.showLogHighlight) until it leaves the row. A tap (touch or pen: the
+ * pointerdown's pointerType, so a hybrid device's mouse still hovers and its finger still taps, never both for one gesture)
+ * rings them for LOG_HIGHLIGHT_TOUCH_HOLD, then they fade; another tap, or any press on the board, clears them at once. A tap
+ * in BGA's mobile table log (a chat window in #chatbar) also collapses that window, so the board shows. One set of listeners
+ * on the document for every log (the desktop log, the mobile table log, the replay log): rows added later, after a reload
+ * too, need nothing of their own
+ */
+class LogHighlightHandler {
+    constructor(game) {
+        this.game = game;
+        this.hoveredRow = null; //the row the mouse is over
+        this.tapTimer = 0; //the tapped row's hold before its highlight fades, 0 when none
+        this.lastPointerType = 'mouse'; //the last pointerdown's: a click after a touch or a pen press is a tap
+        this.warnedLogClose = false;
+        document.addEventListener('pointerdown', (event) => { this.lastPointerType = event.pointerType || 'mouse'; }, { capture: true, passive: true });
+        document.addEventListener('pointerover', (event) => this.onPointerOver(event), { passive: true });
+        document.addEventListener('pointerout', (event) => this.onPointerOut(event), { passive: true });
+        document.addEventListener('click', (event) => this.onClick(event), { capture: true }); //capture: before anything of BGA's in the log may stop it
+        this.game.boardHandler.getBoardElement().addEventListener('pointerdown', () => this.clear(), { passive: true });
+    }
+    //a mouse moving onto a row rings its spots, onto anything else (another row, a row with no spots, the page) clears them
+    onPointerOver(event) {
+        if (event.pointerType !== 'mouse')
+            return; //a finger or a pen fires it too, on the tap itself: onClick handles those
+        const row = LogHighlightHandler.getLogRow(event.target);
+        if (row === this.hoveredRow)
+            return;
+        this.hoveredRow = row;
+        this.stopTapTimer();
+        if (row)
+            this.game.boardHandler.showLogHighlight(LogHighlightHandler.getRowSpots(row));
+        else
+            this.game.boardHandler.clearLogHighlight(false);
+    }
+    //the mouse leaving the window (no element under it any more): pointerover never fires for that
+    onPointerOut(event) {
+        if (event.pointerType !== 'mouse' || event.relatedTarget || !this.hoveredRow)
+            return;
+        this.hoveredRow = null;
+        this.game.boardHandler.clearLogHighlight(false);
+    }
+    //a tap on a row with spots: rings them for a while, and collapses the mobile table log over the board
+    onClick(event) {
+        if (this.lastPointerType === 'mouse')
+            return; //a mouse already rings them on hover
+        const row = LogHighlightHandler.getLogRow(event.target);
+        const spots = row ? LogHighlightHandler.getRowSpots(row) : [];
+        if (spots.length === 0)
+            return;
+        this.hoveredRow = null;
+        this.stopTapTimer();
+        this.game.boardHandler.showLogHighlight(spots);
+        this.tapTimer = window.setTimeout(() => {
+            this.tapTimer = 0;
+            this.game.boardHandler.clearLogHighlight(true);
+        }, Game.LOG_HIGHLIGHT_TOUCH_HOLD);
+        this.closeMobileLog(row);
+    }
+    //any press on the board: the highlight goes at once
+    clear() {
+        this.hoveredRow = null;
+        this.stopTapTimer();
+        this.game.boardHandler.clearLogHighlight(false);
+    }
+    stopTapTimer() {
+        if (this.tapTimer)
+            window.clearTimeout(this.tapTimer);
+        this.tapTimer = 0;
+    }
+    /**
+     * On a phone, BGA shows the table log in a chat window of #chatbar (its rows in #chatwindowlogs_zone_<window id>), opened
+     * from its floating button; a tapped row collapses that window the way its own control does, so the same button opens it
+     * again: BGA's collapseChatWindow(window id) when gameui has it, else a click on the window's own collapse control. Neither
+     * is in bga-framework.d.ts, so both are looked up first and nothing happens without them (a warning, once, in the console).
+     * The desktop log (#logs) and the replay log never collapse
+     */
+    closeMobileLog(row) {
+        const zone = row.closest('[id^="chatwindowlogs_zone_"]');
+        if (!zone || !zone.closest('#chatbar'))
+            return;
+        const windowID = zone.id.substring('chatwindowlogs_zone_'.length);
+        try {
+            const gameui = this.game.bga.gameui;
+            if (typeof gameui.collapseChatWindow === 'function') {
+                gameui.collapseChatWindow.call(gameui, windowID);
+                return;
+            }
+            const collapseControl = document.getElementById('chatwindowcollapse_' + windowID);
+            if (collapseControl) {
+                collapseControl.click();
+                return;
+            }
+        }
+        catch (error) {
+            console.error('LogHighlightHandler: could not collapse the table log', error);
+            return;
+        }
+        if (!this.warnedLogClose) {
+            this.warnedLogClose = true;
+            const ancestors = [];
+            for (let node = zone; node && node.id !== 'chatbar'; node = node.parentElement)
+                ancestors.push(node.id ? `#${node.id}` : `.${Array.from(node.classList).join('.')}`);
+            console.warn(`LogHighlightHandler: no way found to collapse the table log window "${windowID}" (no gameui.collapseChatWindow, no #chatwindowcollapse_${windowID}). Its ancestors: ${ancestors.join(' < ')}`);
+        }
+    }
+    //the game log row (one of ours: .a-game-log, LogMutationObserver) the event happened in, null outside every log row
+    static getLogRow(target) {
+        return (target instanceof Element) ? target.closest('.a-game-log') : null;
+    }
+    //the spots a row touched, from its data-log-spots ("x,y;x,y"); none for a row without (a pass, the game end) or a value
+    //that doesn't read as whole numbers
+    static getRowSpots(row) {
+        const value = row.querySelector('[data-log-spots]')?.getAttribute('data-log-spots') ?? '';
+        const spots = [];
+        for (const spotText of value.split(';')) {
+            const match = spotText.trim().match(/^(-?\d+),(-?\d+)$/);
+            if (match)
+                spots.push({ x: parseInt(match[1]), y: parseInt(match[2]) });
+        }
+        return spots;
     }
 }
 
@@ -2094,6 +2250,7 @@ class Game {
         this.boardHandler = new BoardHandler(this, gamedatas.towers);
         this.confirmPopover = new ConfirmPopover(this);
         this.logMutationObserver = new LogMutationObserver(this);
+        this.logHighlightHandler = new LogHighlightHandler(this);
         this.tooltipHandler = new TooltipHandler(this);
         this.prefHandler = new PrefHandler(this, gamedatas.pref_names);
         this.bga.gameui.onScreenWidthChange = () => this.onScreenWidthChange();
@@ -2127,7 +2284,7 @@ class Game {
                 for (let key of keys) {
                     if (key in args) {
                         if (key == 'TOWERS_PLACED_LOG_STR')
-                            log = this.logMutationObserver.createLogTowersPlaced(args['player_id'], args['placements'], args['board_snapshot']).log_html;
+                            log = this.logMutationObserver.createLogTowersPlaced(args['player_id'], args['placements'], args['log_spots']).log_html;
                         else if (key == 'PASS_LOG_STR')
                             log = this.logMutationObserver.createLogPlayerPassed(args['player_id']).log_html;
                         else if (key == 'GAME_END_LOG_STR')
@@ -2385,6 +2542,9 @@ Game.TOWER_MESSAGE_FADE_IN = 150;
 Game.TOWER_MESSAGE_HOLD = 1800;
 Game.TOWER_MESSAGE_FADE_OUT = 250;
 Game.TOWER_MESSAGE_EDGE_MARGIN = 6; //screen px kept between the bubble and the board's edges
+//[BGA] a log row's spots on the board (LogHighlightHandler): a tap keeps them this long (no mouseleave on touch), then they fade
+Game.LOG_HIGHLIGHT_TOUCH_HOLD = 3000;
+Game.LOG_HIGHLIGHT_FADE_OUT = 400;
 Game.BOARD_VIEWPORT_MARGIN = 10; //screen px from the board to the window's bottom (BoardHandler.fitToViewport); the status bar's gap is #nexo-board-container's padding
 Game.MIN_BOARD_CELL_SIZE = 40; //px of a spot, however short the window
 Game.FIT_ROOM_THRESHOLD = 4; //px the room for the board must change by before its spot size is computed again (BoardHandler.fitToViewport)

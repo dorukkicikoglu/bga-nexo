@@ -49,6 +49,7 @@ export class BoardHandler {
     private boardElement: HTMLDivElement;
     private layerElement: HTMLDivElement;
     private spotsLayer: HTMLDivElement;
+    private logHighlightLayer: HTMLDivElement;
     private towersLayer: HTMLDivElement;
     private controlsLayer: HTMLDivElement;
     private messageLayer: HTMLDivElement;
@@ -71,6 +72,7 @@ export class BoardHandler {
     private towerElements = new Map<string, HTMLDivElement>();
     private pendingElements = new Map<string, HTMLDivElement>();
     private draft: DraftView | null = null;
+    private logHighlightSpots: HTMLDivElement[] = []; //the spots a log row points at (showLogHighlight)
     private draftClickHandlers: DraftClickHandlers | null = null;
     private confirmWasFull: boolean = false; //every disc of the turn was drafted at the last render: the confirm button pulses once on reaching it
     private ringWasFilled: number | null = null; //the confirm ring's filled segments at the last render, null when no confirm button showed
@@ -98,6 +100,7 @@ export class BoardHandler {
         this.boardElement.innerHTML = `
             <div class="board-layer">
                 <div class="spots-layer"></div>
+                <div class="log-highlight-layer"></div>
                 <div class="towers-layer"></div>
                 <div class="draft-controls-layer"></div>
                 <div class="board-message-layer"></div>
@@ -105,6 +108,7 @@ export class BoardHandler {
         `;
         this.layerElement = this.boardElement.querySelector('.board-layer');
         this.spotsLayer = this.boardElement.querySelector('.spots-layer');
+        this.logHighlightLayer = this.boardElement.querySelector('.log-highlight-layer');
         this.towersLayer = this.boardElement.querySelector('.towers-layer');
         this.controlsLayer = this.boardElement.querySelector('.draft-controls-layer');
         this.messageLayer = this.boardElement.querySelector('.board-message-layer');
@@ -322,7 +326,7 @@ export class BoardHandler {
     /**
      * [BGA] A disc's look (its wooden sprite and its hand-piled jitter: offsets and the grain's rotation), from a hash of its color
      * and its slot alone, never Math.random(): discs have no ids, so the same slot always gives the same disc, after a reload, in a
-     * replay, in the log's snapshot and while the drafted towers are rebuilt on every click. Set once, inline, when the disc's
+     * replay, in the log's tower icons and while the drafted towers are rebuilt on every click. Set once, inline, when the disc's
      * element is made (getDiscLookStyle), whatever the disc style, so switching style redraws nothing; nothing ever writes it
      * again. Each disc's offsets are its own, not added to the ones below, so a stack never leans, and a disc added on top never
      * changes the ones under it. A disc flying between a reserve stack and the board is a copy of the tower it lands in, so it
@@ -863,4 +867,42 @@ export class BoardHandler {
             }
         }
     }
+
+    /**
+     * [BGA] The spots a log row touched (LogHighlightHandler, on hovering or tapping it): a gold ring on each, in its own layer
+     * under the towers, at the spot's board coordinates, so it follows the board however the grid grew or the contents slid
+     * since. A spot with a tower gets an occupied ring (under the tower, like the gold ring under the active drafted tower), an
+     * empty one the empty ring. Replaces any earlier highlight. Never throws: a spot that isn't two whole numbers is skipped
+     */
+    public showLogHighlight(spots: NexoSpot[]): void {
+        this.clearLogHighlight(false);
+        for(const spot of spots){
+            if(!Number.isInteger(spot?.x) || !Number.isInteger(spot?.y))
+                continue;
+
+            const highlight = document.createElement('div');
+            highlight.className = 'board-spot log-highlight-spot' + (this.towers.has(BoardRules.key(spot.x, spot.y)) ? ' occupied-log-highlight' : '');
+            BoardHandler.placeOnBoard(highlight, spot);
+            this.logHighlightLayer.appendChild(highlight);
+            this.logHighlightSpots.push(highlight);
+        }
+    }
+
+    //takes the log highlight away: at once, or fading out (LOG_HIGHLIGHT_FADE_OUT; at once with animations off or reduced motion)
+    public clearLogHighlight(fade: boolean): void {
+        const highlights = this.logHighlightSpots;
+        this.logHighlightSpots = [];
+        const fadeOut = fade && this.game.bga.gameui.bgaAnimationsActive() && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        for(const highlight of highlights){
+            if(!fadeOut){
+                highlight.remove();
+                continue;
+            }
+            highlight.style.setProperty('--log-highlight-fade-out', `${Game.LOG_HIGHLIGHT_FADE_OUT}ms`);
+            highlight.classList.add('fading-log-highlight');
+            window.setTimeout(() => highlight.remove(), Game.LOG_HIGHLIGHT_FADE_OUT);
+        }
+    }
+
+    public getBoardElement(): HTMLDivElement { return this.boardElement; }
 }

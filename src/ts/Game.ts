@@ -15,6 +15,7 @@ import { PlayerHandler } from "./PlayerHandler";
 import { BoardHandler } from "./BoardHandler";
 import { BoardRules } from "./BoardRules";
 import { LogMutationObserver } from "./LogMutationObserver";
+import { LogHighlightHandler } from "./LogHighlightHandler";
 import { TooltipHandler } from "./TooltipHandler";
 import { EndGameScoringHandler } from "./EndGameScoringHandler";
 import { PrefHandler } from "./PrefHandler";
@@ -41,6 +42,9 @@ export class Game {
     public static readonly TOWER_MESSAGE_HOLD = 1800;
     public static readonly TOWER_MESSAGE_FADE_OUT = 250;
     public static readonly TOWER_MESSAGE_EDGE_MARGIN = 6; //screen px kept between the bubble and the board's edges
+    //[BGA] a log row's spots on the board (LogHighlightHandler): a tap keeps them this long (no mouseleave on touch), then they fade
+    public static readonly LOG_HIGHLIGHT_TOUCH_HOLD = 3000;
+    public static readonly LOG_HIGHLIGHT_FADE_OUT = 400;
     public static readonly BOARD_VIEWPORT_MARGIN = 10; //screen px from the board to the window's bottom (BoardHandler.fitToViewport); the status bar's gap is #nexo-board-container's padding
     public static readonly MIN_BOARD_CELL_SIZE = 40; //px of a spot, however short the window
     public static readonly FIT_ROOM_THRESHOLD = 4; //px the room for the board must change by before its spot size is computed again (BoardHandler.fitToViewport)
@@ -62,6 +66,7 @@ export class Game {
     public boardRules: BoardRules;
     public boardHandler: BoardHandler;
     public logMutationObserver: LogMutationObserver;
+    public logHighlightHandler: LogHighlightHandler;
     public tooltipHandler: TooltipHandler;
     public prefHandler: PrefHandler;
     public backgroundHandler: BackgroundHandler;
@@ -117,6 +122,7 @@ export class Game {
         this.boardHandler = new BoardHandler(this, gamedatas.towers);
         this.confirmPopover = new ConfirmPopover(this);
         this.logMutationObserver = new LogMutationObserver(this);
+        this.logHighlightHandler = new LogHighlightHandler(this);
         this.tooltipHandler = new TooltipHandler(this);
         this.prefHandler = new PrefHandler(this, gamedatas.pref_names);
         this.bga.gameui.onScreenWidthChange = () => this.onScreenWidthChange();
@@ -154,7 +160,7 @@ export class Game {
                 for(let key of keys) {
                     if(key in args) {
                         if(key == 'TOWERS_PLACED_LOG_STR')
-                            log = this.logMutationObserver.createLogTowersPlaced(args['player_id'], args['placements'], args['board_snapshot']).log_html;
+                            log = this.logMutationObserver.createLogTowersPlaced(args['player_id'], args['placements'], args['log_spots']).log_html;
                         else if(key == 'PASS_LOG_STR')
                             log = this.logMutationObserver.createLogPlayerPassed(args['player_id']).log_html;
                         else if(key == 'GAME_END_LOG_STR')

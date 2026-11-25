@@ -341,17 +341,6 @@ class NEXOTableManager{
         return (int) $this->game->getUniqueValueFromDB("SELECT COALESCE(SUM(`height`), 0) FROM `towers`");
     }
 
-    //[BGA] the board as it stands, for a turn's log row (towersPlaced's board_snapshot, drawn by LogMutationObserver): every
-    //tower as its board coordinates, its disc color's first letter and its height ("-1,0r3"), space separated. Short on
-    //purpose: it travels in every turn's notification and is kept in the log for reloads and replays
-    function getBoardSnapshot(): string{
-        $discLetterByPlayerID = [];
-        foreach($this->game->getCollectionFromDB("SELECT `player_id`, `player_color` FROM `player`", true) as $playerID => $playerColor)
-            $discLetterByPlayerID[(int) $playerID] = substr(DISC_COLOR_BY_PLAYER_COLOR[$playerColor] ?? FIRST_DISC_COLOR, 0, 1);
-
-        return implode(' ', array_map(fn(array $tower) => $tower['x'].','.$tower['y'].$discLetterByPlayerID[$tower['player_id']].$tower['height'], $this->getTowers()));
-    }
-
     function getTowerCount(): int{
         return (int) $this->game->getUniqueValueFromDB("SELECT COUNT(*) FROM `towers`");
     }
