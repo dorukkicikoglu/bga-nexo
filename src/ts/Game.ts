@@ -42,9 +42,15 @@ export class Game {
     public static readonly TOWER_MESSAGE_HOLD = 1800;
     public static readonly TOWER_MESSAGE_FADE_OUT = 250;
     public static readonly TOWER_MESSAGE_EDGE_MARGIN = 6; //screen px kept between the bubble and the board's edges
-    //[BGA] a log row's spots on the board (LogHighlightHandler): a tap keeps them this long (no mouseleave on touch), then they fade
-    public static readonly LOG_HIGHLIGHT_TOUCH_HOLD = 3000;
-    public static readonly LOG_HIGHLIGHT_FADE_OUT = 400;
+    //[BGA] a log row's towers jump on the board (LogHighlightHandler, BoardHandler.jumpTowers; the jump itself is CSS only, Game.scss:
+    //$tower-jump-*): after hovering a row this long (skimming the log jumps nothing), this many jumps; a tap, once the mobile log
+    //has closed (at most LOG_CLOSE_MAX_WAIT), this many
+    public static readonly LOG_JUMP_HOVER_DELAY = 120;
+    public static readonly LOG_JUMP_HOVER_COUNT = 2;
+    public static readonly LOG_JUMP_TAP_COUNT = 2;
+    public static readonly LOG_CLOSE_MAX_WAIT = 800;
+    public static readonly TOWER_JUMP_SAFETY_PER_JUMP = 400; //ms per jump, well over $tower-jump-duration, before a jump's class goes anyway
+    public static readonly TOWER_JUMP_SAFETY_MARGIN = 500;
     public static readonly BOARD_VIEWPORT_MARGIN = 10; //screen px from the board to the window's bottom (BoardHandler.fitToViewport); the status bar's gap is #nexo-board-container's padding
     public static readonly MIN_BOARD_CELL_SIZE = 40; //px of a spot, however short the window
     public static readonly FIT_ROOM_THRESHOLD = 4; //px the room for the board must change by before its spot size is computed again (BoardHandler.fitToViewport)

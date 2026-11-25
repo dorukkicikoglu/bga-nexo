@@ -140,7 +140,7 @@ class BoardHandler {
         this.towerElements = new Map();
         this.pendingElements = new Map();
         this.draft = null;
-        this.logHighlightSpots = []; //the spots a log row points at (showLogHighlight)
+        this.towerJumpSafetyTimers = new Map(); //a jump's class goes even if its animationend never comes (jumpTowers)
         this.draftClickHandlers = null;
         this.confirmWasFull = false; //every disc of the turn was drafted at the last render: the confirm button pulses once on reaching it
         this.ringWasFilled = null; //the confirm ring's filled segments at the last render, null when no confirm button showed
@@ -150,7 +150,6 @@ class BoardHandler {
         this.boardElement.innerHTML = `
             <div class="board-layer">
                 <div class="spots-layer"></div>
-                <div class="log-highlight-layer"></div>
                 <div class="towers-layer"></div>
                 <div class="draft-controls-layer"></div>
                 <div class="board-message-layer"></div>
@@ -158,7 +157,6 @@ class BoardHandler {
         `;
         this.layerElement = this.boardElement.querySelector('.board-layer');
         this.spotsLayer = this.boardElement.querySelector('.spots-layer');
-        this.logHighlightLayer = this.boardElement.querySelector('.log-highlight-layer');
         this.towersLayer = this.boardElement.querySelector('.towers-layer');
         this.controlsLayer = this.boardElement.querySelector('.draft-controls-layer');
         this.messageLayer = this.boardElement.querySelector('.board-message-layer');
@@ -842,39 +840,37 @@ class BoardHandler {
         }
     }
     /**
-     * [BGA] The spots a log row touched (LogHighlightHandler, on hovering or tapping it): a gold ring on each, in its own layer
-     * under the towers, at the spot's board coordinates, so it follows the board however the grid grew or the contents slid
-     * since. A spot with a tower gets an occupied ring (under the tower, like the gold ring under the active drafted tower), an
-     * empty one the empty ring. Replaces any earlier highlight. Never throws: a spot that isn't two whole numbers is skipped
+     * [BGA] The towers a log row touched jump (LogHighlightHandler: hovering the row, or tapping it): `jumps` quick jumps in a row
+     * (Game.scss: tower-jump, one CSS animation, its iteration count --tower-jumps), or with reduced motion one brightness pulse
+     * instead. Only the tower moves (its translate and scale properties, never a transform: towers are cloned to fly): the
+     * target rings live in the spots layer, and the end-game glow under it (its ::before) runs the opposite animation, so it
+     * stays on the ground. Found by board coordinates, so they follow however the grid grew or slid; a spot with no tower is
+     * skipped. A tower already jumping (or shaking) is left alone, never restarted. The class goes on animationend (the tower's
+     * own, not its ::before's), or after a safety timeout if that never comes (a tower hidden meanwhile)
      */
-    showLogHighlight(spots) {
-        this.clearLogHighlight(false);
+    jumpTowers(spots, jumps) {
         for (const spot of spots) {
             if (!Number.isInteger(spot?.x) || !Number.isInteger(spot?.y))
                 continue;
-            const highlight = document.createElement('div');
-            highlight.className = 'board-spot log-highlight-spot' + (this.towers.has(BoardRules.key(spot.x, spot.y)) ? ' occupied-log-highlight' : '');
-            BoardHandler.placeOnBoard(highlight, spot);
-            this.logHighlightLayer.appendChild(highlight);
-            this.logHighlightSpots.push(highlight);
-        }
-    }
-    //takes the log highlight away: at once, or fading out (LOG_HIGHLIGHT_FADE_OUT; at once with animations off or reduced motion)
-    clearLogHighlight(fade) {
-        const highlights = this.logHighlightSpots;
-        this.logHighlightSpots = [];
-        const fadeOut = fade && this.game.bga.gameui.bgaAnimationsActive() && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        for (const highlight of highlights) {
-            if (!fadeOut) {
-                highlight.remove();
+            const towerElement = this.towerElements.get(BoardRules.key(spot.x, spot.y));
+            if (!towerElement || towerElement.classList.contains('jumping-tower') || towerElement.classList.contains('shaking-tower'))
                 continue;
-            }
-            highlight.style.setProperty('--log-highlight-fade-out', `${Game.LOG_HIGHLIGHT_FADE_OUT}ms`);
-            highlight.classList.add('fading-log-highlight');
-            window.setTimeout(() => highlight.remove(), Game.LOG_HIGHLIGHT_FADE_OUT);
+            towerElement.style.setProperty('--tower-jumps', jumps.toString());
+            towerElement.classList.add('jumping-tower');
+            const endJump = () => {
+                towerElement.classList.remove('jumping-tower');
+                towerElement.removeEventListener('animationend', onEnd);
+                window.clearTimeout(this.towerJumpSafetyTimers.get(towerElement));
+                this.towerJumpSafetyTimers.delete(towerElement);
+            };
+            const onEnd = (event) => {
+                if (event.target === towerElement && !event.pseudoElement)
+                    endJump();
+            };
+            towerElement.addEventListener('animationend', onEnd);
+            this.towerJumpSafetyTimers.set(towerElement, window.setTimeout(endJump, jumps * Game.TOWER_JUMP_SAFETY_PER_JUMP + Game.TOWER_JUMP_SAFETY_MARGIN));
         }
     }
-    getBoardElement() { return this.boardElement; }
 }
 //the undo button's icon: a curved arrow turning back counter-clockwise, drawn with currentColor
 //[BGA] "Disc style" Wooden (PrefHandler.applyDiscStyle, Game.scss html.nexo-discs-wooden): img/wooden_discs.webp, a grid of
@@ -1420,19 +1416,19 @@ class LogMutationObserver {
         const classTags = Array.from(node.querySelectorAll('*[log-class-tag]'));
         for (const classTag of classTags) {
             const logClassName = classTag.getAttribute('log-class-tag');
-            let parentLog = null;
-            let current = classTag;
-            while (current) {
-                if (current.classList.contains('gamelogreview') || current.classList.contains('log')) {
-                    parentLog = current;
-                    break;
-                }
-                current = current.parentElement;
-            }
+            const parentLog = LogMutationObserver.getParentLog(classTag);
             if (parentLog)
                 parentLog.classList.add('a-game-log', logClassName);
         }
         classTags.forEach(classTag => classTag.remove());
+    }
+    //the log row (.log, or the replay's .gamelogreview) an element is in, null if none
+    static getParentLog(element) {
+        for (let current = element; current; current = current.parentElement) {
+            if (current.classList.contains('gamelogreview') || current.classList.contains('log'))
+                return current;
+        }
+        return null;
     }
     //the row's class (logClass, its *-log type) as a log-class-tag, which processLogDiv moves onto the row
     addLogClassTag(logHTML, logClass) {
@@ -1542,29 +1538,77 @@ class LogMutationObserver {
  * LogHighlightHandler.ts
  */
 /**
- * [BGA] A log row's spots on the board: every row that touched the board (a tower placed) carries them as data-log-spots
- * (LogMutationObserver), in the board's own x,y, so they still point at the right spots however the grid grew or the board
- * slid since. A mouse over a row rings them (BoardHandler.showLogHighlight) until it leaves the row. A tap (touch or pen: the
- * pointerdown's pointerType, so a hybrid device's mouse still hovers and its finger still taps, never both for one gesture)
- * rings them for LOG_HIGHLIGHT_TOUCH_HOLD, then they fade; another tap, or any press on the board, clears them at once. A tap
- * in BGA's mobile table log (a chat window in #chatbar) also collapses that window, so the board shows. One set of listeners
- * on the document for every log (the desktop log, the mobile table log, the replay log): rows added later, after a reload
- * too, need nothing of their own
+ * [BGA] A log row's towers jump on the board (BoardHandler.jumpTowers): every turn row carries the spots it touched as
+ * data-log-spots (LogMutationObserver), in the board's own x,y, so they still point at the right towers however the grid grew
+ * or the board slid since. A mouse resting on a row for LOG_JUMP_HOVER_DELAY (cancelled if it leaves sooner, so skimming the
+ * log jumps nothing) makes them jump LOG_JUMP_HOVER_COUNT times, once per time the mouse enters the row. A tap (touch or pen:
+ * the pointerdown's pointerType, so a hybrid device's mouse still hovers and its finger still taps, never both for one
+ * gesture) first collapses BGA's mobile table log (a chat window in #chatbar) if the row is in it, waits until it has closed,
+ * then makes them jump LOG_JUMP_TAP_COUNT times. One set of listeners on the document for every log (the desktop log, the
+ * mobile table log, the replay log): rows added later, after a reload too, need nothing of their own.
+ * [BGA] Rows look tappable on touch devices (Game.scss: the pressed row): an empty touchstart listener lets iOS apply :active.
+ * On touch devices ((hover: none)) the mobile table log also shows a banner at its top, "Tap a move to see it on the board"
+ * (.nexo-log-tap-hint), its pointing hand tapping every few seconds until the player taps any log row once: then the hand is
+ * still for good on that device (localStorage), the banner stays
  */
 class LogHighlightHandler {
     constructor(game) {
         this.game = game;
         this.hoveredRow = null; //the row the mouse is over
-        this.tapTimer = 0; //the tapped row's hold before its highlight fades, 0 when none
+        this.hoverTimer = 0; //the hover's delay before the jump, 0 when none
+        this.tapID = 0; //the latest tap: an earlier one still waiting for the log to close jumps nothing
         this.lastPointerType = 'mouse'; //the last pointerdown's: a click after a touch or a pen press is a tap
         this.warnedLogClose = false;
+        this.tapHintAnimated = !LogHighlightHandler.isTapHintSeen(); //the banner's hand taps until a log row has been tapped once
         document.addEventListener('pointerdown', (event) => { this.lastPointerType = event.pointerType || 'mouse'; }, { capture: true, passive: true });
         document.addEventListener('pointerover', (event) => this.onPointerOver(event), { passive: true });
         document.addEventListener('pointerout', (event) => this.onPointerOut(event), { passive: true });
         document.addEventListener('click', (event) => this.onClick(event), { capture: true }); //capture: before anything of BGA's in the log may stop it
-        this.game.boardHandler.getBoardElement().addEventListener('pointerdown', () => this.clear(), { passive: true });
+        document.addEventListener('touchstart', () => { }, { passive: true }); //iOS applies :active (the pressed row) only with a touch listener
+        this.setupTapHint();
     }
-    //a mouse moving onto a row rings its spots, onto anything else (another row, a row with no spots, the page) clears them
+    //[BGA] on a touch device: the banner at the top of every mobile table log, put back whenever BGA builds or refills that window
+    //(a MutationObserver on #chatbar)
+    setupTapHint() {
+        const chatBar = document.getElementById('chatbar');
+        if (!chatBar || !window.matchMedia('(hover: none)').matches)
+            return;
+        new MutationObserver(() => this.placeTapHints()).observe(chatBar, { childList: true, subtree: true });
+        this.placeTapHints();
+    }
+    //one banner per mobile table log, its first child: under the window's title, above the rows and any date header. A sticky
+    //line, so it stays under the title while the log scrolls, and adds nothing around the window (BGA sizes it). Its hand taps
+    //(.animated-tap-hint) until a log row has been tapped once
+    placeTapHints() {
+        for (const zone of Array.from(document.querySelectorAll('#chatbar [id^="chatwindowlogs_zone_tablelog_"]'))) {
+            let hint = zone.querySelector(':scope > .nexo-log-tap-hint');
+            if (!hint) {
+                hint = document.createElement('div');
+                hint.className = 'nexo-log-tap-hint' + (this.tapHintAnimated ? ' animated-tap-hint' : '');
+                hint.innerHTML = `<span class="nexo-log-tap-hint-hand"><i class="fa fa-hand-pointer-o" aria-hidden="true"></i></span><span class="nexo-log-tap-hint-text">${_('Tap a move to see it on the board')}</span>`;
+            }
+            if (zone.firstElementChild !== hint)
+                zone.prepend(hint);
+        }
+    }
+    //the player tapped a log row: the banner's hand stops tapping, for good on this device; the banner stays
+    markTapHintSeen() {
+        this.tapHintAnimated = false;
+        document.querySelectorAll('.nexo-log-tap-hint.animated-tap-hint').forEach(hint => hint.classList.remove('animated-tap-hint'));
+        try {
+            window.localStorage.setItem(LogHighlightHandler.TAP_HINT_STORAGE_KEY, '1');
+        }
+        catch (error) { } //storage off (private browsing): the hand only stops for this page
+    }
+    static isTapHintSeen() {
+        try {
+            return window.localStorage.getItem(LogHighlightHandler.TAP_HINT_STORAGE_KEY) === '1';
+        }
+        catch (error) {
+            return false;
+        }
+    }
+    //the mouse entering a row: its towers jump if it is still there after the delay. Moving within the row changes nothing
     onPointerOver(event) {
         if (event.pointerType !== 'mouse')
             return; //a finger or a pen fires it too, on the tap itself: onClick handles those
@@ -1572,81 +1616,115 @@ class LogHighlightHandler {
         if (row === this.hoveredRow)
             return;
         this.hoveredRow = row;
-        this.stopTapTimer();
-        if (row)
-            this.game.boardHandler.showLogHighlight(LogHighlightHandler.getRowSpots(row));
-        else
-            this.game.boardHandler.clearLogHighlight(false);
+        this.stopHoverTimer();
+        const spots = row ? LogHighlightHandler.getRowSpots(row) : [];
+        if (spots.length === 0)
+            return;
+        this.hoverTimer = window.setTimeout(() => {
+            this.hoverTimer = 0;
+            if (this.hoveredRow === row)
+                this.game.boardHandler.jumpTowers(spots, Game.LOG_JUMP_HOVER_COUNT);
+        }, Game.LOG_JUMP_HOVER_DELAY);
     }
     //the mouse leaving the window (no element under it any more): pointerover never fires for that
     onPointerOut(event) {
         if (event.pointerType !== 'mouse' || event.relatedTarget || !this.hoveredRow)
             return;
         this.hoveredRow = null;
-        this.game.boardHandler.clearLogHighlight(false);
+        this.stopHoverTimer();
     }
-    //a tap on a row with spots: rings them for a while, and collapses the mobile table log over the board
-    onClick(event) {
+    stopHoverTimer() {
+        if (this.hoverTimer)
+            window.clearTimeout(this.hoverTimer);
+        this.hoverTimer = 0;
+    }
+    //a tap on a row with spots: the mobile table log closes first, then its towers jump
+    async onClick(event) {
         if (this.lastPointerType === 'mouse')
-            return; //a mouse already rings them on hover
+            return; //a mouse makes them jump on hover
         const row = LogHighlightHandler.getLogRow(event.target);
+        if (row && this.tapHintAnimated)
+            this.markTapHintSeen(); //any log row, even one with nothing to show
         const spots = row ? LogHighlightHandler.getRowSpots(row) : [];
         if (spots.length === 0)
             return;
         this.hoveredRow = null;
-        this.stopTapTimer();
-        this.game.boardHandler.showLogHighlight(spots);
-        this.tapTimer = window.setTimeout(() => {
-            this.tapTimer = 0;
-            this.game.boardHandler.clearLogHighlight(true);
-        }, Game.LOG_HIGHLIGHT_TOUCH_HOLD);
-        this.closeMobileLog(row);
-    }
-    //any press on the board: the highlight goes at once
-    clear() {
-        this.hoveredRow = null;
-        this.stopTapTimer();
-        this.game.boardHandler.clearLogHighlight(false);
-    }
-    stopTapTimer() {
-        if (this.tapTimer)
-            window.clearTimeout(this.tapTimer);
-        this.tapTimer = 0;
+        this.stopHoverTimer();
+        const tapID = ++this.tapID;
+        const logWindow = this.closeMobileLog(row);
+        if (logWindow)
+            await this.waitForLogClosed(logWindow);
+        if (tapID === this.tapID)
+            this.game.boardHandler.jumpTowers(spots, Game.LOG_JUMP_TAP_COUNT);
     }
     /**
      * On a phone, BGA shows the table log in a chat window of #chatbar (its rows in #chatwindowlogs_zone_<window id>), opened
      * from its floating button; a tapped row collapses that window the way its own control does, so the same button opens it
      * again: BGA's collapseChatWindow(window id) when gameui has it, else a click on the window's own collapse control. Neither
      * is in bga-framework.d.ts, so both are looked up first and nothing happens without them (a warning, once, in the console).
-     * The desktop log (#logs) and the replay log never collapse
+     * Returns the window's element in #chatbar (to wait for its closing), null when nothing was collapsed: the desktop log
+     * (#logs) and the replay log never collapse
      */
     closeMobileLog(row) {
         const zone = row.closest('[id^="chatwindowlogs_zone_"]');
-        if (!zone || !zone.closest('#chatbar'))
-            return;
+        const chatBar = zone?.closest('#chatbar');
+        if (!zone || !chatBar)
+            return null;
+        let logWindow = zone;
+        while (logWindow.parentElement && logWindow.parentElement !== chatBar)
+            logWindow = logWindow.parentElement;
         const windowID = zone.id.substring('chatwindowlogs_zone_'.length);
         try {
             const gameui = this.game.bga.gameui;
             if (typeof gameui.collapseChatWindow === 'function') {
                 gameui.collapseChatWindow.call(gameui, windowID);
-                return;
+                return logWindow;
             }
             const collapseControl = document.getElementById('chatwindowcollapse_' + windowID);
             if (collapseControl) {
                 collapseControl.click();
-                return;
+                return logWindow;
             }
         }
         catch (error) {
             console.error('LogHighlightHandler: could not collapse the table log', error);
-            return;
+            return null;
         }
         if (!this.warnedLogClose) {
             this.warnedLogClose = true;
             const ancestors = [];
-            for (let node = zone; node && node.id !== 'chatbar'; node = node.parentElement)
+            for (let node = zone; node && node !== chatBar; node = node.parentElement)
                 ancestors.push(node.id ? `#${node.id}` : `.${Array.from(node.classList).join('.')}`);
             console.warn(`LogHighlightHandler: no way found to collapse the table log window "${windowID}" (no gameui.collapseChatWindow, no #chatwindowcollapse_${windowID}). Its ancestors: ${ancestors.join(' < ')}`);
+        }
+        return null;
+    }
+    /**
+     * Resolves once the collapsed log window has finished closing, so the jump plays on a visible board: every CSS animation or
+     * transition running in #chatbar has finished (the Web Animations API sees both), then the window's box and opacity have held
+     * still for LOG_CLOSE_STABLE_FRAMES frames (a close driven by script, which no CSS animation shows). Never longer than
+     * LOG_CLOSE_MAX_WAIT
+     */
+    async waitForLogClosed(logWindow) {
+        const deadline = performance.now() + Game.LOG_CLOSE_MAX_WAIT;
+        const nextFrame = () => new Promise(resolve => requestAnimationFrame(resolve));
+        await nextFrame(); //the collapse's styles apply, its transitions start
+        const chatBar = document.getElementById('chatbar');
+        const running = document.getAnimations().filter(animation => {
+            const target = animation.effect?.target;
+            //not a log row's own (the pressed row springing back: Game.scss), which has nothing to do with the window closing
+            return animation.playState === 'running' && target instanceof Element && !!chatBar?.contains(target) && !target.closest('.a-game-log');
+        });
+        if (running.length > 0)
+            await Promise.race([Promise.all(running.map(animation => animation.finished.catch(() => undefined))), this.game.bga.gameui.wait(Math.max(0, deadline - performance.now()))]);
+        let lastLook = '';
+        let stableFrames = 0;
+        while (stableFrames < LogHighlightHandler.LOG_CLOSE_STABLE_FRAMES && performance.now() < deadline) {
+            const rect = logWindow.getBoundingClientRect();
+            const look = `${Math.round(rect.left)},${Math.round(rect.top)},${Math.round(rect.width)},${Math.round(rect.height)},${getComputedStyle(logWindow).opacity}`;
+            stableFrames = (look === lastLook) ? stableFrames + 1 : 0;
+            lastLook = look;
+            await nextFrame();
         }
     }
     //the game log row (one of ours: .a-game-log, LogMutationObserver) the event happened in, null outside every log row
@@ -1666,6 +1744,8 @@ class LogHighlightHandler {
         return spots;
     }
 }
+LogHighlightHandler.TAP_HINT_STORAGE_KEY = 'nexo.logTapHintSeen';
+LogHighlightHandler.LOG_CLOSE_STABLE_FRAMES = 3;
 
 //BGA's default tooltips (addTooltip) on the player boards. Tooltips only reach elements already on the page, with an id
 class TooltipHandler {
@@ -2542,9 +2622,15 @@ Game.TOWER_MESSAGE_FADE_IN = 150;
 Game.TOWER_MESSAGE_HOLD = 1800;
 Game.TOWER_MESSAGE_FADE_OUT = 250;
 Game.TOWER_MESSAGE_EDGE_MARGIN = 6; //screen px kept between the bubble and the board's edges
-//[BGA] a log row's spots on the board (LogHighlightHandler): a tap keeps them this long (no mouseleave on touch), then they fade
-Game.LOG_HIGHLIGHT_TOUCH_HOLD = 3000;
-Game.LOG_HIGHLIGHT_FADE_OUT = 400;
+//[BGA] a log row's towers jump on the board (LogHighlightHandler, BoardHandler.jumpTowers; the jump itself is CSS only, Game.scss:
+//$tower-jump-*): after hovering a row this long (skimming the log jumps nothing), this many jumps; a tap, once the mobile log
+//has closed (at most LOG_CLOSE_MAX_WAIT), this many
+Game.LOG_JUMP_HOVER_DELAY = 120;
+Game.LOG_JUMP_HOVER_COUNT = 2;
+Game.LOG_JUMP_TAP_COUNT = 2;
+Game.LOG_CLOSE_MAX_WAIT = 800;
+Game.TOWER_JUMP_SAFETY_PER_JUMP = 400; //ms per jump, well over $tower-jump-duration, before a jump's class goes anyway
+Game.TOWER_JUMP_SAFETY_MARGIN = 500;
 Game.BOARD_VIEWPORT_MARGIN = 10; //screen px from the board to the window's bottom (BoardHandler.fitToViewport); the status bar's gap is #nexo-board-container's padding
 Game.MIN_BOARD_CELL_SIZE = 40; //px of a spot, however short the window
 Game.FIT_ROOM_THRESHOLD = 4; //px the room for the board must change by before its spot size is computed again (BoardHandler.fitToViewport)

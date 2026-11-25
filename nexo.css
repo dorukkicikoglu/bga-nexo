@@ -381,7 +381,7 @@ html.nexo-discs-wooden .nexo-tower .tower-height-number {
   height: 0px;
 }
 
-.spots-layer, .log-highlight-layer, .towers-layer, .draft-controls-layer, .board-message-layer {
+.spots-layer, .towers-layer, .draft-controls-layer, .board-message-layer {
   position: absolute;
   left: 0px;
   top: 0px;
@@ -407,7 +407,7 @@ html.nexo-discs-wooden .nexo-tower .tower-height-number {
 .board-spot.clickable-spot {
   cursor: pointer;
 }
-.board-spot.clickable-spot::before, .board-spot.legal-spot::before, .board-spot.selected-spot::before, .board-spot.log-highlight-spot::before {
+.board-spot.clickable-spot::before, .board-spot.legal-spot::before, .board-spot.selected-spot::before {
   content: "";
   position: absolute;
   box-sizing: border-box;
@@ -425,7 +425,7 @@ html.nexo-discs-wooden .nexo-tower .tower-height-number {
   background-color: var(--legal-spot-hover-fill);
   box-shadow: 0 0 8px var(--legal-spot-glow);
 }
-.board-spot.replaceable-spot, .board-spot.selected-spot, .board-spot.log-highlight-spot.occupied-log-highlight {
+.board-spot.replaceable-spot, .board-spot.selected-spot {
   --ring-box-width: min(calc(var(--spot-ring-width) * 1.15), calc(var(--cell-size) * 1));
   --ring-box-height: calc(var(--ring-box-width) * 0.5292);
   --ring-box-left: calc((var(--cell-size) - var(--ring-box-width)) / 2 + var(--cell-size) * 0);
@@ -465,34 +465,6 @@ html.nexo-discs-wooden .nexo-tower .tower-height-number {
   box-shadow: 0 0 10px #ffc400;
 }
 
-.log-highlight-layer {
-  pointer-events: none;
-}
-
-.board-spot.log-highlight-spot {
-  pointer-events: none;
-  animation: log-highlight-in 120ms ease-out;
-}
-.board-spot.log-highlight-spot::before {
-  border: calc(var(--spot-ring-stroke) * 1.5) solid #e0a400;
-  background-color: rgba(255, 196, 0, 0.28);
-  box-shadow: 0 0 calc(var(--cell-size) * 0.12) #ffc400;
-}
-.board-spot.log-highlight-spot.fading-log-highlight {
-  opacity: 0;
-  transition: opacity var(--log-highlight-fade-out, 400ms) ease;
-}
-
-@keyframes log-highlight-in {
-  from {
-    opacity: 0;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .board-spot.log-highlight-spot {
-    animation: none;
-  }
-}
 #nexo-board {
   --spot-ring-march-duration: 97.2222222222s;
 }
@@ -568,6 +540,66 @@ html.nexo-discs-wooden .nexo-tower .tower-height-number {
   animation: tower-shake 350ms ease-in-out 1;
 }
 
+.towers-layer .board-tower.jumping-tower {
+  transform-origin: 50% calc(100% - var(--tower-base));
+  animation: tower-jump 220ms linear var(--tower-jumps, 2);
+}
+
+.towers-layer .board-tower.jumping-tower.largest-group-tower::before {
+  animation: tower-jump-ground 220ms linear var(--tower-jumps, 2);
+}
+
+@keyframes tower-jump {
+  0% {
+    translate: 0px 0px;
+    animation-timing-function: cubic-bezier(0.5, 1, 0.89, 1);
+  }
+  40% {
+    translate: 0px calc(-1 * var(--cell-size) * 0.072);
+    animation-timing-function: cubic-bezier(0.11, 0, 0.5, 0);
+  }
+  80% {
+    translate: 0px 0px;
+    scale: 1 1;
+    animation-timing-function: ease-out;
+  }
+  84% {
+    scale: 1.015 0.985;
+    animation-timing-function: ease-in-out;
+  }
+  90%, 100% {
+    translate: 0px 0px;
+    scale: 1 1;
+  }
+}
+@keyframes tower-jump-ground {
+  0% {
+    translate: 0px 0px;
+    animation-timing-function: cubic-bezier(0.5, 1, 0.89, 1);
+  }
+  40% {
+    translate: 0px calc(var(--cell-size) * 0.072);
+    animation-timing-function: cubic-bezier(0.11, 0, 0.5, 0);
+  }
+  80% {
+    translate: 0px 0px;
+    scale: 1 1;
+    animation-timing-function: ease-out;
+  }
+  84% {
+    scale: 0.9852216749 1.0152284264;
+    animation-timing-function: ease-in-out;
+  }
+  90%, 100% {
+    translate: 0px 0px;
+    scale: 1 1;
+  }
+}
+@keyframes tower-pulse {
+  50% {
+    filter: brightness(1.35);
+  }
+}
 @keyframes tower-shake {
   0%, 100% {
     translate: 0px 0px;
@@ -587,6 +619,12 @@ html.nexo-discs-wooden .nexo-tower .tower-height-number {
 }
 @media (prefers-reduced-motion: reduce) {
   .towers-layer .board-tower.shaking-tower {
+    animation: none;
+  }
+  .towers-layer .board-tower.jumping-tower {
+    animation: tower-pulse 450ms ease-in-out 1;
+  }
+  .towers-layer .board-tower.jumping-tower.largest-group-tower::before {
     animation: none;
   }
 }
@@ -1299,6 +1337,98 @@ body .passed-banner.passed-banner-flying .passed-banner-name {
   display: none;
 }
 
+@media (hover: none) {
+  .log.a-game-log.towers-placed-log, .gamelogreview.a-game-log.towers-placed-log {
+    -webkit-tap-highlight-color: transparent;
+    transition: scale 100ms ease-out, filter 100ms ease-out;
+  }
+  .log.a-game-log.towers-placed-log:active, .gamelogreview.a-game-log.towers-placed-log:active {
+    scale: 0.98;
+    filter: brightness(0.93);
+  }
+}
+.nexo-log-tap-hint {
+  position: sticky;
+  top: 0px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 13px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+  color: #d42a20;
+  background: rgb(248.8, 234.28, 231.64);
+  box-shadow: 0 1px 0 rgba(212, 42, 32, 0.18);
+}
+.nexo-log-tap-hint .nexo-log-tap-hint-hand {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+}
+.nexo-log-tap-hint .nexo-log-tap-hint-hand .fa {
+  font-size: 15px;
+  line-height: 1;
+  transform-origin: 38% 12%;
+}
+.nexo-log-tap-hint .nexo-log-tap-hint-hand::after {
+  content: "";
+  position: absolute;
+  left: 38%;
+  top: 12%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0px 0px -8px;
+  border-radius: 50%;
+  background: rgba(212, 42, 32, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+.nexo-log-tap-hint.animated-tap-hint .nexo-log-tap-hint-hand .fa {
+  animation: tap-hint-press 1.8s ease-in-out infinite;
+}
+.nexo-log-tap-hint.animated-tap-hint .nexo-log-tap-hint-hand::after {
+  animation: tap-hint-ripple 1.8s ease-out infinite;
+}
+
+@keyframes tap-hint-press {
+  0% {
+    scale: 1;
+  }
+  8.8% {
+    scale: 0.85;
+  }
+  22%, 100% {
+    scale: 1;
+  }
+}
+@keyframes tap-hint-ripple {
+  0%, 6.6% {
+    opacity: 0;
+    scale: 0.3;
+  }
+  9.9% {
+    opacity: 1;
+    scale: 0.5;
+  }
+  55%, 100% {
+    opacity: 0;
+    scale: 1.6;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nexo-log-tap-hint.animated-tap-hint .nexo-log-tap-hint-hand .fa, .nexo-log-tap-hint.animated-tap-hint .nexo-log-tap-hint-hand::after {
+    animation: none;
+  }
+}
 .dijitTooltip {
   max-width: calc(100vw - 16px);
   overflow-wrap: break-word;

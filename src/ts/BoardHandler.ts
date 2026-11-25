@@ -49,7 +49,6 @@ export class BoardHandler {
     private boardElement: HTMLDivElement;
     private layerElement: HTMLDivElement;
     private spotsLayer: HTMLDivElement;
-    private logHighlightLayer: HTMLDivElement;
     private towersLayer: HTMLDivElement;
     private controlsLayer: HTMLDivElement;
     private messageLayer: HTMLDivElement;
@@ -72,7 +71,7 @@ export class BoardHandler {
     private towerElements = new Map<string, HTMLDivElement>();
     private pendingElements = new Map<string, HTMLDivElement>();
     private draft: DraftView | null = null;
-    private logHighlightSpots: HTMLDivElement[] = []; //the spots a log row points at (showLogHighlight)
+    private towerJumpSafetyTimers = new Map<HTMLDivElement, number>(); //a jump's class goes even if its animationend never comes (jumpTowers)
     private draftClickHandlers: DraftClickHandlers | null = null;
     private confirmWasFull: boolean = false; //every disc of the turn was drafted at the last render: the confirm button pulses once on reaching it
     private ringWasFilled: number | null = null; //the confirm ring's filled segments at the last render, null when no confirm button showed
@@ -100,7 +99,6 @@ export class BoardHandler {
         this.boardElement.innerHTML = `
             <div class="board-layer">
                 <div class="spots-layer"></div>
-                <div class="log-highlight-layer"></div>
                 <div class="towers-layer"></div>
                 <div class="draft-controls-layer"></div>
                 <div class="board-message-layer"></div>
@@ -108,7 +106,6 @@ export class BoardHandler {
         `;
         this.layerElement = this.boardElement.querySelector('.board-layer');
         this.spotsLayer = this.boardElement.querySelector('.spots-layer');
-        this.logHighlightLayer = this.boardElement.querySelector('.log-highlight-layer');
         this.towersLayer = this.boardElement.querySelector('.towers-layer');
         this.controlsLayer = this.boardElement.querySelector('.draft-controls-layer');
         this.messageLayer = this.boardElement.querySelector('.board-message-layer');
@@ -869,40 +866,36 @@ export class BoardHandler {
     }
 
     /**
-     * [BGA] The spots a log row touched (LogHighlightHandler, on hovering or tapping it): a gold ring on each, in its own layer
-     * under the towers, at the spot's board coordinates, so it follows the board however the grid grew or the contents slid
-     * since. A spot with a tower gets an occupied ring (under the tower, like the gold ring under the active drafted tower), an
-     * empty one the empty ring. Replaces any earlier highlight. Never throws: a spot that isn't two whole numbers is skipped
+     * [BGA] The towers a log row touched jump (LogHighlightHandler: hovering the row, or tapping it): `jumps` quick jumps in a row
+     * (Game.scss: tower-jump, one CSS animation, its iteration count --tower-jumps), or with reduced motion one brightness pulse
+     * instead. Only the tower moves (its translate and scale properties, never a transform: towers are cloned to fly): the
+     * target rings live in the spots layer, and the end-game glow under it (its ::before) runs the opposite animation, so it
+     * stays on the ground. Found by board coordinates, so they follow however the grid grew or slid; a spot with no tower is
+     * skipped. A tower already jumping (or shaking) is left alone, never restarted. The class goes on animationend (the tower's
+     * own, not its ::before's), or after a safety timeout if that never comes (a tower hidden meanwhile)
      */
-    public showLogHighlight(spots: NexoSpot[]): void {
-        this.clearLogHighlight(false);
+    public jumpTowers(spots: NexoSpot[], jumps: number): void {
         for(const spot of spots){
             if(!Number.isInteger(spot?.x) || !Number.isInteger(spot?.y))
                 continue;
-
-            const highlight = document.createElement('div');
-            highlight.className = 'board-spot log-highlight-spot' + (this.towers.has(BoardRules.key(spot.x, spot.y)) ? ' occupied-log-highlight' : '');
-            BoardHandler.placeOnBoard(highlight, spot);
-            this.logHighlightLayer.appendChild(highlight);
-            this.logHighlightSpots.push(highlight);
-        }
-    }
-
-    //takes the log highlight away: at once, or fading out (LOG_HIGHLIGHT_FADE_OUT; at once with animations off or reduced motion)
-    public clearLogHighlight(fade: boolean): void {
-        const highlights = this.logHighlightSpots;
-        this.logHighlightSpots = [];
-        const fadeOut = fade && this.game.bga.gameui.bgaAnimationsActive() && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        for(const highlight of highlights){
-            if(!fadeOut){
-                highlight.remove();
+            const towerElement = this.towerElements.get(BoardRules.key(spot.x, spot.y));
+            if(!towerElement || towerElement.classList.contains('jumping-tower') || towerElement.classList.contains('shaking-tower'))
                 continue;
-            }
-            highlight.style.setProperty('--log-highlight-fade-out', `${Game.LOG_HIGHLIGHT_FADE_OUT}ms`);
-            highlight.classList.add('fading-log-highlight');
-            window.setTimeout(() => highlight.remove(), Game.LOG_HIGHLIGHT_FADE_OUT);
+
+            towerElement.style.setProperty('--tower-jumps', jumps.toString());
+            towerElement.classList.add('jumping-tower');
+            const endJump = () => {
+                towerElement.classList.remove('jumping-tower');
+                towerElement.removeEventListener('animationend', onEnd);
+                window.clearTimeout(this.towerJumpSafetyTimers.get(towerElement));
+                this.towerJumpSafetyTimers.delete(towerElement);
+            };
+            const onEnd = (event: AnimationEvent) => {
+                if(event.target === towerElement && !event.pseudoElement)
+                    endJump();
+            };
+            towerElement.addEventListener('animationend', onEnd);
+            this.towerJumpSafetyTimers.set(towerElement, window.setTimeout(endJump, jumps * Game.TOWER_JUMP_SAFETY_PER_JUMP + Game.TOWER_JUMP_SAFETY_MARGIN));
         }
     }
-
-    public getBoardElement(): HTMLDivElement { return this.boardElement; }
 }

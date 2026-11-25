@@ -680,21 +680,32 @@ Deploy `modules/` (PHP and `modules/js/Game.js`) and `nexo.css`. No schema chang
 Log rows
 - [ ] Each turn is one compact row: the name, then a small tower per tower of the turn, in the order drafted; a replacement is an orange-tinted pill with the old tower faded and crossed, an arrow, the new tower. No words, no board snapshot.
 - [ ] The towers look like the board's on those spots (same grains with Wooden); with "Show stack heights" Disabled their numbers go.
-- [ ] Every row is one line: the name and its icons side by side, the name whole when the row has room (a three-tower turn shows "fenadoruk0" whole), cut with an ellipsis in the player's color only as far as the icons need (never under about 5 characters), "You" right next to its icons, the full name on hovering it, without stopping the row's board highlight.
+- [ ] Every row is one line: the name and its icons side by side, the name whole when the row has room (a three-tower turn shows "fenadoruk0" whole), cut with an ellipsis in the player's color only as far as the icons need (never under about 5 characters), "You" right next to its icons, the full name on hovering it, without stopping the row's towers from hopping.
 - [ ] The widest turns (two replacements and a tower; a replacement and three towers) fit on one line at the default desktop log width (towers at full size or a little smaller) and in the mobile table log; on a narrower log the icons shrink, never wrap or overflow.
 - [ ] Turn animation, pass and game end rows unchanged.
 - [ ] F5 mid-game: every row comes back the same. Replay (`replayFrom`) and an archived game: the same rows.
 - [ ] A game begun before this deploy: its earlier rows (logged with `board_snapshot`) show as icon rows too, and their highlight works.
 
 Desktop hover
-- [ ] Hovering a turn's row rings every spot it touched in gold, under the towers; moving onto another row moves the rings at once; leaving the row (or the window) removes them. Pass and game end rows ring nothing.
-- [ ] After the board has grown and re-centred several turns later, hovering an early row still rings the right towers.
-- [ ] In a replay, hovering a row whose towers aren't on the board yet rings the empty spots, and nothing breaks.
-- [ ] While drafting, hovering the log doesn't affect the draft; clicks on legal spots and drafted towers still work under the rings.
+- [ ] Resting the mouse on a turn's row: after a moment (about 0.1s), every tower that turn touched hops twice, quickly and heavily (about 0.22s a hop, low, no bounce, a barely visible compression on landing and a short rest between hops), then stays still while the mouse stays. Moving within the row does nothing more; leaving and coming back makes them hop again.
+- [ ] Skimming quickly down the log makes nothing hop. Pass and game end rows make nothing hop.
+- [ ] The dashed target rings (while drafting), the gold ring under the active drafted tower and the end-game glow stay exactly in place while a tower hops; nothing is drawn over them.
+- [ ] Moving back onto a row whose towers are still hopping doesn't restart them mid-hop.
+- [ ] After the board has grown and re-centred several turns later, hovering an early row makes the right towers hop. In a replay, a row whose spot has no tower yet makes only the existing ones hop, with no error in the console.
+- [ ] Hovering the log while drafting doesn't affect the draft; clicks on legal spots and drafted towers still work.
+- [ ] With the OS's reduce-motion setting on: the towers briefly brighten instead of hopping.
 
 Touch (phone, and a tablet's desktop log)
-- [ ] On a phone, open the log from BGA's floating log button and tap a turn's row: the log window closes, its spots are ringed for about 3s, then the rings fade out. The log button opens the log again normally afterwards.
-- [ ] If the log does not close: open the console and paste me the warning that starts with "LogHighlightHandler: no way found to collapse the table log" (it lists the window's ids). The rings must still show.
-- [ ] Tap another row before the 3s: the rings move at once. Tap the board: they go at once.
-- [ ] No ring is ever left behind after the 3s.
+- [ ] On a phone, open the log from BGA's floating log button and tap a turn's row: the log window closes first, and once it has closed the turn's towers hop 2 times. The log button opens the log again normally afterwards.
+- [ ] If the log does not close: open the console and paste me the warning that starts with "LogHighlightHandler: no way found to collapse the table log" (it lists the window's ids). The towers must still hop.
+- [ ] On a tablet's desktop log (no window to close), a tap makes the towers hop 2 times at once.
 - [ ] Tapping a pass or game end row does nothing (the log stays open).
+
+Rows look tappable
+- [ ] No crosshair in any row's corner, desktop or phone.
+- [ ] Phone (iPhone too): pressing a turn row darkens it and shrinks it slightly at once, springing back on release; the log still closes and the towers jump with no extra delay.
+- [ ] Phone: the mobile log shows "Tap a move to see it on the board" at its top, just under its title, above the rows and any date header, staying there while the log scrolls: red bold text on a light red tint, after a pointing hand, in a bar about twice as tall as one line of text.
+- [ ] Before any row has been tapped on that phone: about every 2 seconds the hand gives a quick press with a small ripple under its fingertip, with a short pause between taps; the text and the rows below never move.
+- [ ] Tap any row: the hand stops tapping, the banner stays (same colours). It stays still after closing and reopening the log, after F5 and in other games on that phone. (To see the animation again: `localStorage.removeItem('nexo.logTapHintSeen')` in the console.)
+- [ ] With the phone's reduce-motion setting on: the banner shows, the hand never moves.
+- [ ] Desktop: no banner.

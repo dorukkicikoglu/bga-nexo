@@ -61,22 +61,21 @@ export class LogMutationObserver{
 
         for(const classTag of classTags){
             const logClassName: string = classTag.getAttribute('log-class-tag');
-
-            let parentLog: HTMLDivElement = null;
-            let current: HTMLDivElement = classTag;
-            while (current) {
-                if (current.classList.contains('gamelogreview') || current.classList.contains('log')) {
-                    parentLog = current;
-                    break;
-                }
-                current = current.parentElement as HTMLDivElement;
-            }
-
+            const parentLog = LogMutationObserver.getParentLog(classTag);
             if(parentLog)
                 parentLog.classList.add('a-game-log', logClassName);
         }
 
         classTags.forEach(classTag => classTag.remove());
+    }
+
+    //the log row (.log, or the replay's .gamelogreview) an element is in, null if none
+    private static getParentLog(element: HTMLElement): HTMLElement | null {
+        for(let current: HTMLElement | null = element; current; current = current.parentElement){
+            if(current.classList.contains('gamelogreview') || current.classList.contains('log'))
+                return current;
+        }
+        return null;
     }
 
     //the row's class (logClass, its *-log type) as a log-class-tag, which processLogDiv moves onto the row

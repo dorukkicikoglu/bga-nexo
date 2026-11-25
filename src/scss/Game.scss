@@ -299,6 +299,21 @@ $draft-controls-z-index: 2000; //over every tower (1000 + its row)
 //by --board-zoom. Its timings are Game.TOWER_MESSAGE_*
 $tower-shake-duration: 350ms;
 $tower-shake-distance: 5px; //the widest swing, either side; the later ones smaller
+//[BGA] a log row's towers jump (BoardHandler.jumpTowers), heavy like a wooden piece lifted and dropped: per jump, up decelerating
+//and down accelerating (gravity: the quadratic easings, every value between 0 and 1, so no overshoot), a barely visible
+//compression just after landing, then a short rest on the ground, so consecutive jumps read as separate hops. The shares of a
+//jump are its keyframes, all inside $tower-jump-duration. With reduced motion, one brightness pulse instead
+$tower-jump-duration: 220ms; //one jump; a hover and a tap both play 2 (Game.LOG_JUMP_*)
+$tower-jump-height-share: 0.072; //of a spot
+$tower-jump-rise-easing: cubic-bezier(0.5, 1, 0.89, 1); //ease-out (quadratic): slowing to the top
+$tower-jump-fall-easing: cubic-bezier(0.11, 0, 0.5, 0); //ease-in (quadratic): speeding to the ground
+$tower-jump-apex-at: 40%; //the top
+$tower-jump-land-at: 80%; //touches the ground: the rest is on it
+$tower-jump-squash-at: 84%; //compressed most
+$tower-jump-settled-at: 90%; //back to its own shape, resting until 100%
+$tower-jump-squash: 1.015 0.985; //scale when compressed (wider, shorter), around the bottom disc's base
+$tower-pulse-duration: 450ms;
+$tower-pulse-brightness: 1.35;
 $tower-message-z-index: 2100; //over the draft's controls
 $tower-message-font-size: 13px;
 $tower-message-padding-y: 5px;
@@ -366,15 +381,6 @@ $log-divider-color: rgba($material-charcoal, 0.08); //the soft line under each r
 $log-accent-width: 3px; //the bar on each row's left edge, in its player's color
 $log-accent-colors: ("red": $material-red, "black": $material-charcoal);
 $log-accent-neutral: rgba($material-charcoal, 0.18); //a row of no single player (a shared victory)
-//[BGA] a log row's spots on the board (LogHighlightHandler, BoardHandler.showLogHighlight): a gold ring like the one under the
-//active drafted tower in a deeper gold, a lighter fill and a soft glow; it fades in and, after a tap's hold, fades out
-$log-highlight-color: #e0a400; //a deeper gold than $selected-spot-color: it must read on the board's white marble with no fill behind it
-$log-highlight-glow-color: $selected-spot-color;
-$log-highlight-stroke-scale: 1.5; //times a target ring's stroke (--spot-ring-stroke)
-$log-highlight-fill: rgba($selected-spot-color, 0.28);
-$log-highlight-glow-share: 0.12; //of a spot: the glow's blur
-$log-highlight-fade-in: 120ms;
-
 :root{
     --cell-size: #{$cell-size};
     --nexo-disc-scale: #{$board-disc-scale}; //the board's discs against the spot pitch ($board-disc-scale, $board-disc-mobile-scale)
@@ -684,7 +690,7 @@ html.nexo-discs-wooden .nexo-tower{
 #nexo-board{ --board-edge-padding: #{$board-edge-padding}; }
 .mobile_version #nexo-board{ --board-edge-padding: #{$board-edge-mobile-padding}; }
 .board-layer{ position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
-.spots-layer, .log-highlight-layer, .towers-layer, .draft-controls-layer, .board-message-layer{ position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
+.spots-layer, .towers-layer, .draft-controls-layer, .board-message-layer{ position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
 
 //one spot's box, from its board coordinates
 @mixin board-place(){ position: absolute; left: calc(var(--x) * var(--cell-size)); top: calc(var(--y) * var(--cell-size)); width: var(--cell-size); height: var(--cell-size); }
@@ -704,7 +710,7 @@ html.nexo-discs-wooden .nexo-tower{
     --ring-box-left: calc((var(--cell-size) - var(--ring-box-width)) / 2);
     --ring-box-bottom: calc(var(--spot-ring-center) - var(--ring-box-height) / 2);
     &.clickable-spot{ cursor: pointer; }
-    &.clickable-spot, &.legal-spot, &.selected-spot, &.log-highlight-spot{
+    &.clickable-spot, &.legal-spot, &.selected-spot{
         &::before{ content: ""; position: absolute; box-sizing: border-box; left: var(--ring-box-left); bottom: var(--ring-box-bottom); width: var(--ring-box-width); height: var(--ring-box-height); border-radius: 50%; transition: background-color 0.15s ease, box-shadow 0.15s ease; }
     }
     //a legal spot, and an enemy tower that can be replaced (a legal spot too): shown only to the player drafting, in their own
@@ -717,7 +723,7 @@ html.nexo-discs-wooden .nexo-tower{
     //board around it: $spot-ring-occupied-width-scale times the bottom disc (at most $spot-ring-max-share of the spot),
     //$spot-ring-occupied-height-scale times as tall as a flat ellipse of that width, centred on the footprint plus the offsets
     //(shares of a spot, so it stays put under the tower at any spot size and BGA zoom). The fill and the outline share the box
-    &.replaceable-spot, &.selected-spot, &.log-highlight-spot.occupied-log-highlight{
+    &.replaceable-spot, &.selected-spot{
         --ring-box-width: min(calc(var(--spot-ring-width) * #{$spot-ring-occupied-width-scale}), calc(var(--cell-size) * #{$spot-ring-max-share}));
         --ring-box-height: calc(var(--ring-box-width) * #{$disc-face-ratio * $spot-ring-occupied-height-scale});
         --ring-box-left: calc((var(--cell-size) - var(--ring-box-width)) / 2 + var(--cell-size) * #{$spot-ring-occupied-offset-x});
@@ -736,17 +742,6 @@ html.nexo-discs-wooden .nexo-tower{
     &.replaceable-spot .spot-ring ellipse{ stroke-dasharray: #{math.div(100 * $spot-ring-dash-share, $spot-ring-occupied-dashes)} #{math.div(100 * (1 - $spot-ring-dash-share), $spot-ring-occupied-dashes)}; }
     &.legal-spot.clickable-spot:hover .spot-ring ellipse, &.replaceable-spot:hover .spot-ring ellipse{ stroke-dasharray: none; }
     &.selected-spot::before{ border: 3px solid $selected-spot-color !important; background-color: rgba($selected-spot-color, 0.35) !important; box-shadow: 0 0 10px $selected-spot-color; }
-}
-//[BGA] a log row's spots (BoardHandler.showLogHighlight), in their own layer between the spots and the towers: an occupied ring
-//under a tower (.occupied-log-highlight), the empty ring on an empty spot. No clicks: they go to the spots and towers
-.log-highlight-layer{ pointer-events: none; }
-.board-spot.log-highlight-spot{ pointer-events: none; animation: log-highlight-in $log-highlight-fade-in ease-out;
-    &::before{ border: calc(var(--spot-ring-stroke) * #{$log-highlight-stroke-scale}) solid $log-highlight-color; background-color: $log-highlight-fill; box-shadow: 0 0 calc(var(--cell-size) * #{$log-highlight-glow-share}) $log-highlight-glow-color; }
-    &.fading-log-highlight{ opacity: 0; transition: opacity var(--log-highlight-fade-out, 400ms) ease; }
-}
-@keyframes log-highlight-in{ from{ opacity: 0; } }
-@media (prefers-reduced-motion: reduce){
-    .board-spot.log-highlight-spot{ animation: none; }
 }
 //the marching dashes: only the legal spots' and replaceable towers' rings, never the gold ring under the active drafted
 //tower, nor anything in the towers or controls layers (drafted towers, badges, buttons). Only stroke-dashoffset moves, one
@@ -782,6 +777,30 @@ html.nexo-discs-wooden .nexo-tower{
 //(BoardHandler.onBoardClick), which shakes it and says why. The cursor and the look stay a plain tower's
 .towers-layer .board-tower.warning-tower{ pointer-events: auto; }
 .towers-layer .board-tower.shaking-tower{ animation: tower-shake $tower-shake-duration ease-in-out 1; }
+//[BGA] a log row's tower jumping (BoardHandler.jumpTowers): only the tower's translate and scale (never a transform: towers are
+//cloned to fly), scaled around its bottom disc's base. --tower-jumps jumps, then animationend takes the class away. The
+//end-game glow, the tower's own ::before, runs the opposite animation so it stays on the ground (around its own centre, close
+//enough to the tower's base for these small scales). The target rings are in the spots layer: they never move
+.towers-layer .board-tower.jumping-tower{ transform-origin: 50% calc(100% - var(--tower-base)); animation: tower-jump $tower-jump-duration linear var(--tower-jumps, 2); }
+.towers-layer .board-tower.jumping-tower.largest-group-tower::before{ animation: tower-jump-ground $tower-jump-duration linear var(--tower-jumps, 2); }
+@keyframes tower-jump{
+    0%{ translate: 0px 0px; animation-timing-function: $tower-jump-rise-easing; }
+    #{$tower-jump-apex-at}{ translate: 0px calc(-1 * var(--cell-size) * #{$tower-jump-height-share}); animation-timing-function: $tower-jump-fall-easing; }
+    #{$tower-jump-land-at}{ translate: 0px 0px; scale: 1 1; animation-timing-function: ease-out; }
+    #{$tower-jump-squash-at}{ scale: $tower-jump-squash; animation-timing-function: ease-in-out; }
+    #{$tower-jump-settled-at}, 100%{ translate: 0px 0px; scale: 1 1; }
+}
+//the end-game glow under a jumping tower: the inverse, so it stays on the ground
+@keyframes tower-jump-ground{
+    0%{ translate: 0px 0px; animation-timing-function: $tower-jump-rise-easing; }
+    #{$tower-jump-apex-at}{ translate: 0px calc(var(--cell-size) * #{$tower-jump-height-share}); animation-timing-function: $tower-jump-fall-easing; }
+    #{$tower-jump-land-at}{ translate: 0px 0px; scale: 1 1; animation-timing-function: ease-out; }
+    #{$tower-jump-squash-at}{ scale: math.div(1, list.nth($tower-jump-squash, 1)) math.div(1, list.nth($tower-jump-squash, 2)); animation-timing-function: ease-in-out; }
+    #{$tower-jump-settled-at}, 100%{ translate: 0px 0px; scale: 1 1; }
+}
+@keyframes tower-pulse{
+    50%{ filter: brightness($tower-pulse-brightness); }
+}
 @keyframes tower-shake{
     0%, 100%{ translate: 0px 0px; }
     15%{ translate: -$tower-shake-distance 0px; }
@@ -791,6 +810,8 @@ html.nexo-discs-wooden .nexo-tower{
 }
 @media (prefers-reduced-motion: reduce){
     .towers-layer .board-tower.shaking-tower{ animation: none; }
+    .towers-layer .board-tower.jumping-tower{ animation: tower-pulse $tower-pulse-duration ease-in-out 1; }
+    .towers-layer .board-tower.jumping-tower.largest-group-tower::before{ animation: none; }
 }
 
 //the bubble (BoardHandler.showTowerMessage): anchored at --message-x (the spot's middle) and the tower's top face
@@ -1030,6 +1051,31 @@ $log-replacement-padding-share: 0.1; //3px
 $log-replacement-gap-share: 0.033; //1px
 $log-replacement-arrow-share: 0.4; //12px: the arrow's font size and box width
 $log-replacement-extra-share: 2 * $log-replacement-padding-share + 2 * $log-replacement-gap-share + $log-replacement-arrow-share; //what a pill adds to its two towers
+//[BGA] turn rows look tappable on touch: a pressed row darkens and shrinks a little
+$log-pressed-scale: 0.98;
+$log-pressed-brightness: 0.93;
+$log-pressed-duration: 100ms;
+//the banner at the top of the mobile table log (LogHighlightHandler): the game's red on a light tint of it. Its pointing hand
+//taps every $log-tap-hint-cycle, on a loop (a quick press and a subtle ripple under the fingertip, in the cycle's first
+//$log-tap-hint-press-share and $log-tap-hint-ripple-share, then a short pause) until the player has tapped a row once; the text
+//never moves
+$log-tap-hint-size: 13px;
+$log-tap-hint-padding-y: 13px;
+$log-tap-hint-padding-x: 10px;
+$log-tap-hint-gap: 8px; //between the hand and the text
+$log-tap-hint-color: $material-red;
+$log-tap-hint-weight: 600;
+$log-tap-hint-background: color.mix($material-red, $marble-white, 8%);
+$log-tap-hint-border-color: rgba($material-red, 0.18);
+$log-tap-hint-hand-size: 15px;
+$log-tap-hint-cycle: 1.8s; //one tap, then a pause of about 0.8s before the next
+$log-tap-hint-press-scale: 0.85;
+$log-tap-hint-press-share: 22%; //of the cycle: about 0.4s down and back
+$log-tap-hint-ripple-share: 55%; //of the cycle: about 1s growing and fading
+$log-tap-hint-ripple-size: 16px;
+$log-tap-hint-ripple-scale: 1.6; //how far it grows
+$log-tap-hint-fingertip-x: 38%; //the fingertip in the hand-pointer glyph's box
+$log-tap-hint-fingertip-y: 12%;
 $log-types: "towers-placed", "player-passed", "game-end", "game-end-draw"; //game-end-draw after game-end: a draw row has both classes
 .log, .gamelogreview{
     //the &.…roundedbox selectors: the mobile table log's row is itself the .roundedbox (see the default background above)
@@ -1092,6 +1138,42 @@ $log-types: "towers-placed", "player-passed", "game-end", "game-end-draw"; //gam
     //the row's only content and sits in its vertical middle
     &.game-end-log .roundedbox, &.game-end-log.roundedbox, &.gamelogreview.game-end-log{ padding-top: $log-result-row-padding-y; padding-bottom: $log-result-row-padding-y; }
     .nexo-log-result-spacer{ display: none; }
+}
+@media (hover: none){ //touch: a turn row pressed darkens and shrinks a little, springing back on release (LogHighlightHandler's touchstart makes iOS apply :active)
+    .log.a-game-log.towers-placed-log, .gamelogreview.a-game-log.towers-placed-log{ -webkit-tap-highlight-color: transparent; transition: scale $log-pressed-duration ease-out, filter $log-pressed-duration ease-out;
+        &:active{ scale: $log-pressed-scale; filter: brightness($log-pressed-brightness); }
+    }
+}
+//[BGA] the banner, the first child of the mobile table log's rows zone: sticky, so it stays just under the window's title while
+//the log scrolls; the game's red on a light tint of it. The hand's box is fixed and its tap only animates scale and a ripple
+//(its ::after, out of the flow), so nothing around it moves
+.nexo-log-tap-hint{ position: sticky; top: 0px; z-index: 2; display: flex; align-items: center; justify-content: center; gap: $log-tap-hint-gap; padding: $log-tap-hint-padding-y $log-tap-hint-padding-x;
+    font-size: $log-tap-hint-size; font-weight: $log-tap-hint-weight; line-height: 1.3; text-align: center; color: $log-tap-hint-color;
+    background: $log-tap-hint-background; box-shadow: 0 1px 0 $log-tap-hint-border-color;
+    .nexo-log-tap-hint-hand{ position: relative; flex: none; display: inline-flex; align-items: center; justify-content: center; width: $log-tap-hint-hand-size; height: $log-tap-hint-hand-size;
+        .fa{ font-size: $log-tap-hint-hand-size; line-height: 1; transform-origin: $log-tap-hint-fingertip-x $log-tap-hint-fingertip-y; }
+        &::after{ content: ""; position: absolute; left: $log-tap-hint-fingertip-x; top: $log-tap-hint-fingertip-y; width: $log-tap-hint-ripple-size; height: $log-tap-hint-ripple-size;
+            margin: (-0.5 * $log-tap-hint-ripple-size) 0px 0px (-0.5 * $log-tap-hint-ripple-size); border-radius: 50%; background: rgba($material-red, 0.35); opacity: 0; pointer-events: none; z-index: -1; }
+    }
+    &.animated-tap-hint .nexo-log-tap-hint-hand{
+        .fa{ animation: tap-hint-press $log-tap-hint-cycle ease-in-out infinite; }
+        &::after{ animation: tap-hint-ripple $log-tap-hint-cycle ease-out infinite; }
+    }
+}
+@keyframes tap-hint-press{
+    0%{ scale: 1; }
+    #{$log-tap-hint-press-share * 0.4}{ scale: $log-tap-hint-press-scale; }
+    #{$log-tap-hint-press-share}, 100%{ scale: 1; }
+}
+@keyframes tap-hint-ripple{
+    0%, #{$log-tap-hint-press-share * 0.3}{ opacity: 0; scale: 0.3; }
+    #{$log-tap-hint-press-share * 0.45}{ opacity: 1; scale: 0.5; }
+    #{$log-tap-hint-ripple-share}, 100%{ opacity: 0; scale: $log-tap-hint-ripple-scale; }
+}
+@media (prefers-reduced-motion: reduce){
+    .nexo-log-tap-hint.animated-tap-hint .nexo-log-tap-hint-hand{
+        .fa, &::after{ animation: none; }
+    }
 }
 //end logs
 
