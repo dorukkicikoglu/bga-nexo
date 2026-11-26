@@ -111,7 +111,13 @@ export class Game {
             <div id="nexo-board-container">
                 <div id="nexo-board-column">
                     <div id="nexo-board"></div>
-                    <div id="nexo-top-bar"></div>
+                    <div id="nexo-top-bar">
+                        <div class="top-bar-scoreboard">
+                            <div class="top-bar-score" data-side="left"></div>
+                            <div class="top-bar-score-divider"></div>
+                            <div class="top-bar-score" data-side="right"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         `);
@@ -121,10 +127,10 @@ export class Game {
         this.boardRules = new BoardRules(gamedatas.rules);
         this.endGameScoringHandler = new EndGameScoringHandler(this);
 
-        // Setting up each player's side on the board's top edge (avatar, reserve stacks, PASSED stamp)
+        // Setting up each player's side on the board's top edge (avatar, reserve stacks, PASSED stamp, score)
         for(let player_id in gamedatas.players) {
-            const {reserve, passed} = this.gamedatas.players[player_id];
-            this.players[player_id] = new PlayerHandler(this, parseInt(player_id), reserve, passed, this.getTopBarSide(parseInt(player_id)));
+            const {reserve, passed, score} = this.gamedatas.players[player_id];
+            this.players[player_id] = new PlayerHandler(this, parseInt(player_id), reserve, passed, this.getTopBarSide(parseInt(player_id)), Number(score) || 0);
         }
         this.updatePassedStamps();
 

@@ -360,16 +360,34 @@ $reserve-slot-color: rgba($material-charcoal, 0.2); //an empty stack's dashed ou
 //the avatars outside it; fitToViewport reads the column's extra spans (--board-extra-span-x / -y) to fit it all in the window
 $top-bar-avatar-ratio: 0.7; //the avatar's diameter, its ring included
 $top-bar-avatar-border-ratio: 0.05; //its ring, in the player's color (set inline by PlayerHandler)
-$top-bar-avatar-outside-x: 0.225; //share of the avatar's width outside the board's side edge (the mockup: 10 to 15%)
+$top-bar-avatar-outside-x: 0.225; //share of the avatar's width outside the board's side edge (tuned by hand from the mockup's 10 to 15%)
 $top-bar-avatar-outside-y: 0.05; //share of its height above the board's top edge (a few px: about 3px on a desktop board)
 $top-bar-stack-gap-ratio: 0.08; //between the avatar and its first stack
 $top-bar-center-gap-ratio: 0.2; //the least room between the two reserves
+$top-bar-row-drop: 0.1; //the stacks and the scores sit this share of the avatar's height under its centre (more room under the board's top edge)
 $top-bar-stack-cell-ratio: 0.26; //a reserve stack's --cell-size at most (about 0.29 spot tall): narrower boards shrink the stacks (container query)
 //the band over the grid: as tall as the avatar's part inside the board, which is taller than the stacks
 $board-top-band-ratio: $top-bar-avatar-ratio * (1 - $top-bar-avatar-outside-y) + 0.015;
 $top-bar-passed-stamp-font-ratio: 0.11; //the PASSED stamp's font size (11px on a 100px spot)
 $top-bar-active-glow-color: $selected-spot-color; //the active player's avatar (Game.setActivePlayer): the draft's gold, a thin ring and a soft glow
 $top-bar-active-glow-duration: 0.3s;
+//[BGA] the scoreboard at the board's top centre (PlayerHandler.createScore): each player's largest group next to a thin centre line,
+//on their side, in their color, in BGA's plain font, the digits as tall as a full reserve stack, centred on the line, which keeps its own height. Its box runs between the reserves' inner ends (minus a margin), so the
+//numbers can't reach the stacks; their font is a share of the spot, or what fits two digits in half the box, whichever is smaller
+$top-bar-score-font-family: "Roboto", Arial, sans-serif; //BGA's own interface font, plain
+$top-bar-score-font-weight: 500;
+$top-bar-score-font-scale: 0.85; //the numbers, smaller than a full reserve stack's height by this (the line keeps its own height)
+$top-bar-score-shift-y: -4px; //the whole group (numbers and line) moved up by its transform, so nothing else in the row moves
+$top-bar-score-digit-height-share: 0.71; //a digit's height over its font size (Roboto, Arial): the digits are as tall as a full reserve stack
+$top-bar-score-digits-width: 1.25; //what two digits take, in em: the font shrinks so they always fit their half
+$top-bar-score-margin-ratio: 0.15; //between the reserves' inner ends and the scoreboard
+$top-bar-score-colors: ("red": $material-red, "black": $material-charcoal); //the players' accents, like the log rows'
+$top-bar-score-divider-color: #8e8e8e; //the centre line: a neutral mid grey
+$top-bar-score-divider-width-ratio: 0.02; //never under 1px
+$top-bar-score-divider-height-ratio: 0.42; //its own height, in spots (never from the numbers' font)
+$top-bar-score-divider-gap-ratio: 0.12; //between the line and each number
+$top-bar-score-pulse-duration: 0.4s; //a score that changed (one-shot .score-pulse)
+$top-bar-score-pulse-scale: 1.3;
 $log-text-color: #1f1f21; //near-black
 $log-background-default: linear-gradient(135deg, $marble-white, $marble-white-shade);
 $log-background-towers-placed: linear-gradient(90deg, rgba($marble-white, 0.97), rgba($marble-white-shade, 0.95));
@@ -1023,7 +1041,44 @@ body .confirm-popover{ position: fixed; left: 0px; top: 0px; z-index: $confirm-p
     position: absolute; z-index: 1; container-type: inline-size; pointer-events: none;
     top: calc(var(--top-bar-cell) * #{$top-bar-avatar-ratio * $top-bar-avatar-outside-y}); left: calc(var(--top-bar-cell) * #{$top-bar-avatar-ratio * $top-bar-avatar-outside-x}); right: calc(var(--top-bar-cell) * #{$top-bar-avatar-ratio * $top-bar-avatar-outside-x});
     height: calc(var(--top-bar-cell) * #{$board-top-band-ratio});
+    //a reserve stack's --cell-size (below), and where the reserves end from the bar's edges (the scoreboard starts there). Its 50cqw
+    //is the bar's (a token until used: resolved on the stacks and the scoreboard, whose nearest container is the bar)
+    --top-bar-stack-cell: min(calc(var(--top-bar-cell) * #{$top-bar-stack-cell-ratio}), calc((50cqw - var(--top-bar-cell) * #{$top-bar-center-gap-ratio * 0.5 + $top-bar-avatar-ratio * (1 - $top-bar-avatar-outside-x) + $top-bar-stack-gap-ratio} - #{4 * $reserve-stack-gap}) / 5));
+    --top-bar-row-top: calc(var(--top-bar-avatar) * #{$top-bar-row-drop - $top-bar-avatar-outside-y}); //the stacks' and scores' row: the avatar's box, lowered
+    --top-bar-reserve-end: calc(var(--top-bar-avatar) * #{1 - $top-bar-avatar-outside-x} + var(--top-bar-cell) * #{$top-bar-stack-gap-ratio} + var(--top-bar-stack-cell) * 5 + #{4 * $reserve-stack-gap});
 }
+//[BGA] the scoreboard (PlayerHandler.createScore, setScore): between the reserves, on the stacks' row (the avatar's box, lowered).
+//A flex row centred across (align-items: center): the two numbers share the width equally (flex: 1 1 0) with the line between
+//them, in a box as far from each edge, so the line sits in the exact centre whatever the numbers; the left number is
+//right-aligned and the right one left-aligned, so a second digit grows outwards. A size container: the numbers' font fits half its width
+.top-bar-scoreboard{ position: absolute; top: var(--top-bar-row-top); height: var(--top-bar-avatar);
+    left: calc(var(--top-bar-reserve-end) + var(--top-bar-cell) * #{$top-bar-score-margin-ratio}); right: calc(var(--top-bar-reserve-end) + var(--top-bar-cell) * #{$top-bar-score-margin-ratio});
+    container-type: inline-size; display: flex; align-items: center; transform: translateY(#{$top-bar-score-shift-y}); @include non-selectable();
+    --score-divider-gap: calc(var(--top-bar-cell) * #{$top-bar-score-divider-gap-ratio});
+    --score-divider-width: max(1px, calc(var(--top-bar-cell) * #{$top-bar-score-divider-width-ratio}));
+    //the numbers' font: a full reserve stack's height in digits (from the spot: the stacks only shrink on a bar narrower than any
+    //board), or what fits two digits in half the box (50cqw: the scoreboard's, resolved on its children)
+    --score-font: calc(#{$top-bar-score-font-scale} * min(calc(var(--top-bar-cell) * #{math.div($top-bar-stack-cell-ratio * $reserve-stack-height-ratio, $top-bar-score-digit-height-share)}), calc((50cqw - var(--score-divider-gap) - var(--score-divider-width) / 2) / #{$top-bar-score-digits-width})));
+    .top-bar-score-divider{ flex: none; width: var(--score-divider-width); height: calc(var(--top-bar-cell) * #{$top-bar-score-divider-height-ratio}); margin: 0 var(--score-divider-gap); border-radius: var(--score-divider-width); background-color: $top-bar-score-divider-color; }
+    .top-bar-score{ flex: 1 1 0px; min-width: 0; white-space: nowrap; line-height: 1; font-family: $top-bar-score-font-family; font-weight: $top-bar-score-font-weight; font-variant-numeric: tabular-nums;
+        font-size: var(--score-font); }
+    .top-bar-score[data-side="left"]{ text-align: right; }
+    .top-bar-score[data-side="right"]{ text-align: left; }
+    @each $name, $color in $top-bar-score-colors {
+        .top-bar-score[data-disc-color="#{$name}"]{ color: $color; }
+    }
+    //the number itself, so its pulse grows outwards from the centre line (the scale property, never a transform)
+    .top-bar-score-value{ display: inline-block; }
+    .top-bar-score[data-side="left"] .top-bar-score-value{ transform-origin: 100% 50%; }
+    .top-bar-score[data-side="right"] .top-bar-score-value{ transform-origin: 0% 50%; }
+    .score-pulse{ animation: score-pulse $top-bar-score-pulse-duration ease-out; }
+}
+@keyframes score-pulse {
+  0% { scale: 1; }
+  35% { scale: $top-bar-score-pulse-scale; }
+  100% { scale: 1; }
+}
+@media (prefers-reduced-motion: reduce){ .top-bar-scoreboard .score-pulse{ animation: none; } }
 //a player's side: the band's height, from its own top corner. top: 0 for the shared bounce (it animates top)
 .top-bar-player{ position: absolute; top: 0px; height: 100%; @include non-selectable();
     &[data-side="left"]{ left: 0px; }
@@ -1036,8 +1091,8 @@ body .confirm-popover{ position: fixed; left: 0px; top: 0px; z-index: $confirm-p
     &[data-side="right"] .top-bar-avatar{ right: calc(-1 * var(--top-bar-avatar) * #{$top-bar-avatar-outside-x}); }
     //[BGA] the active player (Game.setActivePlayer): a thin gold ring and a soft glow around the avatar only
     &.active-top-bar-player .top-bar-avatar{ box-shadow: 0 0 0 calc(var(--top-bar-cell) * 0.02) $top-bar-active-glow-color, 0 0 calc(var(--top-bar-cell) * 0.1) rgba($top-bar-active-glow-color, 0.55); }
-    //the stacks, beside the avatar's inside part, centred on the avatar (the row is the avatar's height, at its top)
-    .player-board-reserve-row{ position: absolute; top: calc(-1 * var(--top-bar-avatar) * #{$top-bar-avatar-outside-y}); height: var(--top-bar-avatar); display: flex; align-items: center; pointer-events: auto;
+    //the stacks, beside the avatar's inside part, centred on the avatar lowered by $top-bar-row-drop (the row is the avatar's height)
+    .player-board-reserve-row{ position: absolute; top: var(--top-bar-row-top); height: var(--top-bar-avatar); display: flex; align-items: center; pointer-events: auto;
         --reserve-inset: calc(var(--top-bar-avatar) * #{1 - $top-bar-avatar-outside-x} + var(--top-bar-cell) * #{$top-bar-stack-gap-ratio}); }
     &[data-side="left"] .player-board-reserve-row{ left: var(--reserve-inset); }
     &[data-side="right"] .player-board-reserve-row{ right: var(--reserve-inset); }
@@ -1047,7 +1102,7 @@ body .confirm-popover{ position: fixed; left: 0px; top: 0px; z-index: $confirm-p
     //share of the spot, or what fits in half the board beside the avatar, whichever is smaller
     .reserve-stacks{ display: flex; gap: $reserve-stack-gap; }
     .nexo-tower.reserve-stack{
-        --cell-size: min(calc(var(--top-bar-cell) * #{$top-bar-stack-cell-ratio}), calc((50cqw - var(--top-bar-cell) * #{$top-bar-center-gap-ratio * 0.5 + $top-bar-avatar-ratio * (1 - $top-bar-avatar-outside-x) + $top-bar-stack-gap-ratio} - #{4 * $reserve-stack-gap}) / 5));
+        --cell-size: var(--top-bar-stack-cell);
         --disc-thickness: calc(var(--cell-size) * #{$reserve-stack-disc-thickness-ratio});
         --disc-box-ratio: #{$disc-face-ratio + math.div($reserve-stack-disc-thickness-ratio, $disc-width-ratio)}; height: calc(var(--cell-size) * #{$reserve-stack-height-ratio});
         &::before{ content: ""; position: absolute; box-sizing: border-box; left: calc((var(--cell-size) - var(--disc-width)) / 2); bottom: var(--tower-base); width: var(--disc-width); height: var(--disc-face-height);

@@ -14,16 +14,20 @@ import { BoardHandler } from "./BoardHandler";
 
 export class PlayerHandler{
     private static readonly BOUNCE_CLASS = 'bouncing-player-board'; //the one shared bounce class, its timing lives in Game.scss
+    private static readonly SCORE_PULSE_CLASS = 'score-pulse'; //one-shot, on a score that changed (Game.scss: $top-bar-score-pulse-*)
     //the reserve: RESERVE_STACK_COUNT stacks of up to RESERVE_STACK_SIZE discs side by side, DISCS_PER_PLAYER (25) in all
     private static readonly RESERVE_STACK_COUNT = 5;
     private static readonly RESERVE_STACK_SIZE = 5;
 
     private sideElement: HTMLDivElement; //this player's side on the board's top edge: avatar, reserve stacks, PASSED stamp
     private reserveStacksElement: HTMLDivElement;
+    private scoreValueElement: HTMLSpanElement; //[BGA] this player's number in the scoreboard at the board's top centre
+    private score: number;
     private reserveStacks: HTMLDivElement[] = []; //stack 0 first: next to the avatar on either side (Game.scss mirrors the right side)
 
-	constructor(private game: Game, private playerID: number, private reserve: number, private passed: boolean, side: TopBarSide) {
+	constructor(private game: Game, private playerID: number, private reserve: number, private passed: boolean, side: TopBarSide, score: number) {
         this.createTopBarSide(side);
+        this.createScore(side, score);
 
         this.setReserve(this.reserve);
         this.showPassedStamp(false); //Game.updatePassedStamps() decides once every player has a side
@@ -241,9 +245,36 @@ export class PlayerHandler{
         banner.remove();
     }
 
-    //every live score change goes through here: BGA's score counter is the player's largest group
+    //[BGA] this player's half of the scoreboard at the board's top centre (#nexo-top-bar .top-bar-scoreboard, Game.setup), on their
+    //side (Game.getTopBarSide), next to the centre line, in their color (data-disc-color). Set from gamedatas, no pulse
+    private createScore(side: TopBarSide, score: number): void {
+        const scoreElement = document.querySelector(`#nexo-top-bar .top-bar-score[data-side="${side}"]`) as HTMLDivElement;
+        scoreElement.setAttribute('data-disc-color', this.game.getDiscColor(this.playerID));
+        this.scoreValueElement = document.createElement('span');
+        this.scoreValueElement.className = 'top-bar-score-value';
+        this.scoreValueElement.addEventListener('animationend', (event: AnimationEvent) => {
+            if(event.target === this.scoreValueElement && event.animationName === PlayerHandler.SCORE_PULSE_CLASS)
+                this.scoreValueElement.classList.remove(PlayerHandler.SCORE_PULSE_CLASS);
+        });
+        scoreElement.appendChild(this.scoreValueElement);
+        this.score = score;
+        this.scoreValueElement.textContent = score.toString();
+    }
+
+    //every live score change goes through here (towersPlaced, the end of the game live or after a reload): BGA's score counter and
+    //the scoreboard's number are the player's largest group. A number that changed pulses once (none with animations off or
+    //reduced motion)
     public setScore(score: number): void {
         this.game.bga.playerPanels.getScoreCounter(this.playerID)?.toValue(score);
+        if(score === this.score)
+            return;
+        this.score = score;
+        this.scoreValueElement.textContent = score.toString();
+        if(!this.game.bga.gameui.bgaAnimationsActive() || window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+            return;
+        this.scoreValueElement.classList.remove(PlayerHandler.SCORE_PULSE_CLASS);
+        void this.scoreValueElement.offsetWidth; //restarts a pulse still playing
+        this.scoreValueElement.classList.add(PlayerHandler.SCORE_PULSE_CLASS);
     }
 
     //the score counter's value: the player's largest group (the game end row's fallback for the loser's score)

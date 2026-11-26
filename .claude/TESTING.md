@@ -715,7 +715,7 @@ Rows look tappable
 Deploy `modules/` and `nexo.css`. No server change. Check on desktop and on a phone, with both disc styles.
 
 Layout
-- [ ] No bar or pills over the board. Your avatar (large, round, sharp, a thick ring in your color) sits on the board's top-left corner, mostly inside it (about an eighth past the left edge, a few pixels above the top edge); your 5 reserve stacks are right of it, on the board's white surface, centred on it. The opponent's avatar is on the top-right corner, their stacks left of it. BGA's player panels show only the name and score (no stacks, no PASSED stamp).
+- [ ] No bar or pills over the board. Your avatar (large, round, sharp, a thick ring in your color) sits on the board's top-left corner, mostly inside it (about an eighth past the left edge, a few pixels above the top edge); your 5 reserve stacks are right of it, on the board's white surface, a little lower than its centre (about a tenth of its height), with clear room under the board's top edge. The opponent's avatar is on the top-right corner, their stacks left of it. BGA's player panels show only the name and score (no stacks, no PASSED stamp).
 - [ ] Your stacks fill from the stack next to your avatar; the opponent's too (on the right, their fullest stack is the rightmost, next to their avatar).
 - [ ] The avatars never touch the status bar or leave the game area (desktop and phone).
 - [ ] No spot, target ring or tower is ever under an avatar or a stack: draft along the top row and in the top corners (`debug_fillBoard` for a full 5x5), and a 5-disc tower on the top row.
@@ -742,3 +742,15 @@ Reserve animations (both reserves, the opponent's on the right included)
 PASSED
 - [ ] An automatic pass: the big PASSED banner flies onto a PASSED stamp centred over that player's stacks and stays there until they place again; the stamp's tooltip still shows.
 - [ ] The pass that ends the game: the banner fades out over the stacks, no stamp stays.
+
+## After M1: scoreboard
+
+Deploy `modules/` and `nexo.css`. No server change. Check on desktop and on a phone.
+
+- [ ] Centred at the top of the board, on one line with the reserve stacks: the two scores in plain numbers in BGA's own font (not italic, not heavy, no shadow), each in its player's color, the digits a little shorter than a full stack, the group a few px higher than the stacks' middle, with a thin grey line between them, a little taller than the digits, the numbers level with its middle. They match BGA's score counters on the player panels.
+- [ ] Sides: as red and as black, your score is the left one; as a spectator, red's is the left one, whatever the seat order; in a replay, the same rules.
+- [ ] Single and double digits (`debug_fillBoard` for scores over 9): the line stays exactly in the centre, the left number ends at the line, the right number starts at it, a second digit grows outwards.
+- [ ] Narrow window and phone: the numbers shrink with the board and never touch the reserve stacks (try "25 | 25" if you can get there); they never cover a spot of the top row.
+- [ ] A turn that changes a score: once the towers have landed, that number pulses once (grows from the line outwards and back); an unchanged score doesn't pulse. A replacement that splits the opponent's group makes theirs pulse too.
+- [ ] F5 and a replay's start: the scores are right at once, no pulse. With the OS's reduce-motion setting on, or animations off, the numbers change without a pulse.
+- [ ] Game end: the final scores show (after F5 too), the same as the result row.
