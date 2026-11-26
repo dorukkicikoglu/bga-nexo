@@ -44,6 +44,7 @@ export class PlaceTowers {
      * This method is called each time we are entering the game state. You can use this method to perform some user interface changes at this moment.
      */
     onEnteringState(args: PlaceTowersArgs, isCurrentPlayerActive: boolean) {
+        this.game.setActivePlayer(this.bga.players.getActivePlayerId()); //every viewer: the glow on the active player's avatar
         this.stateArgs = args;
         this.pending = [];
         this.clickHistory = [];

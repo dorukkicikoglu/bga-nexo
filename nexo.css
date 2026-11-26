@@ -349,6 +349,7 @@ html.nexo-discs-wooden .nexo-tower .tower-height-number {
   width: calc(var(--board-size) * var(--cell-size));
   height: calc(var(--board-size) * var(--cell-size));
   overflow: hidden;
+  padding-top: calc(var(--cell-size) * 0.68);
   border: 1px solid rgba(27, 27, 29, 0.1);
   border-radius: 8px;
   background: radial-gradient(ellipse 70% 55% at 30% 20%, #ffffff 0%, transparent 100%), linear-gradient(35deg, transparent 38%, rgba(100, 96, 90, 0.05) 39%, transparent 40.4%), linear-gradient(41deg, transparent 67%, rgba(100, 96, 90, 0.035) 67.6%, transparent 68.5%), linear-gradient(160deg, #fcfbf9 0%, #f0eee9 100%);
@@ -376,7 +377,7 @@ html.nexo-discs-wooden .nexo-tower .tower-height-number {
 .board-layer {
   position: absolute;
   left: 0px;
-  top: 0px;
+  top: calc(var(--cell-size) * 0.68);
   width: 0px;
   height: 0px;
 }
@@ -1037,26 +1038,99 @@ body .confirm-popover[data-placement=above] .confirm-popover-arrow {
   box-shadow: 0 1px 2px rgba(40, 30, 18, 0.14), 0 4px 12px -4px rgba(40, 30, 18, 0.2);
 }
 
-.nexo-player-board {
-  margin-top: 6px;
-}
-.nexo-player-board .player-board-reserve-row {
+#nexo-board-column {
   position: relative;
   display: flex;
-  align-items: center;
-  min-height: 30px;
+  flex-direction: column;
+  align-items: stretch;
+  --board-cell-size: min(5.6vw, 72px);
+  --board-extra-span-x: 0.315;
+  --board-extra-span-y: 0.715;
+  padding: calc(var(--board-cell-size) * 0.035) calc(var(--board-cell-size) * 0.1575) 0px;
 }
-.nexo-player-board .reserve-stacks {
+
+#nexo-top-bar {
+  --top-bar-cell: var(--board-cell-size);
+  --top-bar-avatar: calc(var(--top-bar-cell) * 0.7);
+  position: absolute;
+  z-index: 1;
+  container-type: inline-size;
+  pointer-events: none;
+  top: calc(var(--top-bar-cell) * 0.035);
+  left: calc(var(--top-bar-cell) * 0.1575);
+  right: calc(var(--top-bar-cell) * 0.1575);
+  height: calc(var(--top-bar-cell) * 0.68);
+}
+
+.top-bar-player {
+  position: absolute;
+  top: 0px;
+  height: 100%;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+.top-bar-player[data-side=left] {
+  left: 0px;
+}
+.top-bar-player[data-side=right] {
+  right: 0px;
+}
+.top-bar-player .top-bar-avatar {
+  position: absolute;
+  top: calc(-1 * var(--top-bar-avatar) * 0.05);
+  box-sizing: border-box;
+  width: var(--top-bar-avatar);
+  height: var(--top-bar-avatar);
+  pointer-events: auto;
+  border: calc(var(--top-bar-cell) * 0.05) solid #1b1b1d;
+  border-radius: 50%;
+  object-fit: cover;
+  background-color: #fcfbf9;
+  box-shadow: 0 2px 6px rgba(40, 30, 18, 0.25);
+  transition: box-shadow 0.3s ease;
+}
+.top-bar-player[data-side=left] .top-bar-avatar {
+  left: calc(-1 * var(--top-bar-avatar) * 0.225);
+}
+.top-bar-player[data-side=right] .top-bar-avatar {
+  right: calc(-1 * var(--top-bar-avatar) * 0.225);
+}
+.top-bar-player.active-top-bar-player .top-bar-avatar {
+  box-shadow: 0 0 0 calc(var(--top-bar-cell) * 0.02) #ffc400, 0 0 calc(var(--top-bar-cell) * 0.1) rgba(255, 196, 0, 0.55);
+}
+.top-bar-player .player-board-reserve-row {
+  position: absolute;
+  top: calc(-1 * var(--top-bar-avatar) * 0.05);
+  height: var(--top-bar-avatar);
+  display: flex;
+  align-items: center;
+  pointer-events: auto;
+  --reserve-inset: calc(var(--top-bar-avatar) * 0.775 + var(--top-bar-cell) * 0.08);
+}
+.top-bar-player[data-side=left] .player-board-reserve-row {
+  left: var(--reserve-inset);
+}
+.top-bar-player[data-side=right] .player-board-reserve-row {
+  right: var(--reserve-inset);
+}
+.top-bar-player[data-side=right] .reserve-stacks {
+  flex-direction: row-reverse;
+}
+.top-bar-player .reserve-stacks {
   display: flex;
   gap: 1px;
 }
-.nexo-player-board .nexo-tower.reserve-stack {
-  --cell-size: 28px;
+.top-bar-player .nexo-tower.reserve-stack {
+  --cell-size: min(calc(var(--top-bar-cell) * 0.26), calc((50cqw - var(--top-bar-cell) * 0.7225 - 4px) / 5));
   --disc-thickness: calc(var(--cell-size) * 0.14);
   --disc-box-ratio: 0.6294871795;
   height: calc(var(--cell-size) * 1.131);
 }
-.nexo-player-board .nexo-tower.reserve-stack::before {
+.top-bar-player .nexo-tower.reserve-stack::before {
   content: "";
   position: absolute;
   box-sizing: border-box;
@@ -1067,31 +1141,31 @@ body .confirm-popover[data-placement=above] .confirm-popover-arrow {
   border: 1px dashed rgba(27, 27, 29, 0.2);
   border-radius: 50%;
 }
-.nexo-player-board .passed-stamp {
+.top-bar-player .passed-stamp {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 1px 7px;
-  border: 2px solid #5a5f6e;
-  border-radius: 4px;
+  gap: 0.3846153846em;
+  padding: 0.0769230769em 0.5384615385em;
+  border: 0.1538461538em solid #5a5f6e;
+  border-radius: 0.3076923077em;
   background-color: rgba(255, 255, 255, 0.7);
   color: #5a5f6e;
-  font-size: 13px;
+  font-size: calc(var(--top-bar-cell) * 0.11);
   font-weight: bold;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.0769230769em;
   white-space: nowrap;
   box-shadow: 0 0 0 0 rgba(27, 27, 29, 0);
   position: absolute;
-  right: 0px;
+  left: 50%;
   top: 50%;
-  translate: 0px -50%;
+  translate: -50% -50%;
   rotate: -6deg;
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.3s ease, visibility 0.3s;
 }
-.nexo-player-board[data-passed=true] .passed-stamp {
+.top-bar-player[data-passed=true] .passed-stamp {
   opacity: 1;
   visibility: visible;
 }
@@ -1108,16 +1182,16 @@ body .passed-banner {
   will-change: transform, opacity;
   display: flex;
   align-items: center;
-  gap: 15px;
-  padding: 3px 21px;
-  border: 6px solid #5a5f6e;
-  border-radius: 12px;
+  gap: 0.3846153846em;
+  padding: 0.0769230769em 0.5384615385em;
+  border: 0.1538461538em solid #5a5f6e;
+  border-radius: 0.3076923077em;
   background-color: rgba(255, 255, 255, 0.7);
   color: #5a5f6e;
   font-size: 39px;
   font-weight: bold;
   text-transform: uppercase;
-  letter-spacing: 3px;
+  letter-spacing: 0.0769230769em;
   white-space: nowrap;
   box-shadow: 0 0 0 0 rgba(27, 27, 29, 0);
   box-shadow: 0 6px 24px 0 rgba(27, 27, 29, 0.3);
@@ -1142,10 +1216,6 @@ body .passed-banner .passed-banner-name {
 }
 body .passed-banner.passed-banner-flying .passed-banner-name {
   opacity: 0;
-}
-
-.positioned-player-board {
-  position: relative;
 }
 
 .bouncing-player-board {
@@ -1437,3 +1507,5 @@ body .passed-banner.passed-banner-flying .passed-banner-name {
 .dijitTooltipLeft, .dijitTooltipRight {
   max-width: calc(100vw - 30px);
 }
+
+/*# sourceMappingURL=nexo.css.map */

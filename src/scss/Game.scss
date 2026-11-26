@@ -343,9 +343,8 @@ $confirm-popover-z-index: 948;
 //player boards (BGA's .player-board) and log rows
 $panel-background: linear-gradient(160deg, $marble-white 0%, $marble-white-shade 100%);
 $panel-border-color: rgba($material-charcoal, 0.08);
-//the reserve on player boards (PlayerHandler): 5 stacks of up to 5 discs side by side, each a .nexo-tower box of this size
-//(5 x 28px + 4 x 1px = 144px, narrower than BGA's player board; about 32px tall)
-$reserve-stack-cell-size: 28px;
+//the reserve in the top bar (PlayerHandler): 5 stacks of up to 5 discs side by side, each a .nexo-tower box; its size is
+//$top-bar-stack-cell-ratio of a board spot (below), shrunk when the bar is narrow
 $reserve-stack-disc-thickness-ratio: 0.14; //thicker than a board tower's ($disc-thickness-ratio): about 4px a disc, so each disc and its seam read at this size
 //a stack's box is taller than wide, just enough for 5 of these discs (a board tower's box is square)
 $reserve-stack-height-ratio: $tower-base-ratio + 5 * $reserve-stack-disc-thickness-ratio + $disc-width-ratio * $disc-face-ratio;
@@ -354,6 +353,23 @@ $status-disc-cell-size: 1.4em; //the status bar's allowance icons (PlaceTowers.g
 $status-disc-thickness-ratio: 0.14; //thicker than a board tower's, like the reserve stacks', so the edge reads at this size
 $status-disc-used-opacity: 0.25; //a disc already drafted this turn: dimmed, never removed, so the title keeps its width
 $reserve-slot-color: rgba($material-charcoal, 0.2); //an empty stack's dashed outline, where its bottom disc goes
+//[BGA] the players on the board's top edge (#nexo-top-bar, PlayerHandler.createTopBarSide): each avatar on a top corner, about half
+//outside the board, its reserve stacks beside it on the board's surface, in a band the board adds over its grid ($board-top-band-ratio,
+//#nexo-board's padding-top), so they never cover a spot. Every size is a share of the board's spot (--board-cell-size, set by
+//BoardHandler.fitToViewport), so they scale with the board. The column around the board (#nexo-board-column) pads for the part of
+//the avatars outside it; fitToViewport reads the column's extra spans (--board-extra-span-x / -y) to fit it all in the window
+$top-bar-avatar-ratio: 0.7; //the avatar's diameter, its ring included
+$top-bar-avatar-border-ratio: 0.05; //its ring, in the player's color (set inline by PlayerHandler)
+$top-bar-avatar-outside-x: 0.225; //share of the avatar's width outside the board's side edge (the mockup: 10 to 15%)
+$top-bar-avatar-outside-y: 0.05; //share of its height above the board's top edge (a few px: about 3px on a desktop board)
+$top-bar-stack-gap-ratio: 0.08; //between the avatar and its first stack
+$top-bar-center-gap-ratio: 0.2; //the least room between the two reserves
+$top-bar-stack-cell-ratio: 0.26; //a reserve stack's --cell-size at most (about 0.29 spot tall): narrower boards shrink the stacks (container query)
+//the band over the grid: as tall as the avatar's part inside the board, which is taller than the stacks
+$board-top-band-ratio: $top-bar-avatar-ratio * (1 - $top-bar-avatar-outside-y) + 0.015;
+$top-bar-passed-stamp-font-ratio: 0.11; //the PASSED stamp's font size (11px on a 100px spot)
+$top-bar-active-glow-color: $selected-spot-color; //the active player's avatar (Game.setActivePlayer): the draft's gold, a thin ring and a soft glow
+$top-bar-active-glow-duration: 0.3s;
 $log-text-color: #1f1f21; //near-black
 $log-background-default: linear-gradient(135deg, $marble-white, $marble-white-shade);
 $log-background-towers-placed: linear-gradient(90deg, rgba($marble-white, 0.97), rgba($marble-white-shade, 0.95));
@@ -571,8 +587,9 @@ body .background-red-disc{ position: fixed; z-index: -1; pointer-events: none; w
 //scaled by its transform only, so it can start at the source's size and land at the destination's
 body .sliding-clone{ position: fixed; left: 0px; top: 0px; z-index: 1000; margin: 0; pointer-events: none; transform-origin: 0 0; will-change: transform; }
 
-//the PASSED stamp's look, at any scale: the player board's (1) and the pass banner's ($passed-banner-scale), so the banner
-//lands on the board's stamp as a scaled copy of it
+//the PASSED stamp's look, at any font size: every length in em, so the top bar's stamp ($top-bar-passed-stamp-font-ratio of a
+//spot) and the pass banner's (13px times $passed-banner-scale) share one shape, and the banner lands on the bar's stamp as a
+//scaled copy of it
 $passed-stamp-color: #5a5f6e;
 $passed-banner-scale: 3;
 $passed-banner-name-size: 22px;
@@ -582,8 +599,9 @@ $passed-banner-z-index: 1000;
 $passed-stamp-shadow: 0 0 0 0 rgba($material-charcoal, 0);
 $passed-banner-shadow: 0 6px 24px 0 rgba($material-charcoal, 0.3); //while it is big in the centre
 $passed-banner-flight-easing: ease-in-out;
-@mixin passed-stamp-look($scale) { display: flex; align-items: center; gap: 5px * $scale; padding: 1px * $scale 7px * $scale; border: 2px * $scale solid $passed-stamp-color; border-radius: 4px * $scale;
-    background-color: rgba(255, 255, 255, 0.7); color: $passed-stamp-color; font-size: 13px * $scale; font-weight: bold; text-transform: uppercase; letter-spacing: 1px * $scale; white-space: nowrap; box-shadow: $passed-stamp-shadow; }
+@function stamp-em($px){ @return math.div($px, 13) * 1em; } //the stamp's lengths, drawn at 13px
+@mixin passed-stamp-look($font-size) { display: flex; align-items: center; gap: stamp-em(5); padding: stamp-em(1) stamp-em(7); border: stamp-em(2) solid $passed-stamp-color; border-radius: stamp-em(4);
+    background-color: rgba(255, 255, 255, 0.7); color: $passed-stamp-color; font-size: $font-size; font-weight: bold; text-transform: uppercase; letter-spacing: stamp-em(1); white-space: nowrap; box-shadow: $passed-stamp-shadow; }
 
 //towers (BoardHandler.createTowerDiv): one .tower-disc per disc, bottom one first, each drawn as a cylinder: its top face is the
 //element's background (an ellipse in the top --disc-face-height of the box), its side a rectangle (::before) and its bottom
@@ -681,7 +699,11 @@ html.nexo-discs-wooden .nexo-tower{
     padding-bottom: calc(max(var(--below-board-gap-share) * 1dvh, 100dvh - var(--board-page-bottom, 0px)) / var(--bga-game-zoom, 1));
 }
 .mobile_version #nexo-board-container{ --below-board-gap-share: #{$below-board-gap-mobile-share}; }
+//[BGA] the board's top band ($board-top-band-ratio spots, its padding-top) holds the players' avatars and reserves (#nexo-top-bar):
+//the grid (.board-layer) starts under it, so no spot is ever under them. The draft controls' edges are measured from the layer's
+//own top, so they still keep inside the grid's square
 #nexo-board{ position: relative; box-sizing: content-box; width: calc(var(--board-size) * var(--cell-size)); height: calc(var(--board-size) * var(--cell-size)); overflow: hidden;
+    padding-top: calc(var(--cell-size) * #{$board-top-band-ratio});
     border: 1px solid $board-border-color; border-radius: $board-radius; background: $board-background; box-shadow: $slab-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.9); @include non-selectable();
 }
 //the board's discs against its spot pitch: every tower, spot and control on the board, and a board tower's flying copies in
@@ -689,7 +711,7 @@ html.nexo-discs-wooden .nexo-tower{
 #nexo-board, .board-tower{ --disc-scale: min(var(--nexo-disc-scale), #{$board-disc-max-scale}); }
 #nexo-board{ --board-edge-padding: #{$board-edge-padding}; }
 .mobile_version #nexo-board{ --board-edge-padding: #{$board-edge-mobile-padding}; }
-.board-layer{ position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
+.board-layer{ position: absolute; left: 0px; top: calc(var(--cell-size) * #{$board-top-band-ratio}); width: 0px; height: 0px; }
 .spots-layer, .towers-layer, .draft-controls-layer, .board-message-layer{ position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
 
 //one spot's box, from its board coordinates
@@ -987,28 +1009,61 @@ body .confirm-popover{ position: fixed; left: 0px; top: 0px; z-index: $confirm-p
 //player board
 //BGA's own player boards, in the board's marble with a lighter slab shadow (#player_boards: beats BGA's .player-board)
 #player_boards .player-board{ background: $panel-background; border-color: $panel-border-color; box-shadow: $panel-shadow; }
-.nexo-player-board{ margin-top: 6px;
-    .player-board-reserve-row{ position: relative; display: flex; align-items: center; min-height: 30px; }
+//[BGA] the players on the board's top edge (Game.setup, PlayerHandler.createTopBarSide): #nexo-top-bar lies over the board's top band
+//(after the board in the column, outside its overflow: hidden, so the avatars may stick out). Left: avatar on the top-left corner, its
+//stacks to its right; right: the same DOM mirrored, stacks to the avatar's left, stack 0 next to it. The column pads for the avatars'
+//outside parts, so they never reach the status bar or leave the game area. A narrow board shrinks the stacks (100cqw: the bar's width,
+//the board's), never wraps. Only the avatars and the reserves take the pointer (tooltips); the band under them has no spot
+#nexo-board-column{ position: relative; display: flex; flex-direction: column; align-items: stretch; --board-cell-size: #{$cell-size};
+    --board-extra-span-x: #{2 * $top-bar-avatar-ratio * $top-bar-avatar-outside-x}; //read by BoardHandler.fitToViewport, in spots
+    --board-extra-span-y: #{$top-bar-avatar-ratio * $top-bar-avatar-outside-y + $board-top-band-ratio};
+    padding: calc(var(--board-cell-size) * #{$top-bar-avatar-ratio * $top-bar-avatar-outside-y}) calc(var(--board-cell-size) * #{$top-bar-avatar-ratio * $top-bar-avatar-outside-x}) 0px;
+}
+#nexo-top-bar{ --top-bar-cell: var(--board-cell-size); --top-bar-avatar: calc(var(--top-bar-cell) * #{$top-bar-avatar-ratio});
+    position: absolute; z-index: 1; container-type: inline-size; pointer-events: none;
+    top: calc(var(--top-bar-cell) * #{$top-bar-avatar-ratio * $top-bar-avatar-outside-y}); left: calc(var(--top-bar-cell) * #{$top-bar-avatar-ratio * $top-bar-avatar-outside-x}); right: calc(var(--top-bar-cell) * #{$top-bar-avatar-ratio * $top-bar-avatar-outside-x});
+    height: calc(var(--top-bar-cell) * #{$board-top-band-ratio});
+}
+//a player's side: the band's height, from its own top corner. top: 0 for the shared bounce (it animates top)
+.top-bar-player{ position: absolute; top: 0px; height: 100%; @include non-selectable();
+    &[data-side="left"]{ left: 0px; }
+    &[data-side="right"]{ right: 0px; }
+    //the BGA avatar (184px, PlayerHandler.getAvatarUrls), a circle ringed in the player's color, on the board's corner
+    .top-bar-avatar{ position: absolute; top: calc(-1 * var(--top-bar-avatar) * #{$top-bar-avatar-outside-y}); box-sizing: border-box; width: var(--top-bar-avatar); height: var(--top-bar-avatar); pointer-events: auto;
+        border: calc(var(--top-bar-cell) * #{$top-bar-avatar-border-ratio}) solid $material-charcoal; border-radius: 50%; object-fit: cover; background-color: $marble-white;
+        box-shadow: 0 2px 6px rgba($slab-shadow-color, 0.25); transition: box-shadow $top-bar-active-glow-duration ease; }
+    &[data-side="left"] .top-bar-avatar{ left: calc(-1 * var(--top-bar-avatar) * #{$top-bar-avatar-outside-x}); }
+    &[data-side="right"] .top-bar-avatar{ right: calc(-1 * var(--top-bar-avatar) * #{$top-bar-avatar-outside-x}); }
+    //[BGA] the active player (Game.setActivePlayer): a thin gold ring and a soft glow around the avatar only
+    &.active-top-bar-player .top-bar-avatar{ box-shadow: 0 0 0 calc(var(--top-bar-cell) * 0.02) $top-bar-active-glow-color, 0 0 calc(var(--top-bar-cell) * 0.1) rgba($top-bar-active-glow-color, 0.55); }
+    //the stacks, beside the avatar's inside part, centred on the avatar (the row is the avatar's height, at its top)
+    .player-board-reserve-row{ position: absolute; top: calc(-1 * var(--top-bar-avatar) * #{$top-bar-avatar-outside-y}); height: var(--top-bar-avatar); display: flex; align-items: center; pointer-events: auto;
+        --reserve-inset: calc(var(--top-bar-avatar) * #{1 - $top-bar-avatar-outside-x} + var(--top-bar-cell) * #{$top-bar-stack-gap-ratio}); }
+    &[data-side="left"] .player-board-reserve-row{ left: var(--reserve-inset); }
+    &[data-side="right"] .player-board-reserve-row{ right: var(--reserve-inset); }
+    &[data-side="right"] .reserve-stacks{ flex-direction: row-reverse; }
     //the reserve (PlayerHandler): the stacks side by side, each a tower box with its own size and disc thickness, its discs
-    //bottom first. Every stack shows a faint outline where its bottom disc goes, so an empty one keeps its place
+    //bottom first. Every stack shows a faint outline where its bottom disc goes, so an empty one keeps its place. Its size: a
+    //share of the spot, or what fits in half the board beside the avatar, whichever is smaller
     .reserve-stacks{ display: flex; gap: $reserve-stack-gap; }
-    .nexo-tower.reserve-stack{ --cell-size: #{$reserve-stack-cell-size}; --disc-thickness: calc(var(--cell-size) * #{$reserve-stack-disc-thickness-ratio});
+    .nexo-tower.reserve-stack{
+        --cell-size: min(calc(var(--top-bar-cell) * #{$top-bar-stack-cell-ratio}), calc((50cqw - var(--top-bar-cell) * #{$top-bar-center-gap-ratio * 0.5 + $top-bar-avatar-ratio * (1 - $top-bar-avatar-outside-x) + $top-bar-stack-gap-ratio} - #{4 * $reserve-stack-gap}) / 5));
+        --disc-thickness: calc(var(--cell-size) * #{$reserve-stack-disc-thickness-ratio});
         --disc-box-ratio: #{$disc-face-ratio + math.div($reserve-stack-disc-thickness-ratio, $disc-width-ratio)}; height: calc(var(--cell-size) * #{$reserve-stack-height-ratio});
         &::before{ content: ""; position: absolute; box-sizing: border-box; left: calc((var(--cell-size) - var(--disc-width)) / 2); bottom: var(--tower-base); width: var(--disc-width); height: var(--disc-face-height);
             border: 1px dashed $reserve-slot-color; border-radius: 50%; }
     }
-    //PASSED: a tilted stamp, only while data-passed is true. Out of the flow at the row's right end, so the row never gets
-    //wider than the stacks: on a narrow player board it lies over the last stacks, like a stamp
-    .passed-stamp{ @include passed-stamp-look(1); position: absolute; right: 0px; top: 50%; translate: 0px -50%; rotate: -6deg;
+    //PASSED: a tilted stamp over the stacks, only while data-passed is true. Out of the flow, so the side never gets wider
+    .passed-stamp{ @include passed-stamp-look(calc(var(--top-bar-cell) * #{$top-bar-passed-stamp-font-ratio})); position: absolute; left: 50%; top: 50%; translate: -50% -50%; rotate: -6deg;
         opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s; }
     &[data-passed="true"] .passed-stamp{ opacity: 1; visibility: visible; }
 }
 
 //[BGA] a pass (PlayerHandler.animatePass): the PASSED stamp scaled up, centred on the screen with the player's name above
-//it, then flown onto the board's stamp by its transform (which holds the -6deg rotation too). Fixed in <body>, outside
+//it, then flown onto the top bar's stamp by its transform (which holds the -6deg rotation too). Fixed in <body>, outside
 //BGA's mobile scaling; over the status bar, like the flying tower copies
 body .passed-banner{ position: fixed; inset: 0px; margin: auto; width: fit-content; height: fit-content; z-index: $passed-banner-z-index; pointer-events: none; transform-origin: 50% 50%; will-change: transform, opacity;
-    @include passed-stamp-look($passed-banner-scale); box-shadow: $passed-banner-shadow;
+    @include passed-stamp-look(13px * $passed-banner-scale); box-shadow: $passed-banner-shadow;
     //the flight (PlayerHandler.animatePass sets the duration): the shadow shrinks to the board stamp's with the move, same
     //duration and easing, so nothing changes when the stamp takes over
     &.passed-banner-flying{ box-shadow: $passed-stamp-shadow;
@@ -1018,10 +1073,9 @@ body .passed-banner{ position: fixed; inset: 0px; margin: auto; width: fit-conte
     &.passed-banner-flying .passed-banner-name{ opacity: 0; }
 }
 
-//PlayerHandler's boardElement, BGA's whole .player-board: positioned for the bounce (which animates top)
-.positioned-player-board{ position: relative; }
 //the one shared player board bounce (discs given back by a replacement, PlayerHandler.bounceBoard, which removes the class on
-//animationend). Every bounce uses this class and this exact timing. position: relative comes from .positioned-player-board
+//animationend): the player's side on the board's top edge (avatar and stacks). Every bounce uses this class and this exact timing. position: relative
+//comes from .top-bar-player
 .bouncing-player-board{ animation: bouncing-player-board 0.175s ease-in-out 2; }
 @keyframes bouncing-player-board {
   0% { top: 0px; }

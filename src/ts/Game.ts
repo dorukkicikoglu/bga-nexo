@@ -51,7 +51,7 @@ export class Game {
     public static readonly LOG_CLOSE_MAX_WAIT = 800;
     public static readonly TOWER_JUMP_SAFETY_PER_JUMP = 400; //ms per jump, well over $tower-jump-duration, before a jump's class goes anyway
     public static readonly TOWER_JUMP_SAFETY_MARGIN = 500;
-    public static readonly BOARD_VIEWPORT_MARGIN = 10; //screen px from the board to the window's bottom (BoardHandler.fitToViewport); the status bar's gap is #nexo-board-container's padding
+    public static readonly BOARD_VIEWPORT_MARGIN = 10; //screen px from the board to the window's bottom (BoardHandler.fitToViewport); the status bar's gap is #nexo-board-container's padding (the avatars above the board are in #nexo-board-column's)
     public static readonly MIN_BOARD_CELL_SIZE = 40; //px of a spot, however short the window
     public static readonly FIT_ROOM_THRESHOLD = 4; //px the room for the board must change by before its spot size is computed again (BoardHandler.fitToViewport)
     public static readonly FIT_GROW_BACK_WINDOW = 1000; //ms after a shrink during which the board doesn't grow straight back into the room it shrank from, unless the window is resized
@@ -109,7 +109,10 @@ export class Game {
 
         this.bga.gameArea.getElement().insertAdjacentHTML('beforeend', `
             <div id="nexo-board-container">
-                <div id="nexo-board"></div>
+                <div id="nexo-board-column">
+                    <div id="nexo-board"></div>
+                    <div id="nexo-top-bar"></div>
+                </div>
             </div>
         `);
 
@@ -118,10 +121,10 @@ export class Game {
         this.boardRules = new BoardRules(gamedatas.rules);
         this.endGameScoringHandler = new EndGameScoringHandler(this);
 
-        // Setting up player boards
+        // Setting up each player's side on the board's top edge (avatar, reserve stacks, PASSED stamp)
         for(let player_id in gamedatas.players) {
             const {reserve, passed} = this.gamedatas.players[player_id];
-            this.players[player_id] = new PlayerHandler(this, parseInt(player_id), reserve, passed);
+            this.players[player_id] = new PlayerHandler(this, parseInt(player_id), reserve, passed, this.getTopBarSide(parseInt(player_id)));
         }
         this.updatePassedStamps();
 
@@ -196,7 +199,7 @@ export class Game {
     }
     private getAttributesHTML(attributes): string{ return Object.entries(attributes || {}).map(([key, value]) => `${key}="${value}"`).join(' '); }
 
-    //a tower already on its spot (BoardHandler.createTowerDiv) flies in from its player board's reserve stacks, one disc at a
+    //a tower already on its spot (BoardHandler.createTowerDiv) flies in from its player's reserve stacks (board's top edge), one disc at a
     //time: each disc flies on its own, bottom disc first and staggerMs apart, as a copy of the whole tower with every other disc
     //hidden. Disc i starts exactly over the reserve disc it was taken from, fromDiscRects[i] (PlayerHandler.takeDiscs, already
     //gone from the stacks: the copy takes its place), or with the whole copy over fallbackFromRect if it has none. Each copy
@@ -222,7 +225,7 @@ export class Game {
         }));
     }
 
-    //the other way round: a tower flies from its spot back to its owner's reserve stacks and disappears, one disc at a time: top
+    //the other way round: a tower flies from its spot back to its owner's reserve stacks (board's top edge) and disappears, one disc at a time: top
     //disc first, staggerMs apart, each a copy of the whole tower with every other disc hidden (the height number leaves with
     //the top one). Disc i lands exactly on landingDiscs[i] (PlayerHandler.addDiscs, hidden until then), which shows as it
     //lands, or with the whole copy over fallbackToRect if it has none. The copies show at the opacity the tower shows at,
@@ -341,6 +344,22 @@ export class Game {
         players.forEach(player => player.showPassedStamp(showStamp && player.isPassed()));
     }
     public getMyPlayerID(): number{ return this.myPlayerID; }
+
+    //[BGA] which top corner of the board a player takes: a player sees themselves on the left, whatever their color, the opponent on
+    //the right; a spectator (a replay watched by someone not at the table too) sees red on the left, black on the right, by
+    //the players' colors (never their seat order)
+    public getTopBarSide(playerID: number): TopBarSide {
+        if(!this.bga.players.isCurrentPlayerSpectator() && this.gamedatas.players[this.myPlayerID])
+            return (playerID === this.myPlayerID) ? 'left' : 'right';
+        return (this.getDiscColor(playerID) === 'red') ? 'left' : 'right';
+    }
+
+    //[BGA] the active player's avatar glows on the board's corner: set on entering PlaceTowers (every viewer), cleared at the game's end
+    public setActivePlayer(activePlayerID: number | null): void {
+        const activeID = (activePlayerID === null) ? null : Number(activePlayerID); //BGA may hand the id over as a string
+        for(const player_id in this.players)
+            this.players[player_id].setActive(parseInt(player_id) === activeID);
+    }
 
     //end utility
 

@@ -18,35 +18,50 @@ export class PlayerHandler{
     private static readonly RESERVE_STACK_COUNT = 5;
     private static readonly RESERVE_STACK_SIZE = 5;
 
-    private playerBoardContainer: HTMLDivElement;
+    private sideElement: HTMLDivElement; //this player's side on the board's top edge: avatar, reserve stacks, PASSED stamp
     private reserveStacksElement: HTMLDivElement;
-    private reserveStacks: HTMLDivElement[] = []; //left to right
-    private boardElement: HTMLDivElement;
+    private reserveStacks: HTMLDivElement[] = []; //stack 0 first: next to the avatar on either side (Game.scss mirrors the right side)
 
-	constructor(private game: Game, private playerID: number, private reserve: number, private passed: boolean) {
-        this.createPlayerBoardContainer();
+	constructor(private game: Game, private playerID: number, private reserve: number, private passed: boolean, side: TopBarSide) {
+        this.createTopBarSide(side);
 
         this.setReserve(this.reserve);
-        this.showPassedStamp(false); //Game.updatePassedStamps() decides once every player board exists
+        this.showPassedStamp(false); //Game.updatePassedStamps() decides once every player has a side
 	}
 
-    //every player board, spectators included, shows the reserve (its discs as stacks in the player's color) and, after an
-    //automatic pass, a PASSED stamp (shown by data-passed). The score is BGA's own counter: the player's largest group
-    private createPlayerBoardContainer(){
-        this.playerBoardContainer = document.createElement('div');
-        this.playerBoardContainer.classList.add('nexo-player-board');
-        this.playerBoardContainer.innerHTML = `
+    /**
+     * [BGA] This player's side on the board's top edge (#nexo-top-bar, over the board's top band, Game.setup): the avatar on the
+     * board's top corner, about half outside it, then, on the board's surface beside it, the reserve (its discs as stacks in the
+     * player's color) growing toward the centre and, after an automatic pass, a PASSED stamp over the stacks (shown by
+     * data-passed). The left side is the viewer's own (Game.getTopBarSide); the right side is the same DOM, mirrored in Game.scss.
+     * BGA's player panel keeps only its own content (name, score counter)
+     */
+    private createTopBarSide(side: TopBarSide){
+        this.sideElement = document.createElement('div');
+        this.sideElement.className = 'top-bar-player';
+        this.sideElement.setAttribute('data-side', side);
+        this.sideElement.setAttribute('data-disc-color', this.game.getDiscColor(this.playerID));
+        this.sideElement.innerHTML = `
+            <img class="top-bar-avatar" alt="">
             <div class="player-board-reserve-row">
                 <div class="reserve-stacks"></div>
                 <div class="passed-stamp"><i class="fa6 fa-forward"></i>${_('Passed')}</div>
             </div>
         `;
+        document.getElementById('nexo-top-bar').appendChild(this.sideElement);
 
-        const playerPanel = this.game.bga.playerPanels.getElement(this.playerID);
-        playerPanel.appendChild(this.playerBoardContainer);
+        //the BGA avatar, large and sharp (getAvatarUrl), ringed in the player's color
+        const avatar = this.sideElement.querySelector('.top-bar-avatar') as HTMLImageElement;
+        const { url, fallbackUrl } = this.getAvatarUrls();
+        avatar.alt = this.game.getPlayerName(this.playerID);
+        avatar.style.borderColor = '#' + this.game.getPlayerColor(this.playerID);
+        if(fallbackUrl && fallbackUrl !== url)
+            avatar.addEventListener('error', () => { avatar.src = fallbackUrl; }, { once: true }); //no 184 version: the panel's own size
+        if(url)
+            avatar.src = url;
 
         //each stack is a .nexo-tower box (Game.scss .reserve-stack) holding its discs, bottom first, like a tower
-        this.reserveStacksElement = this.playerBoardContainer.querySelector('.reserve-stacks');
+        this.reserveStacksElement = this.sideElement.querySelector('.reserve-stacks');
         const discColor = this.game.getDiscColor(this.playerID);
         for(let stackIndex = 0; stackIndex < PlayerHandler.RESERVE_STACK_COUNT; stackIndex++){
             const stack = document.createElement('div');
@@ -56,16 +71,24 @@ export class PlayerHandler{
             this.reserveStacks.push(stack);
         }
 
-        this.boardElement = (playerPanel.closest('.player-board') as HTMLDivElement) ?? playerPanel; //BGA's whole board around our panel
-        this.boardElement.classList.add('positioned-player-board');
-        this.boardElement.addEventListener('animationend', (event: AnimationEvent) => { //the board's own bounce, not a child's animation
-            if(event.target === this.boardElement && event.animationName === PlayerHandler.BOUNCE_CLASS)
-                this.boardElement.classList.remove(PlayerHandler.BOUNCE_CLASS);
+        this.sideElement.addEventListener('animationend', (event: AnimationEvent) => { //the side's own bounce, not a child's animation
+            if(event.target === this.sideElement && event.animationName === PlayerHandler.BOUNCE_CLASS)
+                this.sideElement.classList.remove(PlayerHandler.BOUNCE_CLASS);
         });
 
         //ids for TooltipHandler
         this.reserveStacksElement.id = 'reserve-stacks-' + this.playerID;
-        this.playerBoardContainer.querySelector('.passed-stamp').id = 'passed-stamp-' + this.playerID;
+        this.sideElement.querySelector('.passed-stamp').id = 'passed-stamp-' + this.playerID;
+    }
+
+    //the avatar at 184px: the player panel's avatar (BGA's avatar_<id>) with its size suffix (_32, _50, _92) swapped for _184, or
+    //the framework's own 184px url when the panel has none. fallbackUrl: the panel's image as it is, if the 184 one fails to load
+    private getAvatarUrls(): { url: string; fallbackUrl: string; } {
+        const panelSrc = (document.getElementById('avatar_' + this.playerID) as HTMLImageElement | null)?.getAttribute('src') ?? '';
+        const largeSrc = panelSrc.replace(/_\d+(\.[a-z]+)(\?|$)/i, '_184$1$2');
+        if(panelSrc)
+            return { url: largeSrc, fallbackUrl: panelSrc };
+        return { url: this.game.bga.players.getPlayerAvatarUrl(this.playerID, 184) ?? '', fallbackUrl: '' };
     }
 
     /**
@@ -153,16 +176,21 @@ export class PlayerHandler{
     }
 
     public showPassedStamp(show: boolean): void {
-        this.playerBoardContainer.setAttribute('data-passed', show ? 'true' : 'false');
+        this.sideElement.setAttribute('data-passed', show ? 'true' : 'false');
+    }
+
+    //[BGA] the active player's avatar glows (Game.setActivePlayer)
+    public setActive(active: boolean): void {
+        this.sideElement.classList.toggle('active-top-bar-player', active);
     }
 
     //[BGA] a pass, seen by everyone: a big PASSED stamp with the player's name pops in at the centre of the screen, holds,
-    //then shrinks onto this board's PASSED stamp. The player is marked passed as it lands: the board's stamp fades in under
+    //then shrinks onto this player's PASSED stamp over their reserve. The player is marked passed as it lands: the stamp fades in under
     //it, or, when it doesn't show (both players passed: the game is over), the banner fades out where it landed.
     //The banner is in <body>, outside BGA's mobile scaling: it converts screen px with its own measured zoom, like
     //Game.getSlidingCloneTransform. Its transform holds its rotation (the stamp's rotate), so translate is never rotated
     public async animatePass(): Promise<void> {
-        const passedStamp = this.playerBoardContainer.querySelector('.passed-stamp') as HTMLDivElement;
+        const passedStamp = this.sideElement.querySelector('.passed-stamp') as HTMLDivElement;
         const rotation = getComputedStyle(passedStamp).rotate;
         const rotate = (rotation && rotation !== 'none') ? rotation : '0deg';
 
@@ -188,7 +216,7 @@ export class PlayerHandler{
         banner.style.opacity = '1';
         await this.game.bga.gameui.wait(Game.PASS_BANNER_POP_DURATION + Game.PASS_BANNER_HOLD);
 
-        //the board's stamp, measured unrotated now (the page may have scrolled during the hold); hidden, it keeps its place
+        //the reserve's stamp, measured unrotated now (the page may have scrolled during the hold); hidden, it keeps its place
         passedStamp.style.rotate = '0deg';
         const stampRect = passedStamp.getBoundingClientRect();
         passedStamp.style.rotate = '';
@@ -205,7 +233,7 @@ export class PlayerHandler{
         await this.game.bga.gameui.wait(Game.PASS_BANNER_FLIGHT_DURATION);
 
         this.setPassed(true);
-        if(this.playerBoardContainer.getAttribute('data-passed') !== 'true'){
+        if(this.sideElement.getAttribute('data-passed') !== 'true'){
             banner.style.transition = `opacity ${Game.PASS_BANNER_SETTLE_DURATION}ms ease`;
             banner.style.opacity = '0';
         }
@@ -223,14 +251,15 @@ export class PlayerHandler{
         return this.game.bga.playerPanels.getScoreCounter(this.playerID)?.getValue();
     }
 
-    //the one shared bounce (discs given back by a replacement land on this board), removed on animationend
+    //the one shared bounce (discs given back by a replacement land on this player's stacks): their avatar and stacks bounce,
+    //removed on animationend
     public bounceBoard(): void {
         if(!this.game.bga.gameui.bgaAnimationsActive())
             return;
 
-        this.boardElement.classList.remove(PlayerHandler.BOUNCE_CLASS);
-        void this.boardElement.offsetWidth; //restarts a bounce still playing
-        this.boardElement.classList.add(PlayerHandler.BOUNCE_CLASS);
+        this.sideElement.classList.remove(PlayerHandler.BOUNCE_CLASS);
+        void this.sideElement.offsetWidth; //restarts a bounce still playing
+        this.sideElement.classList.add(PlayerHandler.BOUNCE_CLASS);
     }
 
     //the stacks' row on screen: where a disc flies from or to when its own disc is missing from the stacks (never expected)
