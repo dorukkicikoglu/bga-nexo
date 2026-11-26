@@ -76,6 +76,28 @@ class BoardRules {
         return visited;
     }
     /**
+     * [BGA] A player's score on a board: the size of their largest area of orthogonally connected towers (height doesn't matter), 0
+     * with no tower. The same rule as NEXOTableManager::getLargestGroupSize() (its getLargestGroups(): the player's own towers only,
+     * grouped by getComponent()); used for the scoreboard's preview of a draft (PlaceTowers.getPreviewScores). Change both together
+     */
+    static getLargestGroupSize(board, playerID) {
+        const ownBoard = new Map();
+        board.forEach((tower, key) => {
+            if (Number(tower.player_id) === Number(playerID))
+                ownBoard.set(key, tower);
+        });
+        let largestSize = 0;
+        const grouped = new Set();
+        for (const key of ownBoard.keys()) {
+            if (grouped.has(key))
+                continue;
+            const component = BoardRules.getComponent(ownBoard, key);
+            component.forEach(componentKey => grouped.add(componentKey));
+            largestSize = Math.max(largestSize, component.size);
+        }
+        return largestSize;
+    }
+    /**
      * The draft after a tower of the turn is taken back: replacements stay, and a new tower stays only if it still reaches the
      * towers on the board through the turn's other new towers (the server checks the turn the same way). On an empty board,
      * the new towers reached from the earliest one left stay.
@@ -124,7 +146,7 @@ class BoardHandler {
         this.game = game;
         this.towerMessage = null; //the bubble over a warning tower (showTowerWarning), one at a time
         this.fitFrame = 0; //the one pending fit (requestFit), 0 when none
-        //what the spot size was last computed from (fitToViewport): the room for the board, in the board's own px, and its span
+        //what the spot size was last computed from (fitToViewport): the room for the column, in the board's own px, and its spans in spots
         this.fittedRoom = null;
         //the last time the fit shrank the board for lack of width alone, and the room it had just before: growing straight back into
         //that room soon after, with no window resize between, is the board answering its own shrink (a scrollbar going away), so it doesn't
@@ -145,6 +167,7 @@ class BoardHandler {
         this.confirmWasFull = false; //every disc of the turn was drafted at the last render: the confirm button pulses once on reaching it
         this.ringWasFilled = null; //the confirm ring's filled segments at the last render, null when no confirm button showed
         this.boardElement = document.getElementById('nexo-board');
+        this.columnElement = document.getElementById('nexo-board-column');
         this.boardSize = this.readBoardSize();
         this.boardElement.style.setProperty('--board-size', this.boardSize.toString());
         this.boardElement.innerHTML = `
@@ -168,9 +191,9 @@ class BoardHandler {
         //BGA's onScreenWidthChange (Game) only follows the width, and the page above the board is still being laid out when
         //setup measures it (a board measured too low stayed too small): fit again on every window resize and whenever the
         //layout around the board changes, one fit per frame (requestFit). Never on anything whose size follows the board's (body,
-        //the page's height, the container's height): a fit there would answer its own resize. So: the container's width only
-        //(the columns settling), and everything laid out before the board, whose height moves the board's top (BGA's bars,
-        //the status bar, panels above the game area; observeLayoutAboveBoard)
+        //the page's height, the container's height, the column and the avatars' overlay): a fit there would answer its own resize.
+        //So: the container's width only (the columns settling), and everything laid out before the column, whose height moves
+        //its top (BGA's bars, the status bar, panels above the game area; observeLayoutAboveBoard)
         window.addEventListener('resize', () => {
             this.lastWindowResizeAt = performance.now();
             this.requestFit();
@@ -183,8 +206,9 @@ class BoardHandler {
                 this.requestFit();
             }
         });
-        if (this.boardElement.parentElement)
-            widthObserver.observe(this.boardElement.parentElement);
+        const container = this.getContainerElement();
+        if (container)
+            widthObserver.observe(container);
         this.observeLayoutAboveBoard(new ResizeObserver(() => this.requestFit()));
         this.layerElement.addEventListener('click', (event) => this.onBoardClick(event));
     }
@@ -198,13 +222,13 @@ class BoardHandler {
             this.fitToViewport();
         });
     }
-    //observes every element laid out before the board: the earlier siblings of the board's container and of each of its
-    //ancestors up to body (BGA's top bar, the status bar, anything above the game area). Their size moves the board's top, never
-    //the other way round. One added before the board later (or removed from there) is observed and fits again; anything added
+    //observes every element laid out before the board: the earlier siblings of the board's column and of each of its ancestors
+    //up to body (BGA's top bar, the status bar, anything above the game area), never the board's own siblings (the avatars'
+    //overlay, sized from the board). Their size moves the board's top, never the other way round. One added before the board later (or removed from there) is observed and fits again; anything added
     //after it (the flying copies, popins and dialogs at the end of body) is ignored
     observeLayoutAboveBoard(observer) {
         const ancestors = [];
-        for (let node = this.boardElement.parentElement; node && node !== document.documentElement; node = node.parentElement)
+        for (let node = this.columnElement ?? this.boardElement.parentElement; node && node !== document.documentElement; node = node.parentElement)
             ancestors.push(node);
         for (const ancestor of ancestors)
             for (let sibling = ancestor.previousElementSibling; sibling; sibling = sibling.previousElementSibling)
@@ -233,19 +257,22 @@ class BoardHandler {
             childrenObserver.observe(ancestor, { childList: true });
     }
     /**
-     * [BGA] The board as big as the window allows: square, from #nexo-board-container's padding under the status bar down to
-     * BOARD_VIEWPORT_MARGIN above the window's bottom when the page is at its top (then the gap under it, $below-board-gap-*,
-     * and BGA's settings below), never wider than the game area, nor smaller than MIN_BOARD_CELL_SIZE spots. Sized through --cell-size
-     * on #nexo-board, so the towers, spots and the layer's translate scale with it. Measured on screen, converted with the
-     * container's measured zoom (BGA scales the game area down on a phone). The room is measured from what doesn't follow the
-     * board's size: the container's width (html's scrollbar-gutter keeps a scrollbar from changing it), and the window's height
-     * under the board's top edge. The spot size is only computed again when that room changed by FIT_ROOM_THRESHOLD or more
+     * [BGA] The board as big as the window allows: its grid square plus its top band (the players' avatars and reserves), in a
+     * column padded for the avatars' parts outside the board (--board-extra-span-x / -y, in spots, so it all scales with the
+     * board), from #nexo-board-container's padding under the status bar down to BOARD_VIEWPORT_MARGIN above the window's bottom
+     * when the page is at its top (then the gap under it, $below-board-gap-*, and BGA's settings below), never wider than the game
+     * area, nor smaller than MIN_BOARD_CELL_SIZE spots. Sized through --cell-size on #nexo-board, so the towers, spots and the
+     * layer's translate scale with it, and --board-cell-size on the column, which sizes the avatars and reserves.
+     * Measured on screen, converted with the container's measured zoom (BGA scales the game area down on a phone). The room is
+     * measured from what doesn't follow the board's size: the container's width (html's scrollbar-gutter keeps a scrollbar from
+     * changing it), and the window's height under the column's top edge (the column's padding follows the board's size, so the
+     * board's top would). The spot size is only computed again when that room changed by FIT_ROOM_THRESHOLD or more
      * since the last time (or the board no longer fits across), so a few px of jitter can never make it flip between two sizes;
      * and right after a shrink, it never grows straight back into the room it shrank from unless the window was resized (a
      * board whose own size made a scrollbar come and go would otherwise flip between two sizes forever)
      */
     fitToViewport() {
-        const container = this.boardElement.parentElement;
+        const container = this.getContainerElement();
         if (!container)
             return;
         //BGA switches to and from its mobile layout as the window changes, and the edge padding with it: centre again at once
@@ -260,30 +287,36 @@ class BoardHandler {
         if (!(containerWidth > 0))
             return;
         const zoom = containerRect.width / containerWidth;
-        const boardTop = this.boardElement.getBoundingClientRect().top + window.scrollY; //on the page, in screen px
+        //the column is boardSize + extra.x spots across (the avatars outside the board's sides) and boardSize + extra.y down (the
+        //avatars above it and the board's top band)
+        const extra = this.readColumnExtraSpans();
+        const columnTop = (this.columnElement ?? this.boardElement).getBoundingClientRect().top + window.scrollY; //on the page, in screen px
         const borders = this.boardElement.offsetWidth - this.boardElement.clientWidth; //the board's own border, both sides
-        const maxHeight = (window.innerHeight - boardTop - Game.BOARD_VIEWPORT_MARGIN) / zoom - borders;
+        const maxHeight = (window.innerHeight - columnTop - Game.BOARD_VIEWPORT_MARGIN) / zoom - borders;
         const maxWidth = containerWidth - borders;
         const currentCellSize = parseFloat(this.boardElement.style.getPropertyValue('--cell-size'));
         const fitted = this.fittedRoom;
-        const roomUnchanged = !!fitted && fitted.boardSize === this.boardSize && currentCellSize > 0
+        const roomUnchanged = !!fitted && fitted.boardSize === this.boardSize && fitted.extraX === extra.x && fitted.extraY === extra.y && currentCellSize > 0
             && Math.abs(maxWidth - fitted.width) < Game.FIT_ROOM_THRESHOLD && Math.abs(maxHeight - fitted.height) < Game.FIT_ROOM_THRESHOLD
-            && (currentCellSize * this.boardSize <= maxWidth + 0.5 || currentCellSize <= Game.MIN_BOARD_CELL_SIZE); //a board too wide for the container always shrinks
-        let cellSize = roomUnchanged ? currentCellSize : Math.max(Game.MIN_BOARD_CELL_SIZE, Math.floor(Math.min(maxHeight, maxWidth) / this.boardSize));
+            && (currentCellSize * (this.boardSize + extra.x) <= maxWidth + 0.5 || currentCellSize <= Game.MIN_BOARD_CELL_SIZE); //a board too wide for the container always shrinks
+        let cellSize = roomUnchanged ? currentCellSize : Math.max(Game.MIN_BOARD_CELL_SIZE, Math.floor(Math.min(maxHeight / (this.boardSize + extra.y), maxWidth / (this.boardSize + extra.x))));
         if (!roomUnchanged) {
             const now = performance.now();
             const shrink = this.lastShrink;
             const growsBack = cellSize > currentCellSize && !!shrink && now - shrink.at < Game.FIT_GROW_BACK_WINDOW && this.lastWindowResizeAt < shrink.at
-                && shrink.roomBefore.boardSize === this.boardSize
+                && shrink.roomBefore.boardSize === this.boardSize && shrink.roomBefore.extraX === extra.x && shrink.roomBefore.extraY === extra.y
                 && Math.abs(maxWidth - shrink.roomBefore.width) < Game.FIT_ROOM_THRESHOLD && Math.abs(maxHeight - shrink.roomBefore.height) < Game.FIT_ROOM_THRESHOLD;
             if (growsBack)
                 cellSize = currentCellSize; //stays at the smaller size, which fits both rooms
             else if (cellSize < currentCellSize && fitted && Math.abs(maxHeight - fitted.height) < Game.FIT_ROOM_THRESHOLD)
                 this.lastShrink = { at: now, roomBefore: fitted }; //only a shrink the width alone caused (a scrollbar): never the status bar's height flickering
-            this.fittedRoom = { width: maxWidth, height: maxHeight, boardSize: this.boardSize };
+            this.fittedRoom = { width: maxWidth, height: maxHeight, boardSize: this.boardSize, extraX: extra.x, extraY: extra.y };
         }
         if (this.boardElement.style.getPropertyValue('--cell-size') !== cellSize + 'px')
             this.boardElement.style.setProperty('--cell-size', cellSize + 'px');
+        //the avatars' and reserves' sizes, and the column's padding, are shares of the board's spot (Game.scss: #nexo-board-column)
+        if (this.columnElement && this.columnElement.style.getPropertyValue('--board-cell-size') !== cellSize + 'px')
+            this.columnElement.style.setProperty('--board-cell-size', cellSize + 'px');
         //the draft's controls keep a minimum size on screen (Game.scss: $pending-undo-min-size), whatever BGA's scaling
         const boardZoom = zoom.toFixed(4);
         if (zoom > 0 && this.boardElement.style.getPropertyValue('--board-zoom') !== boardZoom)
@@ -299,6 +332,19 @@ class BoardHandler {
             this.contentsCenterY = null;
             this.centerContents(false);
         }
+    }
+    //#nexo-board-container: the game area's column the board is centred in, whose width alone (never its height) sizes the board
+    getContainerElement() {
+        return document.getElementById('nexo-board-container') ?? this.boardElement.parentElement;
+    }
+    //[BGA] what the column adds to the board's span, in spots (Game.scss: #nexo-board-column): across, the avatars outside the board's
+    //sides; down, the avatars above it and the board's top band. 0 when unset
+    readColumnExtraSpans() {
+        if (!this.columnElement)
+            return { x: 0, y: 0 };
+        const style = getComputedStyle(this.columnElement);
+        const read = (name) => { const value = parseFloat(style.getPropertyValue(name)); return value >= 0 ? value : 0; };
+        return { x: read('--board-extra-span-x'), y: read('--board-extra-span-y') };
     }
     //the board's span in spots: the largest box (gridSize + 1) plus Game.scss's --board-edge-padding on each side
     readBoardSize() {
@@ -754,7 +800,7 @@ class BoardHandler {
     }
     /**
      * A confirmed turn, played one spot at a time in the order the turn was drafted (the payload's order): on each spot, the
-     * replaced enemy tower (if any) flies back onto its owner's reserve stacks on their player board, top disc first, while
+     * replaced enemy tower (if any) flies back onto its owner's reserve stacks on the board's top edge, top disc first, while
      * the new tower's discs fly from the top of the player's stacks onto it, bottom disc first (discs TOWER_DISC_STAGGER
      * apart); the next spot starts TOWER_SPOT_DELAY_SHARE (0.3) of the way through this one's flight. Every viewer sees the same flights, the player who drafted
      * the turn included: their drafted towers only stay as placeholders until their spot's turn, then fly in from their
@@ -792,7 +838,7 @@ class BoardHandler {
         draftedElements.forEach(element => element.remove()); //never expected: the server keeps every drafted tower
         this.renderSpots();
     }
-    //one spot of a confirmed turn: swaps its towers on the board, moves their discs between the player boards' reserve stacks
+    //one spot of a confirmed turn: swaps its towers on the board, moves their discs between the players' reserve stacks (board's top edge)
     //(with animations off too, so the stacks match the turn) and returns the flights to await (none with animations off)
     applyPlacement(playerID, placement, draftedElements, animate) {
         const key = BoardRules.key(placement.x, placement.y);
@@ -902,6 +948,7 @@ class PlaceTowers {
      * This method is called each time we are entering the game state. You can use this method to perform some user interface changes at this moment.
      */
     onEnteringState(args, isCurrentPlayerActive) {
+        this.game.setActivePlayer(this.bga.players.getActivePlayerId()); //every viewer: the glow on the active player's avatar
         this.stateArgs = args;
         this.pending = [];
         this.clickHistory = [];
@@ -931,6 +978,7 @@ class PlaceTowers {
         this.game.confirmPopover.close();
         this.game.boardHandler.setDraftClickHandlers(null);
         this.game.boardHandler.setDraft(null);
+        this.game.setScorePreviews(null);
     }
     canDraft() { return this.drafting && !this.confirming && !this.game.isInterfaceLocked(); }
     getDiscsUsed() { return this.pending.reduce((sum, tower) => sum + tower.height, 0); }
@@ -1118,7 +1166,21 @@ class PlaceTowers {
             discsUsed: this.getDiscsUsed(),
             discsThisTurn: this.stateArgs?.discsThisTurn ?? 1,
         });
+        //[BGA] the scoreboard's "would be" scores, both players', while anything is drafted; none once the turn is on its way
+        this.game.setScorePreviews((this.pending.length > 0 && !this.confirming) ? this.getPreviewScores() : null);
         this.updateTitle();
+    }
+    //[BGA] each player's score if the draft were confirmed now: the board with the draft applied (a new tower added, a replaced
+    //tower now mine at its new height), scored by BoardRules.getLargestGroupSize, the server's rule (NEXOTableManager)
+    getPreviewScores() {
+        const myPlayerID = this.game.getMyPlayerID();
+        const board = this.game.boardHandler.getTowerMap();
+        for (const tower of this.pending)
+            board.set(BoardRules.key(tower.x, tower.y), { x: tower.x, y: tower.y, player_id: myPlayerID, height: tower.height });
+        const scores = {};
+        for (const player_id in this.game.players)
+            scores[player_id] = BoardRules.getLargestGroupSize(board, parseInt(player_id));
+        return scores;
     }
     //the same sentence for the whole draft, with one disc icon per disc the turn may use, the drafted ones dimmed: only the
     //icons change while drafting, so the status bar never changes width or height (which would move the board)
@@ -1154,6 +1216,7 @@ class GameEnd {
         this.game.boardHandler.setDraftClickHandlers(null);
         this.game.boardHandler.setDraft(null);
         this.game.updatePassedStamps(); //the game is over: no PASSED stamp
+        this.game.setActivePlayer(null); //nobody's turn: no avatar glows
     }
     /**
      * This method is called each time we are leaving the game state. You can use this method to perform some user interface changes at this moment.
@@ -1174,31 +1237,49 @@ class GameEnd {
  * PlayerHandler.ts
  */
 class PlayerHandler {
-    constructor(game, playerID, reserve, passed) {
+    constructor(game, playerID, reserve, passed, side, score) {
         this.game = game;
         this.playerID = playerID;
         this.reserve = reserve;
         this.passed = passed;
-        this.reserveStacks = []; //left to right
-        this.createPlayerBoardContainer();
+        this.reserveStacks = []; //stack 0 first: next to the avatar on either side (Game.scss mirrors the right side)
+        this.createTopBarSide(side);
+        this.createScore(side, score);
         this.setReserve(this.reserve);
-        this.showPassedStamp(false); //Game.updatePassedStamps() decides once every player board exists
+        this.showPassedStamp(false); //Game.updatePassedStamps() decides once every player has a side
     }
-    //every player board, spectators included, shows the reserve (its discs as stacks in the player's color) and, after an
-    //automatic pass, a PASSED stamp (shown by data-passed). The score is BGA's own counter: the player's largest group
-    createPlayerBoardContainer() {
-        this.playerBoardContainer = document.createElement('div');
-        this.playerBoardContainer.classList.add('nexo-player-board');
-        this.playerBoardContainer.innerHTML = `
+    /**
+     * [BGA] This player's side on the board's top edge (#nexo-top-bar, over the board's top band, Game.setup): the avatar on the
+     * board's top corner, about half outside it, then, on the board's surface beside it, the reserve (its discs as stacks in the
+     * player's color) growing toward the centre and, after an automatic pass, a PASSED stamp over the stacks (shown by
+     * data-passed). The left side is the viewer's own (Game.getTopBarSide); the right side is the same DOM, mirrored in Game.scss.
+     * BGA's player panel keeps only its own content (name, score counter)
+     */
+    createTopBarSide(side) {
+        this.sideElement = document.createElement('div');
+        this.sideElement.className = 'top-bar-player';
+        this.sideElement.setAttribute('data-side', side);
+        this.sideElement.setAttribute('data-disc-color', this.game.getDiscColor(this.playerID));
+        this.sideElement.innerHTML = `
+            <img class="top-bar-avatar" alt="">
             <div class="player-board-reserve-row">
                 <div class="reserve-stacks"></div>
                 <div class="passed-stamp"><i class="fa6 fa-forward"></i>${_('Passed')}</div>
             </div>
         `;
-        const playerPanel = this.game.bga.playerPanels.getElement(this.playerID);
-        playerPanel.appendChild(this.playerBoardContainer);
+        document.getElementById('nexo-top-bar').appendChild(this.sideElement);
+        //the BGA avatar, large and sharp (getAvatarUrl), ringed in the player's color
+        const avatar = this.sideElement.querySelector('.top-bar-avatar');
+        const { url, fallbackUrl } = this.getAvatarUrls();
+        avatar.alt = this.game.getPlayerName(this.playerID);
+        avatar.style.setProperty('--player-color', '#' + this.game.getPlayerColor(this.playerID)); //the active glow (Game.scss)
+        avatar.style.borderColor = '#' + this.game.getPlayerColor(this.playerID);
+        if (fallbackUrl && fallbackUrl !== url)
+            avatar.addEventListener('error', () => { avatar.src = fallbackUrl; }, { once: true }); //no 184 version: the panel's own size
+        if (url)
+            avatar.src = url;
         //each stack is a .nexo-tower box (Game.scss .reserve-stack) holding its discs, bottom first, like a tower
-        this.reserveStacksElement = this.playerBoardContainer.querySelector('.reserve-stacks');
+        this.reserveStacksElement = this.sideElement.querySelector('.reserve-stacks');
         const discColor = this.game.getDiscColor(this.playerID);
         for (let stackIndex = 0; stackIndex < PlayerHandler.RESERVE_STACK_COUNT; stackIndex++) {
             const stack = document.createElement('div');
@@ -1207,15 +1288,22 @@ class PlayerHandler {
             this.reserveStacksElement.appendChild(stack);
             this.reserveStacks.push(stack);
         }
-        this.boardElement = playerPanel.closest('.player-board') ?? playerPanel; //BGA's whole board around our panel
-        this.boardElement.classList.add('positioned-player-board');
-        this.boardElement.addEventListener('animationend', (event) => {
-            if (event.target === this.boardElement && event.animationName === PlayerHandler.BOUNCE_CLASS)
-                this.boardElement.classList.remove(PlayerHandler.BOUNCE_CLASS);
+        this.sideElement.addEventListener('animationend', (event) => {
+            if (event.target === this.sideElement && event.animationName === PlayerHandler.BOUNCE_CLASS)
+                this.sideElement.classList.remove(PlayerHandler.BOUNCE_CLASS);
         });
         //ids for TooltipHandler
         this.reserveStacksElement.id = 'reserve-stacks-' + this.playerID;
-        this.playerBoardContainer.querySelector('.passed-stamp').id = 'passed-stamp-' + this.playerID;
+        this.sideElement.querySelector('.passed-stamp').id = 'passed-stamp-' + this.playerID;
+    }
+    //the avatar at 184px: the player panel's avatar (BGA's avatar_<id>) with its size suffix (_32, _50, _92) swapped for _184, or
+    //the framework's own 184px url when the panel has none. fallbackUrl: the panel's image as it is, if the 184 one fails to load
+    getAvatarUrls() {
+        const panelSrc = document.getElementById('avatar_' + this.playerID)?.getAttribute('src') ?? '';
+        const largeSrc = panelSrc.replace(/_\d+(\.[a-z]+)(\?|$)/i, '_184$1$2');
+        if (panelSrc)
+            return { url: largeSrc, fallbackUrl: panelSrc };
+        return { url: this.game.bga.players.getPlayerAvatarUrl(this.playerID, 184) ?? '', fallbackUrl: '' };
     }
     /**
      * The reserve as the server counts it (gamedatas on setup and F5, every notification): whenever the stacks don't show
@@ -1295,15 +1383,19 @@ class PlayerHandler {
         this.game.updatePassedStamps();
     }
     showPassedStamp(show) {
-        this.playerBoardContainer.setAttribute('data-passed', show ? 'true' : 'false');
+        this.sideElement.setAttribute('data-passed', show ? 'true' : 'false');
+    }
+    //[BGA] the active player's avatar glows (Game.setActivePlayer)
+    setActive(active) {
+        this.sideElement.classList.toggle('active-top-bar-player', active);
     }
     //[BGA] a pass, seen by everyone: a big PASSED stamp with the player's name pops in at the centre of the screen, holds,
-    //then shrinks onto this board's PASSED stamp. The player is marked passed as it lands: the board's stamp fades in under
+    //then shrinks onto this player's PASSED stamp over their reserve. The player is marked passed as it lands: the stamp fades in under
     //it, or, when it doesn't show (both players passed: the game is over), the banner fades out where it landed.
     //The banner is in <body>, outside BGA's mobile scaling: it converts screen px with its own measured zoom, like
     //Game.getSlidingCloneTransform. Its transform holds its rotation (the stamp's rotate), so translate is never rotated
     async animatePass() {
-        const passedStamp = this.playerBoardContainer.querySelector('.passed-stamp');
+        const passedStamp = this.sideElement.querySelector('.passed-stamp');
         const rotation = getComputedStyle(passedStamp).rotate;
         const rotate = (rotation && rotation !== 'none') ? rotation : '0deg';
         const banner = document.createElement('div');
@@ -1324,7 +1416,7 @@ class PlayerHandler {
         banner.style.transform = transformTo(0, 0, 1);
         banner.style.opacity = '1';
         await this.game.bga.gameui.wait(Game.PASS_BANNER_POP_DURATION + Game.PASS_BANNER_HOLD);
-        //the board's stamp, measured unrotated now (the page may have scrolled during the hold); hidden, it keeps its place
+        //the reserve's stamp, measured unrotated now (the page may have scrolled during the hold); hidden, it keeps its place
         passedStamp.style.rotate = '0deg';
         const stampRect = passedStamp.getBoundingClientRect();
         passedStamp.style.rotate = '';
@@ -1339,28 +1431,68 @@ class PlayerHandler {
         banner.style.transform = transformTo(dx, dy, scale);
         await this.game.bga.gameui.wait(Game.PASS_BANNER_FLIGHT_DURATION);
         this.setPassed(true);
-        if (this.playerBoardContainer.getAttribute('data-passed') !== 'true') {
+        if (this.sideElement.getAttribute('data-passed') !== 'true') {
             banner.style.transition = `opacity ${Game.PASS_BANNER_SETTLE_DURATION}ms ease`;
             banner.style.opacity = '0';
         }
         await this.game.bga.gameui.wait(Game.PASS_BANNER_SETTLE_DURATION);
         banner.remove();
     }
-    //every live score change goes through here: BGA's score counter is the player's largest group
+    //[BGA] this player's half of the scoreboard at the board's top centre (#nexo-top-bar .top-bar-scoreboard, Game.setup), on their
+    //side (Game.getTopBarSide), next to the centre line, in their color (data-disc-color). Set from gamedatas, no pulse. The number
+    //and its preview share a box (.top-bar-score-figure); the preview is out of the flow, so it never moves the number
+    createScore(side, score) {
+        const scoreElement = document.querySelector(`#nexo-top-bar .top-bar-score[data-side="${side}"]`);
+        scoreElement.setAttribute('data-disc-color', this.game.getDiscColor(this.playerID));
+        const figureElement = document.createElement('span');
+        figureElement.className = 'top-bar-score-figure';
+        this.scorePreviewElement = document.createElement('span');
+        this.scorePreviewElement.className = 'top-bar-score-preview';
+        this.scorePreviewElement.setAttribute('aria-hidden', 'true');
+        this.scoreValueElement = document.createElement('span');
+        this.scoreValueElement.className = 'top-bar-score-value';
+        this.scoreValueElement.addEventListener('animationend', (event) => {
+            if (event.target === this.scoreValueElement && event.animationName === PlayerHandler.SCORE_PULSE_CLASS)
+                this.scoreValueElement.classList.remove(PlayerHandler.SCORE_PULSE_CLASS);
+        });
+        figureElement.append(this.scoreValueElement, this.scorePreviewElement);
+        scoreElement.appendChild(figureElement);
+        this.score = score;
+        this.scoreValueElement.textContent = score.toString();
+    }
+    //[BGA] the score this player would have if the active player confirmed their draft now (Game.setScorePreviews), on the
+    //scoreboard's outer side of their number, or null to hide it
+    setScorePreview(score) {
+        this.scorePreviewElement.textContent = (score === null) ? '' : score.toString();
+        this.scorePreviewElement.classList.toggle('showing-score-preview', score !== null);
+    }
+    //every live score change goes through here (towersPlaced, the end of the game live or after a reload): BGA's score counter and
+    //the scoreboard's number are the player's largest group. A number that changed pulses once (none with animations off or
+    //reduced motion)
     setScore(score) {
         this.game.bga.playerPanels.getScoreCounter(this.playerID)?.toValue(score);
+        if (score === this.score)
+            return;
+        this.score = score;
+        this.scoreValueElement.textContent = score.toString();
+        if (!this.game.bga.gameui.bgaAnimationsActive() || window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+            return;
+        this.scoreValueElement.classList.remove(PlayerHandler.SCORE_PULSE_CLASS);
+        void this.scoreValueElement.offsetWidth; //restarts a pulse still playing
+        this.scoreValueElement.classList.add(PlayerHandler.SCORE_PULSE_CLASS);
     }
     //the score counter's value: the player's largest group (the game end row's fallback for the loser's score)
     getScore() {
         return this.game.bga.playerPanels.getScoreCounter(this.playerID)?.getValue();
     }
-    //the one shared bounce (discs given back by a replacement land on this board), removed on animationend
+    //the one shared bounce (discs given back by a replacement land on this player's stacks): their avatar and stacks bounce,
+    //removed on animationend
     bounceBoard() {
         if (!this.game.bga.gameui.bgaAnimationsActive())
             return;
-        this.boardElement.classList.remove(PlayerHandler.BOUNCE_CLASS);
-        void this.boardElement.offsetWidth; //restarts a bounce still playing
-        this.boardElement.classList.add(PlayerHandler.BOUNCE_CLASS);
+        this.sideElement.classList.remove(PlayerHandler.BOUNCE_CLASS);
+        void this.sideElement.offsetWidth; //restarts a bounce still playing
+        this.sideElement.classList.add(PlayerHandler.BOUNCE_CLASS);
     }
     //the stacks' row on screen: where a disc flies from or to when its own disc is missing from the stacks (never expected)
     getReserveRect() { return this.reserveStacksElement.getBoundingClientRect(); }
@@ -1368,6 +1500,7 @@ class PlayerHandler {
     isPassed() { return this.passed; }
 }
 PlayerHandler.BOUNCE_CLASS = 'bouncing-player-board'; //the one shared bounce class, its timing lives in Game.scss
+PlayerHandler.SCORE_PULSE_CLASS = 'score-pulse'; //one-shot, on a score that changed (Game.scss: $top-bar-score-pulse-*)
 //the reserve: RESERVE_STACK_COUNT stacks of up to RESERVE_STACK_SIZE discs side by side, DISCS_PER_PLAYER (25) in all
 PlayerHandler.RESERVE_STACK_COUNT = 5;
 PlayerHandler.RESERVE_STACK_SIZE = 5;
@@ -2314,17 +2447,26 @@ class Game {
         this.gamedatas = gamedatas;
         this.bga.gameArea.getElement().insertAdjacentHTML('beforeend', `
             <div id="nexo-board-container">
-                <div id="nexo-board"></div>
+                <div id="nexo-board-column">
+                    <div id="nexo-board"></div>
+                    <div id="nexo-top-bar">
+                        <div class="top-bar-scoreboard">
+                            <div class="top-bar-score" data-side="left"></div>
+                            <div class="top-bar-score-divider"></div>
+                            <div class="top-bar-score" data-side="right"></div>
+                        </div>
+                    </div>
+                </div>
             </div>
         `);
         this.backgroundHandler = BackgroundHandler.getInstance();
         this.myPlayerID = this.bga.players.getCurrentPlayerId();
         this.boardRules = new BoardRules(gamedatas.rules);
         this.endGameScoringHandler = new EndGameScoringHandler(this);
-        // Setting up player boards
+        // Setting up each player's side on the board's top edge (avatar, reserve stacks, PASSED stamp, score)
         for (let player_id in gamedatas.players) {
-            const { reserve, passed } = this.gamedatas.players[player_id];
-            this.players[player_id] = new PlayerHandler(this, parseInt(player_id), reserve, passed);
+            const { reserve, passed, score } = this.gamedatas.players[player_id];
+            this.players[player_id] = new PlayerHandler(this, parseInt(player_id), reserve, passed, this.getTopBarSide(parseInt(player_id)), Number(score) || 0);
         }
         this.updatePassedStamps();
         this.boardHandler = new BoardHandler(this, gamedatas.towers);
@@ -2392,7 +2534,7 @@ class Game {
         return html;
     }
     getAttributesHTML(attributes) { return Object.entries(attributes || {}).map(([key, value]) => `${key}="${value}"`).join(' '); }
-    //a tower already on its spot (BoardHandler.createTowerDiv) flies in from its player board's reserve stacks, one disc at a
+    //a tower already on its spot (BoardHandler.createTowerDiv) flies in from its player's reserve stacks (board's top edge), one disc at a
     //time: each disc flies on its own, bottom disc first and staggerMs apart, as a copy of the whole tower with every other disc
     //hidden. Disc i starts exactly over the reserve disc it was taken from, fromDiscRects[i] (PlayerHandler.takeDiscs, already
     //gone from the stacks: the copy takes its place), or with the whole copy over fallbackFromRect if it has none. Each copy
@@ -2415,7 +2557,7 @@ class Game {
             placeholderParts[discIndex]?.forEach(element => element.style.visibility = 'hidden');
         }));
     }
-    //the other way round: a tower flies from its spot back to its owner's reserve stacks and disappears, one disc at a time: top
+    //the other way round: a tower flies from its spot back to its owner's reserve stacks (board's top edge) and disappears, one disc at a time: top
     //disc first, staggerMs apart, each a copy of the whole tower with every other disc hidden (the height number leaves with
     //the top one). Disc i lands exactly on landingDiscs[i] (PlayerHandler.addDiscs, hidden until then), which shows as it
     //lands, or with the whole copy over fallbackToRect if it has none. The copies show at the opacity the tower shows at,
@@ -2519,6 +2661,25 @@ class Game {
         players.forEach(player => player.showPassedStamp(showStamp && player.isPassed()));
     }
     getMyPlayerID() { return this.myPlayerID; }
+    //[BGA] which top corner of the board a player takes: a player sees themselves on the left, whatever their color, the opponent on
+    //the right; a spectator (a replay watched by someone not at the table too) sees red on the left, black on the right, by
+    //the players' colors (never their seat order)
+    getTopBarSide(playerID) {
+        if (!this.bga.players.isCurrentPlayerSpectator() && this.gamedatas.players[this.myPlayerID])
+            return (playerID === this.myPlayerID) ? 'left' : 'right';
+        return (this.getDiscColor(playerID) === 'red') ? 'left' : 'right';
+    }
+    //[BGA] the active player's avatar glows on the board's corner: set on entering PlaceTowers (every viewer), cleared at the game's end
+    setActivePlayer(activePlayerID) {
+        const activeID = (activePlayerID === null) ? null : Number(activePlayerID); //BGA may hand the id over as a string
+        for (const player_id in this.players)
+            this.players[player_id].setActive(parseInt(player_id) === activeID);
+    }
+    //[BGA] the scoreboard's "would be" scores while the player drafts (PlaceTowers.update), one per player, or null to hide them all
+    setScorePreviews(scores) {
+        for (const player_id in this.players)
+            this.players[player_id].setScorePreview(scores?.[player_id] ?? null);
+    }
     //end utility
     ///////////////////////////////////////////////////
     //// Reaction to cometD notifications
@@ -2631,7 +2792,7 @@ Game.LOG_JUMP_TAP_COUNT = 2;
 Game.LOG_CLOSE_MAX_WAIT = 800;
 Game.TOWER_JUMP_SAFETY_PER_JUMP = 400; //ms per jump, well over $tower-jump-duration, before a jump's class goes anyway
 Game.TOWER_JUMP_SAFETY_MARGIN = 500;
-Game.BOARD_VIEWPORT_MARGIN = 10; //screen px from the board to the window's bottom (BoardHandler.fitToViewport); the status bar's gap is #nexo-board-container's padding
+Game.BOARD_VIEWPORT_MARGIN = 10; //screen px from the board to the window's bottom (BoardHandler.fitToViewport); the status bar's gap is #nexo-board-container's padding (the avatars above the board are in #nexo-board-column's)
 Game.MIN_BOARD_CELL_SIZE = 40; //px of a spot, however short the window
 Game.FIT_ROOM_THRESHOLD = 4; //px the room for the board must change by before its spot size is computed again (BoardHandler.fitToViewport)
 Game.FIT_GROW_BACK_WINDOW = 1000; //ms after a shrink during which the board doesn't grow straight back into the room it shrank from, unless the window is resized

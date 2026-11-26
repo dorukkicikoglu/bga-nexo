@@ -54,12 +54,13 @@ export class BoardHandler {
     private messageLayer: HTMLDivElement;
     private towerMessage: { element: HTMLDivElement; timers: number[]; } | null = null; //the bubble over a warning tower (showTowerWarning), one at a time
     private boardSize: number; //in spots (readBoardSize)
+    private columnElement: HTMLDivElement | null; //[BGA] the board and the players' avatars and reserves on its top edge (Game.setup, PlayerHandler)
     private fitFrame: number = 0; //the one pending fit (requestFit), 0 when none
-    //what the spot size was last computed from (fitToViewport): the room for the board, in the board's own px, and its span
-    private fittedRoom: { width: number; height: number; boardSize: number; } | null = null;
+    //what the spot size was last computed from (fitToViewport): the room for the column, in the board's own px, and its spans in spots
+    private fittedRoom: FitRoom | null = null;
     //the last time the fit shrank the board for lack of width alone, and the room it had just before: growing straight back into
     //that room soon after, with no window resize between, is the board answering its own shrink (a scrollbar going away), so it doesn't
-    private lastShrink: { at: number; roomBefore: { width: number; height: number; boardSize: number; }; } | null = null;
+    private lastShrink: { at: number; roomBefore: FitRoom; } | null = null;
     private lastWindowResizeAt: number = 0;
     private contentsCenterX: number | null = null; //the middle of the towers' and legal spots' bounding box, in spots, once centred
     private contentsCenterY: number | null = null;
@@ -94,6 +95,7 @@ export class BoardHandler {
 
     constructor(private game: Game, towers: NexoTower[]) {
         this.boardElement = document.getElementById('nexo-board') as HTMLDivElement;
+        this.columnElement = document.getElementById('nexo-board-column') as HTMLDivElement | null;
         this.boardSize = this.readBoardSize();
         this.boardElement.style.setProperty('--board-size', this.boardSize.toString());
         this.boardElement.innerHTML = `
@@ -120,9 +122,9 @@ export class BoardHandler {
         //BGA's onScreenWidthChange (Game) only follows the width, and the page above the board is still being laid out when
         //setup measures it (a board measured too low stayed too small): fit again on every window resize and whenever the
         //layout around the board changes, one fit per frame (requestFit). Never on anything whose size follows the board's (body,
-        //the page's height, the container's height): a fit there would answer its own resize. So: the container's width only
-        //(the columns settling), and everything laid out before the board, whose height moves the board's top (BGA's bars,
-        //the status bar, panels above the game area; observeLayoutAboveBoard)
+        //the page's height, the container's height, the column and the avatars' overlay): a fit there would answer its own resize.
+        //So: the container's width only (the columns settling), and everything laid out before the column, whose height moves
+        //its top (BGA's bars, the status bar, panels above the game area; observeLayoutAboveBoard)
         window.addEventListener('resize', () => {
             this.lastWindowResizeAt = performance.now();
             this.requestFit();
@@ -135,8 +137,9 @@ export class BoardHandler {
                 this.requestFit();
             }
         });
-        if(this.boardElement.parentElement)
-            widthObserver.observe(this.boardElement.parentElement);
+        const container = this.getContainerElement();
+        if(container)
+            widthObserver.observe(container);
         this.observeLayoutAboveBoard(new ResizeObserver(() => this.requestFit()));
 
         this.layerElement.addEventListener('click', (event: MouseEvent) => this.onBoardClick(event));
@@ -153,13 +156,13 @@ export class BoardHandler {
         });
     }
 
-    //observes every element laid out before the board: the earlier siblings of the board's container and of each of its
-    //ancestors up to body (BGA's top bar, the status bar, anything above the game area). Their size moves the board's top, never
-    //the other way round. One added before the board later (or removed from there) is observed and fits again; anything added
+    //observes every element laid out before the board: the earlier siblings of the board's column and of each of its ancestors
+    //up to body (BGA's top bar, the status bar, anything above the game area), never the board's own siblings (the avatars'
+    //overlay, sized from the board). Their size moves the board's top, never the other way round. One added before the board later (or removed from there) is observed and fits again; anything added
     //after it (the flying copies, popins and dialogs at the end of body) is ignored
     private observeLayoutAboveBoard(observer: ResizeObserver): void {
         const ancestors: Element[] = [];
-        for(let node: Element | null = this.boardElement.parentElement; node && node !== document.documentElement; node = node.parentElement)
+        for(let node: Element | null = this.columnElement ?? this.boardElement.parentElement; node && node !== document.documentElement; node = node.parentElement)
             ancestors.push(node);
         for(const ancestor of ancestors)
             for(let sibling = ancestor.previousElementSibling; sibling; sibling = sibling.previousElementSibling)
@@ -190,19 +193,22 @@ export class BoardHandler {
     }
 
     /**
-     * [BGA] The board as big as the window allows: square, from #nexo-board-container's padding under the status bar down to
-     * BOARD_VIEWPORT_MARGIN above the window's bottom when the page is at its top (then the gap under it, $below-board-gap-*,
-     * and BGA's settings below), never wider than the game area, nor smaller than MIN_BOARD_CELL_SIZE spots. Sized through --cell-size
-     * on #nexo-board, so the towers, spots and the layer's translate scale with it. Measured on screen, converted with the
-     * container's measured zoom (BGA scales the game area down on a phone). The room is measured from what doesn't follow the
-     * board's size: the container's width (html's scrollbar-gutter keeps a scrollbar from changing it), and the window's height
-     * under the board's top edge. The spot size is only computed again when that room changed by FIT_ROOM_THRESHOLD or more
+     * [BGA] The board as big as the window allows: its grid square plus its top band (the players' avatars and reserves), in a
+     * column padded for the avatars' parts outside the board (--board-extra-span-x / -y, in spots, so it all scales with the
+     * board), from #nexo-board-container's padding under the status bar down to BOARD_VIEWPORT_MARGIN above the window's bottom
+     * when the page is at its top (then the gap under it, $below-board-gap-*, and BGA's settings below), never wider than the game
+     * area, nor smaller than MIN_BOARD_CELL_SIZE spots. Sized through --cell-size on #nexo-board, so the towers, spots and the
+     * layer's translate scale with it, and --board-cell-size on the column, which sizes the avatars and reserves.
+     * Measured on screen, converted with the container's measured zoom (BGA scales the game area down on a phone). The room is
+     * measured from what doesn't follow the board's size: the container's width (html's scrollbar-gutter keeps a scrollbar from
+     * changing it), and the window's height under the column's top edge (the column's padding follows the board's size, so the
+     * board's top would). The spot size is only computed again when that room changed by FIT_ROOM_THRESHOLD or more
      * since the last time (or the board no longer fits across), so a few px of jitter can never make it flip between two sizes;
      * and right after a shrink, it never grows straight back into the room it shrank from unless the window was resized (a
      * board whose own size made a scrollbar come and go would otherwise flip between two sizes forever)
      */
     public fitToViewport(): void {
-        const container = this.boardElement.parentElement;
+        const container = this.getContainerElement();
         if(!container)
             return;
 
@@ -220,31 +226,37 @@ export class BoardHandler {
             return;
         const zoom = containerRect.width / containerWidth;
 
-        const boardTop = this.boardElement.getBoundingClientRect().top + window.scrollY; //on the page, in screen px
+        //the column is boardSize + extra.x spots across (the avatars outside the board's sides) and boardSize + extra.y down (the
+        //avatars above it and the board's top band)
+        const extra = this.readColumnExtraSpans();
+        const columnTop = (this.columnElement ?? this.boardElement).getBoundingClientRect().top + window.scrollY; //on the page, in screen px
         const borders = this.boardElement.offsetWidth - this.boardElement.clientWidth; //the board's own border, both sides
-        const maxHeight = (window.innerHeight - boardTop - Game.BOARD_VIEWPORT_MARGIN) / zoom - borders;
+        const maxHeight = (window.innerHeight - columnTop - Game.BOARD_VIEWPORT_MARGIN) / zoom - borders;
         const maxWidth = containerWidth - borders;
 
         const currentCellSize = parseFloat(this.boardElement.style.getPropertyValue('--cell-size'));
         const fitted = this.fittedRoom;
-        const roomUnchanged = !!fitted && fitted.boardSize === this.boardSize && currentCellSize > 0
+        const roomUnchanged = !!fitted && fitted.boardSize === this.boardSize && fitted.extraX === extra.x && fitted.extraY === extra.y && currentCellSize > 0
             && Math.abs(maxWidth - fitted.width) < Game.FIT_ROOM_THRESHOLD && Math.abs(maxHeight - fitted.height) < Game.FIT_ROOM_THRESHOLD
-            && (currentCellSize * this.boardSize <= maxWidth + 0.5 || currentCellSize <= Game.MIN_BOARD_CELL_SIZE); //a board too wide for the container always shrinks
-        let cellSize = roomUnchanged ? currentCellSize : Math.max(Game.MIN_BOARD_CELL_SIZE, Math.floor(Math.min(maxHeight, maxWidth) / this.boardSize));
+            && (currentCellSize * (this.boardSize + extra.x) <= maxWidth + 0.5 || currentCellSize <= Game.MIN_BOARD_CELL_SIZE); //a board too wide for the container always shrinks
+        let cellSize = roomUnchanged ? currentCellSize : Math.max(Game.MIN_BOARD_CELL_SIZE, Math.floor(Math.min(maxHeight / (this.boardSize + extra.y), maxWidth / (this.boardSize + extra.x))));
         if(!roomUnchanged){
             const now = performance.now();
             const shrink = this.lastShrink;
             const growsBack = cellSize > currentCellSize && !!shrink && now - shrink.at < Game.FIT_GROW_BACK_WINDOW && this.lastWindowResizeAt < shrink.at
-                && shrink.roomBefore.boardSize === this.boardSize
+                && shrink.roomBefore.boardSize === this.boardSize && shrink.roomBefore.extraX === extra.x && shrink.roomBefore.extraY === extra.y
                 && Math.abs(maxWidth - shrink.roomBefore.width) < Game.FIT_ROOM_THRESHOLD && Math.abs(maxHeight - shrink.roomBefore.height) < Game.FIT_ROOM_THRESHOLD;
             if(growsBack)
                 cellSize = currentCellSize; //stays at the smaller size, which fits both rooms
             else if(cellSize < currentCellSize && fitted && Math.abs(maxHeight - fitted.height) < Game.FIT_ROOM_THRESHOLD)
                 this.lastShrink = { at: now, roomBefore: fitted }; //only a shrink the width alone caused (a scrollbar): never the status bar's height flickering
-            this.fittedRoom = { width: maxWidth, height: maxHeight, boardSize: this.boardSize };
+            this.fittedRoom = { width: maxWidth, height: maxHeight, boardSize: this.boardSize, extraX: extra.x, extraY: extra.y };
         }
         if(this.boardElement.style.getPropertyValue('--cell-size') !== cellSize + 'px')
             this.boardElement.style.setProperty('--cell-size', cellSize + 'px');
+        //the avatars' and reserves' sizes, and the column's padding, are shares of the board's spot (Game.scss: #nexo-board-column)
+        if(this.columnElement && this.columnElement.style.getPropertyValue('--board-cell-size') !== cellSize + 'px')
+            this.columnElement.style.setProperty('--board-cell-size', cellSize + 'px');
         //the draft's controls keep a minimum size on screen (Game.scss: $pending-undo-min-size), whatever BGA's scaling
         const boardZoom = zoom.toFixed(4);
         if(zoom > 0 && this.boardElement.style.getPropertyValue('--board-zoom') !== boardZoom)
@@ -261,6 +273,21 @@ export class BoardHandler {
             this.contentsCenterY = null;
             this.centerContents(false);
         }
+    }
+
+    //#nexo-board-container: the game area's column the board is centred in, whose width alone (never its height) sizes the board
+    private getContainerElement(): HTMLElement | null {
+        return document.getElementById('nexo-board-container') ?? this.boardElement.parentElement;
+    }
+
+    //[BGA] what the column adds to the board's span, in spots (Game.scss: #nexo-board-column): across, the avatars outside the board's
+    //sides; down, the avatars above it and the board's top band. 0 when unset
+    private readColumnExtraSpans(): { x: number; y: number; } {
+        if(!this.columnElement)
+            return { x: 0, y: 0 };
+        const style = getComputedStyle(this.columnElement);
+        const read = (name: string) => { const value = parseFloat(style.getPropertyValue(name)); return value >= 0 ? value : 0; };
+        return { x: read('--board-extra-span-x'), y: read('--board-extra-span-y') };
     }
 
     //the board's span in spots: the largest box (gridSize + 1) plus Game.scss's --board-edge-padding on each side
@@ -771,7 +798,7 @@ export class BoardHandler {
 
     /**
      * A confirmed turn, played one spot at a time in the order the turn was drafted (the payload's order): on each spot, the
-     * replaced enemy tower (if any) flies back onto its owner's reserve stacks on their player board, top disc first, while
+     * replaced enemy tower (if any) flies back onto its owner's reserve stacks on the board's top edge, top disc first, while
      * the new tower's discs fly from the top of the player's stacks onto it, bottom disc first (discs TOWER_DISC_STAGGER
      * apart); the next spot starts TOWER_SPOT_DELAY_SHARE (0.3) of the way through this one's flight. Every viewer sees the same flights, the player who drafted
      * the turn included: their drafted towers only stay as placeholders until their spot's turn, then fly in from their
@@ -813,7 +840,7 @@ export class BoardHandler {
         this.renderSpots();
     }
 
-    //one spot of a confirmed turn: swaps its towers on the board, moves their discs between the player boards' reserve stacks
+    //one spot of a confirmed turn: swaps its towers on the board, moves their discs between the players' reserve stacks (board's top edge)
     //(with animations off too, so the stacks match the turn) and returns the flights to await (none with animations off)
     private applyPlacement(playerID: number, placement: NexoPlacement, draftedElements: Map<string, HTMLDivElement>, animate: boolean): Promise<void>[] {
         const key = BoardRules.key(placement.x, placement.y);

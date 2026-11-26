@@ -709,3 +709,55 @@ Rows look tappable
 - [ ] Tap any row: the hand stops tapping, the banner stays (same colours). It stays still after closing and reopening the log, after F5 and in other games on that phone. (To see the animation again: `localStorage.removeItem('nexo.logTapHintSeen')` in the console.)
 - [ ] With the phone's reduce-motion setting on: the banner shows, the hand never moves.
 - [ ] Desktop: no banner.
+
+## After M1: players on the board's top edge
+
+Deploy `modules/` and `nexo.css`. No server change. Check on desktop and on a phone, with both disc styles.
+
+Layout
+- [ ] No bar or pills over the board. Your avatar (large, round, sharp, a thick ring in your color) sits on the board's top-left corner, mostly inside it (about an eighth past the left edge, a few pixels above the top edge); your 5 reserve stacks are right of it, on the board's white surface, a little lower than its centre (about a tenth of its height), with clear room under the board's top edge. The opponent's avatar is on the top-right corner, their stacks left of it. BGA's player panels show only the name and score (no stacks, no PASSED stamp).
+- [ ] Your stacks fill from the stack next to your avatar; the opponent's too (on the right, their fullest stack is the rightmost, next to their avatar).
+- [ ] The avatars never touch the status bar or leave the game area (desktop and phone).
+- [ ] No spot, target ring or tower is ever under an avatar or a stack: draft along the top row and in the top corners (`debug_fillBoard` for a full 5x5), and a 5-disc tower on the top row.
+- [ ] The undo / confirm buttons and the warning bubble near the top still behave as before.
+- [ ] The board still fits the window with the page at its top. Resize the window: avatars and stacks scale with the board, no flicker, no shaking.
+- [ ] Narrow window and phone: the stacks stay on one line beside their avatar, shrinking rather than wrapping or meeting in the middle.
+- [ ] An avatar that fails to load at 184px falls back to the panel's own image (no broken image).
+
+Sides
+- [ ] As red: you top-left, black top-right. As black: you top-left, red top-right.
+- [ ] As a spectator: red top-left, black top-right, whatever the seat order.
+- [ ] Replay (`replayFrom`) as a player: you top-left. An archived game opened by someone who wasn't at the table: red top-left.
+
+Active player
+- [ ] The active player's avatar has a soft glow in their own color (red around red, black around black; no gold, no ring), slowly breathing (still with reduce-motion on), its colored border unchanged, nothing else highlighted; when the turn passes, it moves to the other avatar (after the turn's towers have landed), the same for both players and spectators. After F5 it is on the right avatar at once.
+- [ ] After an automatic pass, the glow is on the player who is now to play. At the game's end, no glow (after F5 too).
+
+Reserve animations (both reserves, the opponent's on the right included)
+- [ ] Your turn: each disc leaves the top of your stack furthest from your avatar that has any and lands on its spot; your stacks empty from the centre toward your avatar.
+- [ ] The opponent's turn: their discs leave their stacks on the right, the same way, and fly to the board.
+- [ ] Replace an enemy tower: its discs fly back onto the opponent's stacks, each landing on the stack nearest their avatar with room; their avatar and stacks bounce. When the opponent replaces yours, your discs fly back onto your stacks and yours bounce.
+- [ ] After every turn and pass the stacks match the count in their tooltip ("N discs left"); F5 rebuilds the same stacks.
+
+PASSED
+- [ ] An automatic pass: the big PASSED banner flies onto a PASSED stamp centred over that player's stacks and stays there until they place again; the stamp's tooltip still shows.
+- [ ] The pass that ends the game: the banner fades out over the stacks, no stamp stays.
+
+## After M1: scoreboard
+
+Deploy `modules/` and `nexo.css`. No server change. Check on desktop and on a phone.
+
+- [ ] Centred at the top of the board, on one line with the reserve stacks: the two scores in plain numbers in BGA's own font (not italic, not heavy, no shadow), each in its player's color, the digits a little shorter than a full stack, the group a few px higher than the stacks' middle, with a thin grey line between them, a little taller than the digits, the numbers level with its middle. They match BGA's score counters on the player panels.
+- [ ] Sides: as red and as black, your score is the left one; as a spectator, red's is the left one, whatever the seat order; in a replay, the same rules.
+- [ ] Single and double digits (`debug_fillBoard` for scores over 9): the line stays exactly in the centre, the left number ends at the line, the right number starts at it, a second digit grows outwards.
+- [ ] Narrow window and phone: the numbers shrink with the board and never touch the reserve stacks (try "25 | 25" if you can get there); they never cover a spot of the top row.
+- [ ] A turn that changes a score: once the towers have landed, that number pulses once (grows from the line outwards and back); an unchanged score doesn't pulse. A replacement that splits the opponent's group makes theirs pulse too.
+- [ ] F5 and a replay's start: the scores are right at once, no pulse. With the OS's reduce-motion setting on, or animations off, the numbers change without a pulse.
+- [ ] Game end: the final scores show (after F5 too), the same as the result row.
+
+"Would be" previews (the scoreboard while drafting)
+- [ ] Draft one tower: a small, faded number appears on the outer side of both scores (left of the left one, right of the right one), in each player's color, its bottom lined up with its score's bottom, a small gap between them (a little wider than the first version); the main scores and the line don't move.
+- [ ] The previews are the scores the turn would give: extend your largest group (yours goes up), join two of your groups (yours jumps to their total), replace an enemy tower in the middle of their largest group (theirs drops, the group split), a tower that changes nothing (both previews equal to the scores, still shown).
+- [ ] They follow every click (adding a disc never changes them: height doesn't count), every new tower and every undo; undo back to an empty draft hides both.
+- [ ] Confirm: they go at once, the turn plays, the real scores land on the values the previews showed. A turn the server refuses: they come back with the draft.
+- [ ] The opponent and spectators never see previews, nor does a replay. Two-digit scores and previews on a phone: nothing overlaps the stacks.

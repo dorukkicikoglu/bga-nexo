@@ -40,8 +40,15 @@ interface NexoRulesData {
 
 type DiscColor = 'red' | 'black';
 
+//[BGA] a player's top corner of the board, avatar and reserve (Game.getTopBarSide): the viewer's own on the left, red on the left for a spectator
+type TopBarSide = 'left' | 'right';
+
+//what the board's spot size was last computed from (BoardHandler.fitToViewport): the room, in the board's own px, the board's
+//span and what the column adds to it across and down (the avatars outside the board, the board's top band), in spots
+type FitRoom = { width: number; height: number; boardSize: number; extraX: number; extraY: number; };
+
 //[BGA] where a disc sits, which alone decides its look (BoardHandler.getDiscLook): a board spot (board towers, drafted towers,
-//log tower icons: x, y), a player board's reserve stack (x: its index) or a status bar icon (x: its index); level, 0 for the
+//log tower icons: x, y), a player's reserve stack on the board's top edge (x: its index) or a status bar icon (x: its index); level, 0 for the
 //bottom disc. Never an id: the same slot always gives the same disc, after a reload and in a replay too
 type DiscSlot = { kind: 'board' | 'reserve' | 'status'; x: number; y: number; level: number; };
 

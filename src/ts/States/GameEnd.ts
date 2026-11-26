@@ -25,6 +25,7 @@ export class GameEnd {
         this.game.boardHandler.setDraftClickHandlers(null);
         this.game.boardHandler.setDraft(null);
         this.game.updatePassedStamps(); //the game is over: no PASSED stamp
+        this.game.setActivePlayer(null); //nobody's turn: no avatar glows
     }
 
     /**
