@@ -754,3 +754,10 @@ Deploy `modules/` and `nexo.css`. No server change. Check on desktop and on a ph
 - [ ] A turn that changes a score: once the towers have landed, that number pulses once (grows from the line outwards and back); an unchanged score doesn't pulse. A replacement that splits the opponent's group makes theirs pulse too.
 - [ ] F5 and a replay's start: the scores are right at once, no pulse. With the OS's reduce-motion setting on, or animations off, the numbers change without a pulse.
 - [ ] Game end: the final scores show (after F5 too), the same as the result row.
+
+"Would be" previews (the scoreboard while drafting)
+- [ ] Draft one tower: a small, faded number appears on the outer side of both scores (left of the left one, right of the right one), in each player's color, its bottom lined up with its score's bottom, a small gap between them (a little wider than the first version); the main scores and the line don't move.
+- [ ] The previews are the scores the turn would give: extend your largest group (yours goes up), join two of your groups (yours jumps to their total), replace an enemy tower in the middle of their largest group (theirs drops, the group split), a tower that changes nothing (both previews equal to the scores, still shown).
+- [ ] They follow every click (adding a disc never changes them: height doesn't count), every new tower and every undo; undo back to an empty draft hides both.
+- [ ] Confirm: they go at once, the turn plays, the real scores land on the values the previews showed. A turn the server refuses: they come back with the draft.
+- [ ] The opponent and spectators never see previews, nor does a replay. Two-digit scores and previews on a phone: nothing overlaps the stacks.

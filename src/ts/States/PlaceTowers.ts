@@ -77,6 +77,7 @@ export class PlaceTowers {
         this.game.confirmPopover.close();
         this.game.boardHandler.setDraftClickHandlers(null);
         this.game.boardHandler.setDraft(null);
+        this.game.setScorePreviews(null);
     }
 
     private canDraft(): boolean { return this.drafting && !this.confirming && !this.game.isInterfaceLocked(); }
@@ -294,7 +295,23 @@ export class PlaceTowers {
             discsUsed: this.getDiscsUsed(),
             discsThisTurn: this.stateArgs?.discsThisTurn ?? 1,
         });
+        //[BGA] the scoreboard's "would be" scores, both players', while anything is drafted; none once the turn is on its way
+        this.game.setScorePreviews((this.pending.length > 0 && !this.confirming) ? this.getPreviewScores() : null);
         this.updateTitle();
+    }
+
+    //[BGA] each player's score if the draft were confirmed now: the board with the draft applied (a new tower added, a replaced
+    //tower now mine at its new height), scored by BoardRules.getLargestGroupSize, the server's rule (NEXOTableManager)
+    private getPreviewScores(): Record<number, number> {
+        const myPlayerID = this.game.getMyPlayerID();
+        const board = this.game.boardHandler.getTowerMap();
+        for(const tower of this.pending)
+            board.set(BoardRules.key(tower.x, tower.y), { x: tower.x, y: tower.y, player_id: myPlayerID, height: tower.height });
+
+        const scores: Record<number, number> = {};
+        for(const player_id in this.game.players)
+            scores[player_id] = BoardRules.getLargestGroupSize(board, parseInt(player_id));
+        return scores;
     }
 
     //the same sentence for the whole draft, with one disc icon per disc the turn may use, the drafted ones dimmed: only the

@@ -76,6 +76,28 @@ class BoardRules {
         return visited;
     }
     /**
+     * [BGA] A player's score on a board: the size of their largest area of orthogonally connected towers (height doesn't matter), 0
+     * with no tower. The same rule as NEXOTableManager::getLargestGroupSize() (its getLargestGroups(): the player's own towers only,
+     * grouped by getComponent()); used for the scoreboard's preview of a draft (PlaceTowers.getPreviewScores). Change both together
+     */
+    static getLargestGroupSize(board, playerID) {
+        const ownBoard = new Map();
+        board.forEach((tower, key) => {
+            if (Number(tower.player_id) === Number(playerID))
+                ownBoard.set(key, tower);
+        });
+        let largestSize = 0;
+        const grouped = new Set();
+        for (const key of ownBoard.keys()) {
+            if (grouped.has(key))
+                continue;
+            const component = BoardRules.getComponent(ownBoard, key);
+            component.forEach(componentKey => grouped.add(componentKey));
+            largestSize = Math.max(largestSize, component.size);
+        }
+        return largestSize;
+    }
+    /**
      * The draft after a tower of the turn is taken back: replacements stay, and a new tower stays only if it still reaches the
      * towers on the board through the turn's other new towers (the server checks the turn the same way). On an empty board,
      * the new towers reached from the earliest one left stay.
@@ -956,6 +978,7 @@ class PlaceTowers {
         this.game.confirmPopover.close();
         this.game.boardHandler.setDraftClickHandlers(null);
         this.game.boardHandler.setDraft(null);
+        this.game.setScorePreviews(null);
     }
     canDraft() { return this.drafting && !this.confirming && !this.game.isInterfaceLocked(); }
     getDiscsUsed() { return this.pending.reduce((sum, tower) => sum + tower.height, 0); }
@@ -1143,7 +1166,21 @@ class PlaceTowers {
             discsUsed: this.getDiscsUsed(),
             discsThisTurn: this.stateArgs?.discsThisTurn ?? 1,
         });
+        //[BGA] the scoreboard's "would be" scores, both players', while anything is drafted; none once the turn is on its way
+        this.game.setScorePreviews((this.pending.length > 0 && !this.confirming) ? this.getPreviewScores() : null);
         this.updateTitle();
+    }
+    //[BGA] each player's score if the draft were confirmed now: the board with the draft applied (a new tower added, a replaced
+    //tower now mine at its new height), scored by BoardRules.getLargestGroupSize, the server's rule (NEXOTableManager)
+    getPreviewScores() {
+        const myPlayerID = this.game.getMyPlayerID();
+        const board = this.game.boardHandler.getTowerMap();
+        for (const tower of this.pending)
+            board.set(BoardRules.key(tower.x, tower.y), { x: tower.x, y: tower.y, player_id: myPlayerID, height: tower.height });
+        const scores = {};
+        for (const player_id in this.game.players)
+            scores[player_id] = BoardRules.getLargestGroupSize(board, parseInt(player_id));
+        return scores;
     }
     //the same sentence for the whole draft, with one disc icon per disc the turn may use, the drafted ones dimmed: only the
     //icons change while drafting, so the status bar never changes width or height (which would move the board)
@@ -1402,19 +1439,32 @@ class PlayerHandler {
         banner.remove();
     }
     //[BGA] this player's half of the scoreboard at the board's top centre (#nexo-top-bar .top-bar-scoreboard, Game.setup), on their
-    //side (Game.getTopBarSide), next to the centre line, in their color (data-disc-color). Set from gamedatas, no pulse
+    //side (Game.getTopBarSide), next to the centre line, in their color (data-disc-color). Set from gamedatas, no pulse. The number
+    //and its preview share a box (.top-bar-score-figure); the preview is out of the flow, so it never moves the number
     createScore(side, score) {
         const scoreElement = document.querySelector(`#nexo-top-bar .top-bar-score[data-side="${side}"]`);
         scoreElement.setAttribute('data-disc-color', this.game.getDiscColor(this.playerID));
+        const figureElement = document.createElement('span');
+        figureElement.className = 'top-bar-score-figure';
+        this.scorePreviewElement = document.createElement('span');
+        this.scorePreviewElement.className = 'top-bar-score-preview';
+        this.scorePreviewElement.setAttribute('aria-hidden', 'true');
         this.scoreValueElement = document.createElement('span');
         this.scoreValueElement.className = 'top-bar-score-value';
         this.scoreValueElement.addEventListener('animationend', (event) => {
             if (event.target === this.scoreValueElement && event.animationName === PlayerHandler.SCORE_PULSE_CLASS)
                 this.scoreValueElement.classList.remove(PlayerHandler.SCORE_PULSE_CLASS);
         });
-        scoreElement.appendChild(this.scoreValueElement);
+        figureElement.append(this.scoreValueElement, this.scorePreviewElement);
+        scoreElement.appendChild(figureElement);
         this.score = score;
         this.scoreValueElement.textContent = score.toString();
+    }
+    //[BGA] the score this player would have if the active player confirmed their draft now (Game.setScorePreviews), on the
+    //scoreboard's outer side of their number, or null to hide it
+    setScorePreview(score) {
+        this.scorePreviewElement.textContent = (score === null) ? '' : score.toString();
+        this.scorePreviewElement.classList.toggle('showing-score-preview', score !== null);
     }
     //every live score change goes through here (towersPlaced, the end of the game live or after a reload): BGA's score counter and
     //the scoreboard's number are the player's largest group. A number that changed pulses once (none with animations off or
@@ -2624,6 +2674,11 @@ class Game {
         const activeID = (activePlayerID === null) ? null : Number(activePlayerID); //BGA may hand the id over as a string
         for (const player_id in this.players)
             this.players[player_id].setActive(parseInt(player_id) === activeID);
+    }
+    //[BGA] the scoreboard's "would be" scores while the player drafts (PlaceTowers.update), one per player, or null to hide them all
+    setScorePreviews(scores) {
+        for (const player_id in this.players)
+            this.players[player_id].setScorePreview(scores?.[player_id] ?? null);
     }
     //end utility
     ///////////////////////////////////////////////////

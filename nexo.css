@@ -1115,8 +1115,31 @@ body .confirm-popover[data-placement=above] .confirm-popover-arrow {
 .top-bar-scoreboard .top-bar-score[data-disc-color=black] {
   color: #1b1b1d;
 }
+.top-bar-scoreboard .top-bar-score-figure {
+  display: inline-flex;
+  align-items: baseline;
+}
+.top-bar-scoreboard .top-bar-score[data-side=left] .top-bar-score-figure {
+  flex-direction: row-reverse;
+}
 .top-bar-scoreboard .top-bar-score-value {
   display: inline-block;
+}
+.top-bar-scoreboard .top-bar-score-preview {
+  display: none;
+  font-size: 0.58em;
+  opacity: 0.45;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.top-bar-scoreboard .top-bar-score-preview.showing-score-preview {
+  display: block;
+}
+.top-bar-scoreboard .top-bar-score[data-side=left] .top-bar-score-preview {
+  margin-right: 0.4em;
+}
+.top-bar-scoreboard .top-bar-score[data-side=right] .top-bar-score-preview {
+  margin-left: 0.4em;
 }
 .top-bar-scoreboard .top-bar-score[data-side=left] .top-bar-score-value {
   transform-origin: 100% 50%;

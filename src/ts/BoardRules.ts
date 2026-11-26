@@ -88,6 +88,30 @@ export class BoardRules {
     }
 
     /**
+     * [BGA] A player's score on a board: the size of their largest area of orthogonally connected towers (height doesn't matter), 0
+     * with no tower. The same rule as NEXOTableManager::getLargestGroupSize() (its getLargestGroups(): the player's own towers only,
+     * grouped by getComponent()); used for the scoreboard's preview of a draft (PlaceTowers.getPreviewScores). Change both together
+     */
+    public static getLargestGroupSize(board: Map<string, NexoTower>, playerID: number): number {
+        const ownBoard = new Map<string, NexoSpot>();
+        board.forEach((tower, key) => {
+            if(Number(tower.player_id) === Number(playerID))
+                ownBoard.set(key, tower);
+        });
+
+        let largestSize = 0;
+        const grouped = new Set<string>();
+        for(const key of ownBoard.keys()){
+            if(grouped.has(key))
+                continue;
+            const component = BoardRules.getComponent(ownBoard, key);
+            component.forEach(componentKey => grouped.add(componentKey));
+            largestSize = Math.max(largestSize, component.size);
+        }
+        return largestSize;
+    }
+
+    /**
      * The draft after a tower of the turn is taken back: replacements stay, and a new tower stays only if it still reaches the
      * towers on the board through the turn's other new towers (the server checks the turn the same way). On an empty board,
      * the new towers reached from the earliest one left stay.

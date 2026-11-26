@@ -395,6 +395,11 @@ $top-bar-score-divider-height-ratio: 0.42; //its own height, in spots (never fro
 $top-bar-score-divider-gap-ratio: 0.12; //between the line and each number
 $top-bar-score-pulse-duration: 0.4s; //a score that changed (one-shot .score-pulse)
 $top-bar-score-pulse-scale: 1.3;
+//[BGA] the "would be" score next to each number while the active player drafts (PlayerHandler.setScorePreview), on the number's
+//outer side, out of the flow (the numbers and the line never move); the same font, smaller and faded, in the player's color
+$top-bar-score-preview-scale: 0.58; //of the number's font size
+$top-bar-score-preview-opacity: 0.45;
+$top-bar-score-preview-gap: 0.4em; //between the number and its preview, in the preview's own em (0.15em until 2026-11-26)
 $log-text-color: #1f1f21; //near-black
 $log-background-default: linear-gradient(135deg, $marble-white, $marble-white-shade);
 $log-background-towers-placed: linear-gradient(90deg, rgba($marble-white, 0.97), rgba($marble-white-shade, 0.95));
@@ -1074,8 +1079,18 @@ body .confirm-popover{ position: fixed; left: 0px; top: 0px; z-index: $confirm-p
     @each $name, $color in $top-bar-score-colors {
         .top-bar-score[data-disc-color="#{$name}"]{ color: $color; }
     }
-    //the number itself, so its pulse grows outwards from the centre line (the scale property, never a transform)
+    //each number and its preview, one small flex group on their baseline, so the preview's bottom lines up with the number's;
+    //the preview on the outer side (row-reverse on the left: the DOM is number then preview)
+    .top-bar-score-figure{ display: inline-flex; align-items: baseline; }
+    .top-bar-score[data-side="left"] .top-bar-score-figure{ flex-direction: row-reverse; }
     .top-bar-score-value{ display: inline-block; }
+    //the preview: in the group's flow, outside the number (left of the left number, right of the right one); the numbers stay put,
+    //right- and left-aligned at the centre line
+    .top-bar-score-preview{ display: none; font-size: #{$top-bar-score-preview-scale * 1em}; opacity: $top-bar-score-preview-opacity; white-space: nowrap; pointer-events: none;
+        &.showing-score-preview{ display: block; } }
+    .top-bar-score[data-side="left"] .top-bar-score-preview{ margin-right: $top-bar-score-preview-gap; }
+    .top-bar-score[data-side="right"] .top-bar-score-preview{ margin-left: $top-bar-score-preview-gap; }
+    //the number itself, so its pulse grows outwards from the centre line (the scale property, never a transform)
     .top-bar-score[data-side="left"] .top-bar-score-value{ transform-origin: 100% 50%; }
     .top-bar-score[data-side="right"] .top-bar-score-value{ transform-origin: 0% 50%; }
     .score-pulse{ animation: score-pulse $top-bar-score-pulse-duration ease-out; }

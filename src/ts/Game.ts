@@ -367,6 +367,12 @@ export class Game {
             this.players[player_id].setActive(parseInt(player_id) === activeID);
     }
 
+    //[BGA] the scoreboard's "would be" scores while the player drafts (PlaceTowers.update), one per player, or null to hide them all
+    public setScorePreviews(scores: Record<number, number> | null): void {
+        for(const player_id in this.players)
+            this.players[player_id].setScorePreview(scores?.[player_id] ?? null);
+    }
+
     //end utility
 
     ///////////////////////////////////////////////////

@@ -22,6 +22,7 @@ export class PlayerHandler{
     private sideElement: HTMLDivElement; //this player's side on the board's top edge: avatar, reserve stacks, PASSED stamp
     private reserveStacksElement: HTMLDivElement;
     private scoreValueElement: HTMLSpanElement; //[BGA] this player's number in the scoreboard at the board's top centre
+    private scorePreviewElement: HTMLSpanElement; //[BGA] its "would be" score while the active player drafts, on its outer side
     private score: number;
     private reserveStacks: HTMLDivElement[] = []; //stack 0 first: next to the avatar on either side (Game.scss mirrors the right side)
 
@@ -247,19 +248,33 @@ export class PlayerHandler{
     }
 
     //[BGA] this player's half of the scoreboard at the board's top centre (#nexo-top-bar .top-bar-scoreboard, Game.setup), on their
-    //side (Game.getTopBarSide), next to the centre line, in their color (data-disc-color). Set from gamedatas, no pulse
+    //side (Game.getTopBarSide), next to the centre line, in their color (data-disc-color). Set from gamedatas, no pulse. The number
+    //and its preview share a box (.top-bar-score-figure); the preview is out of the flow, so it never moves the number
     private createScore(side: TopBarSide, score: number): void {
         const scoreElement = document.querySelector(`#nexo-top-bar .top-bar-score[data-side="${side}"]`) as HTMLDivElement;
         scoreElement.setAttribute('data-disc-color', this.game.getDiscColor(this.playerID));
+        const figureElement = document.createElement('span');
+        figureElement.className = 'top-bar-score-figure';
+        this.scorePreviewElement = document.createElement('span');
+        this.scorePreviewElement.className = 'top-bar-score-preview';
+        this.scorePreviewElement.setAttribute('aria-hidden', 'true');
         this.scoreValueElement = document.createElement('span');
         this.scoreValueElement.className = 'top-bar-score-value';
         this.scoreValueElement.addEventListener('animationend', (event: AnimationEvent) => {
             if(event.target === this.scoreValueElement && event.animationName === PlayerHandler.SCORE_PULSE_CLASS)
                 this.scoreValueElement.classList.remove(PlayerHandler.SCORE_PULSE_CLASS);
         });
-        scoreElement.appendChild(this.scoreValueElement);
+        figureElement.append(this.scoreValueElement, this.scorePreviewElement);
+        scoreElement.appendChild(figureElement);
         this.score = score;
         this.scoreValueElement.textContent = score.toString();
+    }
+
+    //[BGA] the score this player would have if the active player confirmed their draft now (Game.setScorePreviews), on the
+    //scoreboard's outer side of their number, or null to hide it
+    public setScorePreview(score: number | null): void {
+        this.scorePreviewElement.textContent = (score === null) ? '' : score.toString();
+        this.scorePreviewElement.classList.toggle('showing-score-preview', score !== null);
     }
 
     //every live score change goes through here (towersPlaced, the end of the game live or after a reload): BGA's score counter and
