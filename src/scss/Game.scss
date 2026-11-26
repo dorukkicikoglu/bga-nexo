@@ -369,8 +369,15 @@ $top-bar-stack-cell-ratio: 0.26; //a reserve stack's --cell-size at most (about 
 //the band over the grid: as tall as the avatar's part inside the board, which is taller than the stacks
 $board-top-band-ratio: $top-bar-avatar-ratio * (1 - $top-bar-avatar-outside-y) + 0.015;
 $top-bar-passed-stamp-font-ratio: 0.11; //the PASSED stamp's font size (11px on a 100px spot)
-$top-bar-active-glow-color: $selected-spot-color; //the active player's avatar (Game.setActivePlayer): the draft's gold, a thin ring and a soft glow
-$top-bar-active-glow-duration: 0.3s;
+//the active player's avatar (Game.setActivePlayer): a soft outer glow, no ring, in the player's own color (--player-color, set inline
+//from gamedatas by PlayerHandler), breathing slowly between its low and high values (none with reduced motion)
+$top-bar-active-glow-duration: 0.3s; //fading in and out as the turn passes
+$top-bar-active-glow-blur-ratio: 0.14; //its blur, in spots
+$top-bar-active-glow-spread-ratio: 0.015;
+$top-bar-active-glow-strength: 50%; //how much of the player's color (the rest transparent)
+$top-bar-active-glow-pulse-blur-ratio: 0.2; //at the pulse's height
+$top-bar-active-glow-pulse-strength: 70%;
+$top-bar-active-glow-pulse-duration: 2.4s; //one way: low to high, then back (alternate)
 //[BGA] the scoreboard at the board's top centre (PlayerHandler.createScore): each player's largest group next to a thin centre line,
 //on their side, in their color, in BGA's plain font, the digits as tall as a full reserve stack, centred on the line, which keeps its own height. Its box runs between the reserves' inner ends (minus a margin), so the
 //numbers can't reach the stacks; their font is a share of the spot, or what fits two digits in half the box, whichever is smaller
@@ -1073,6 +1080,11 @@ body .confirm-popover{ position: fixed; left: 0px; top: 0px; z-index: $confirm-p
     .top-bar-score[data-side="right"] .top-bar-score-value{ transform-origin: 0% 50%; }
     .score-pulse{ animation: score-pulse $top-bar-score-pulse-duration ease-out; }
 }
+//the active avatar's glow breathing (.active-top-bar-player): from its resting blur and strength up to the pulse's, then back
+@keyframes top-bar-active-glow {
+  to { box-shadow: 0 2px 6px rgba($slab-shadow-color, 0.25), 0 0 calc(var(--top-bar-cell) * #{$top-bar-active-glow-pulse-blur-ratio}) calc(var(--top-bar-cell) * #{$top-bar-active-glow-spread-ratio}) color-mix(in srgb, var(--player-color) #{$top-bar-active-glow-pulse-strength}, transparent); }
+}
+@media (prefers-reduced-motion: reduce){ .top-bar-player.active-top-bar-player .top-bar-avatar{ animation: none; } }
 @keyframes score-pulse {
   0% { scale: 1; }
   35% { scale: $top-bar-score-pulse-scale; }
@@ -1089,8 +1101,15 @@ body .confirm-popover{ position: fixed; left: 0px; top: 0px; z-index: $confirm-p
         box-shadow: 0 2px 6px rgba($slab-shadow-color, 0.25); transition: box-shadow $top-bar-active-glow-duration ease; }
     &[data-side="left"] .top-bar-avatar{ left: calc(-1 * var(--top-bar-avatar) * #{$top-bar-avatar-outside-x}); }
     &[data-side="right"] .top-bar-avatar{ right: calc(-1 * var(--top-bar-avatar) * #{$top-bar-avatar-outside-x}); }
-    //[BGA] the active player (Game.setActivePlayer): a thin gold ring and a soft glow around the avatar only
-    &.active-top-bar-player .top-bar-avatar{ box-shadow: 0 0 0 calc(var(--top-bar-cell) * 0.02) $top-bar-active-glow-color, 0 0 calc(var(--top-bar-cell) * 0.1) rgba($top-bar-active-glow-color, 0.55); }
+    //[BGA] the active player (Game.setActivePlayer): a soft outer glow in their own color around the avatar only (its ring and drop
+    //shadow unchanged), breathing slowly. The fallback without color-mix(): the same glow at full strength, still
+    &.active-top-bar-player .top-bar-avatar{
+        box-shadow: 0 2px 6px rgba($slab-shadow-color, 0.25), 0 0 calc(var(--top-bar-cell) * #{$top-bar-active-glow-blur-ratio}) calc(var(--top-bar-cell) * #{$top-bar-active-glow-spread-ratio}) var(--player-color);
+        @supports (color: color-mix(in srgb, red 50%, transparent)){
+            box-shadow: 0 2px 6px rgba($slab-shadow-color, 0.25), 0 0 calc(var(--top-bar-cell) * #{$top-bar-active-glow-blur-ratio}) calc(var(--top-bar-cell) * #{$top-bar-active-glow-spread-ratio}) color-mix(in srgb, var(--player-color) #{$top-bar-active-glow-strength}, transparent);
+            animation: top-bar-active-glow $top-bar-active-glow-pulse-duration ease-in-out infinite alternate;
+        }
+    }
     //the stacks, beside the avatar's inside part, centred on the avatar lowered by $top-bar-row-drop (the row is the avatar's height)
     .player-board-reserve-row{ position: absolute; top: var(--top-bar-row-top); height: var(--top-bar-avatar); display: flex; align-items: center; pointer-events: auto;
         --reserve-inset: calc(var(--top-bar-avatar) * #{1 - $top-bar-avatar-outside-x} + var(--top-bar-cell) * #{$top-bar-stack-gap-ratio}); }

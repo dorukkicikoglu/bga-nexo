@@ -730,7 +730,7 @@ Sides
 - [ ] Replay (`replayFrom`) as a player: you top-left. An archived game opened by someone who wasn't at the table: red top-left.
 
 Active player
-- [ ] The active player's avatar has a thin gold ring and a soft glow, nothing else highlighted; when the turn passes, it moves to the other avatar (after the turn's towers have landed), the same for both players and spectators. After F5 it is on the right avatar at once.
+- [ ] The active player's avatar has a soft glow in their own color (red around red, black around black; no gold, no ring), slowly breathing (still with reduce-motion on), its colored border unchanged, nothing else highlighted; when the turn passes, it moves to the other avatar (after the turn's towers have landed), the same for both players and spectators. After F5 it is on the right avatar at once.
 - [ ] After an automatic pass, the glow is on the player who is now to play. At the game's end, no glow (after F5 too).
 
 Reserve animations (both reserves, the opponent's on the right included)

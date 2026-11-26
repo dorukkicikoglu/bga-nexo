@@ -1128,6 +1128,16 @@ body .confirm-popover[data-placement=above] .confirm-popover-arrow {
   animation: score-pulse 0.4s ease-out;
 }
 
+@keyframes top-bar-active-glow {
+  to {
+    box-shadow: 0 2px 6px rgba(40, 30, 18, 0.25), 0 0 calc(var(--top-bar-cell) * 0.2) calc(var(--top-bar-cell) * 0.015) color-mix(in srgb, var(--player-color) 70%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .top-bar-player.active-top-bar-player .top-bar-avatar {
+    animation: none;
+  }
+}
 @keyframes score-pulse {
   0% {
     scale: 1;
@@ -1182,7 +1192,13 @@ body .confirm-popover[data-placement=above] .confirm-popover-arrow {
   right: calc(-1 * var(--top-bar-avatar) * 0.225);
 }
 .top-bar-player.active-top-bar-player .top-bar-avatar {
-  box-shadow: 0 0 0 calc(var(--top-bar-cell) * 0.02) #ffc400, 0 0 calc(var(--top-bar-cell) * 0.1) rgba(255, 196, 0, 0.55);
+  box-shadow: 0 2px 6px rgba(40, 30, 18, 0.25), 0 0 calc(var(--top-bar-cell) * 0.14) calc(var(--top-bar-cell) * 0.015) var(--player-color);
+}
+@supports (color: color-mix(in srgb, red 50%, transparent)) {
+  .top-bar-player.active-top-bar-player .top-bar-avatar {
+    box-shadow: 0 2px 6px rgba(40, 30, 18, 0.25), 0 0 calc(var(--top-bar-cell) * 0.14) calc(var(--top-bar-cell) * 0.015) color-mix(in srgb, var(--player-color) 50%, transparent);
+    animation: top-bar-active-glow 2.4s ease-in-out infinite alternate;
+  }
 }
 .top-bar-player .player-board-reserve-row {
   position: absolute;

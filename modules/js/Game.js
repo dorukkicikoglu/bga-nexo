@@ -1235,6 +1235,7 @@ class PlayerHandler {
         const avatar = this.sideElement.querySelector('.top-bar-avatar');
         const { url, fallbackUrl } = this.getAvatarUrls();
         avatar.alt = this.game.getPlayerName(this.playerID);
+        avatar.style.setProperty('--player-color', '#' + this.game.getPlayerColor(this.playerID)); //the active glow (Game.scss)
         avatar.style.borderColor = '#' + this.game.getPlayerColor(this.playerID);
         if (fallbackUrl && fallbackUrl !== url)
             avatar.addEventListener('error', () => { avatar.src = fallbackUrl; }, { once: true }); //no 184 version: the panel's own size
