@@ -1288,10 +1288,6 @@ class PlayerHandler {
             this.reserveStacksElement.appendChild(stack);
             this.reserveStacks.push(stack);
         }
-        this.sideElement.addEventListener('animationend', (event) => {
-            if (event.target === this.sideElement && event.animationName === PlayerHandler.BOUNCE_CLASS)
-                this.sideElement.classList.remove(PlayerHandler.BOUNCE_CLASS);
-        });
         //ids for TooltipHandler
         this.reserveStacksElement.id = 'reserve-stacks-' + this.playerID;
         this.sideElement.querySelector('.passed-stamp').id = 'passed-stamp-' + this.playerID;
@@ -1485,21 +1481,11 @@ class PlayerHandler {
     getScore() {
         return this.game.bga.playerPanels.getScoreCounter(this.playerID)?.getValue();
     }
-    //the one shared bounce (discs given back by a replacement land on this player's stacks): their avatar and stacks bounce,
-    //removed on animationend
-    bounceBoard() {
-        if (!this.game.bga.gameui.bgaAnimationsActive())
-            return;
-        this.sideElement.classList.remove(PlayerHandler.BOUNCE_CLASS);
-        void this.sideElement.offsetWidth; //restarts a bounce still playing
-        this.sideElement.classList.add(PlayerHandler.BOUNCE_CLASS);
-    }
     //the stacks' row on screen: where a disc flies from or to when its own disc is missing from the stacks (never expected)
     getReserveRect() { return this.reserveStacksElement.getBoundingClientRect(); }
     getReserve() { return this.reserve; } //as tracked by setReserve(), takeDiscs() and addDiscs()
     isPassed() { return this.passed; }
 }
-PlayerHandler.BOUNCE_CLASS = 'bouncing-player-board'; //the one shared bounce class, its timing lives in Game.scss
 PlayerHandler.SCORE_PULSE_CLASS = 'score-pulse'; //one-shot, on a score that changed (Game.scss: $top-bar-score-pulse-*)
 //the reserve: RESERVE_STACK_COUNT stacks of up to RESERVE_STACK_SIZE discs side by side, DISCS_PER_PLAYER (25) in all
 PlayerHandler.RESERVE_STACK_COUNT = 5;
@@ -2704,14 +2690,12 @@ class Game {
     // Add the notification handlers
     //a confirmed turn: spot by spot, the replaced tower flies back onto its owner's reserve stacks while the new tower's discs
     //leave the player's stacks for its spot (BoardHandler.applyPlacements); then the reserves are checked against the server's
-    //count (rebuilt if they differ), the boards that got discs back bounce, the scores update and the board re-centres
+    //count (rebuilt if they differ), the scores update and the board re-centres
     async notif_towersPlaced(args) {
         this.players[args.player_id]?.setPassed(false);
         await this.boardHandler.applyPlacements(args.player_id, args.placements);
-        const playerIDsGivenBack = new Set(args.placements.filter(placement => placement.kind === 'replace' && placement.replaced_player_id !== null).map(placement => placement.replaced_player_id));
         for (let player_id in args.reserves)
             this.players[player_id]?.setReserve(args.reserves[player_id]);
-        playerIDsGivenBack.forEach(playerID => this.players[playerID]?.bounceBoard());
         for (let player_id in args.scores)
             this.players[player_id]?.setScore(args.scores[player_id]);
         await this.boardHandler.recenter();

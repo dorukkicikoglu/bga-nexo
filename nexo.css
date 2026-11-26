@@ -1339,21 +1339,6 @@ body .passed-banner.passed-banner-flying .passed-banner-name {
   opacity: 0;
 }
 
-.bouncing-player-board {
-  animation: bouncing-player-board 0.175s ease-in-out 2;
-}
-
-@keyframes bouncing-player-board {
-  0% {
-    top: 0px;
-  }
-  50% {
-    top: -5px;
-  }
-  100% {
-    top: 0px;
-  }
-}
 .log .roundedbox, .log.a-game-log.roundedbox, .gamelogreview {
   background: var(--bg-log-default);
   color: #1f1f21;

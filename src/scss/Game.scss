@@ -1106,7 +1106,7 @@ body .confirm-popover{ position: fixed; left: 0px; top: 0px; z-index: $confirm-p
   100% { scale: 1; }
 }
 @media (prefers-reduced-motion: reduce){ .top-bar-scoreboard .score-pulse{ animation: none; } }
-//a player's side: the band's height, from its own top corner. top: 0 for the shared bounce (it animates top)
+//a player's side: the band's height, from its own top corner
 .top-bar-player{ position: absolute; top: 0px; height: 100%; @include non-selectable();
     &[data-side="left"]{ left: 0px; }
     &[data-side="right"]{ right: 0px; }
@@ -1162,15 +1162,6 @@ body .passed-banner{ position: fixed; inset: 0px; margin: auto; width: fit-conte
     &.passed-banner-flying .passed-banner-name{ opacity: 0; }
 }
 
-//the one shared player board bounce (discs given back by a replacement, PlayerHandler.bounceBoard, which removes the class on
-//animationend): the player's side on the board's top edge (avatar and stacks). Every bounce uses this class and this exact timing. position: relative
-//comes from .top-bar-player
-.bouncing-player-board{ animation: bouncing-player-board 0.175s ease-in-out 2; }
-@keyframes bouncing-player-board {
-  0% { top: 0px; }
-  50% { top: -5px; }
-  100% { top: 0px; }
-}
 //end player board
 
 //logs

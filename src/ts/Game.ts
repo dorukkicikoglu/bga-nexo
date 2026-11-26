@@ -401,16 +401,14 @@ export class Game {
 
     //a confirmed turn: spot by spot, the replaced tower flies back onto its owner's reserve stacks while the new tower's discs
     //leave the player's stacks for its spot (BoardHandler.applyPlacements); then the reserves are checked against the server's
-    //count (rebuilt if they differ), the boards that got discs back bounce, the scores update and the board re-centres
+    //count (rebuilt if they differ), the scores update and the board re-centres
     public async notif_towersPlaced(args: TowersPlacedArgs) {
         this.players[args.player_id]?.setPassed(false);
 
         await this.boardHandler.applyPlacements(args.player_id, args.placements);
 
-        const playerIDsGivenBack = new Set(args.placements.filter(placement => placement.kind === 'replace' && placement.replaced_player_id !== null).map(placement => placement.replaced_player_id));
         for(let player_id in args.reserves)
             this.players[player_id]?.setReserve(args.reserves[player_id]);
-        playerIDsGivenBack.forEach(playerID => this.players[playerID]?.bounceBoard());
 
         for(let player_id in args.scores)
             this.players[player_id]?.setScore(args.scores[player_id]);

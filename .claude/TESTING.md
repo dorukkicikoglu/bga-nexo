@@ -736,7 +736,7 @@ Active player
 Reserve animations (both reserves, the opponent's on the right included)
 - [ ] Your turn: each disc leaves the top of your stack furthest from your avatar that has any and lands on its spot; your stacks empty from the centre toward your avatar.
 - [ ] The opponent's turn: their discs leave their stacks on the right, the same way, and fly to the board.
-- [ ] Replace an enemy tower: its discs fly back onto the opponent's stacks, each landing on the stack nearest their avatar with room; their avatar and stacks bounce. When the opponent replaces yours, your discs fly back onto your stacks and yours bounce.
+- [ ] Replace an enemy tower: its discs fly back onto the opponent's stacks, each landing on the stack nearest their avatar with room; nothing bounces (no bounce since 2026-11-26). When the opponent replaces yours, your discs fly back onto your stacks, again with no bounce.
 - [ ] After every turn and pass the stacks match the count in their tooltip ("N discs left"); F5 rebuilds the same stacks.
 
 PASSED

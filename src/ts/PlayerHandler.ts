@@ -13,7 +13,6 @@ import { Game } from "./Game";
 import { BoardHandler } from "./BoardHandler";
 
 export class PlayerHandler{
-    private static readonly BOUNCE_CLASS = 'bouncing-player-board'; //the one shared bounce class, its timing lives in Game.scss
     private static readonly SCORE_PULSE_CLASS = 'score-pulse'; //one-shot, on a score that changed (Game.scss: $top-bar-score-pulse-*)
     //the reserve: RESERVE_STACK_COUNT stacks of up to RESERVE_STACK_SIZE discs side by side, DISCS_PER_PLAYER (25) in all
     private static readonly RESERVE_STACK_COUNT = 5;
@@ -76,11 +75,6 @@ export class PlayerHandler{
             this.reserveStacksElement.appendChild(stack);
             this.reserveStacks.push(stack);
         }
-
-        this.sideElement.addEventListener('animationend', (event: AnimationEvent) => { //the side's own bounce, not a child's animation
-            if(event.target === this.sideElement && event.animationName === PlayerHandler.BOUNCE_CLASS)
-                this.sideElement.classList.remove(PlayerHandler.BOUNCE_CLASS);
-        });
 
         //ids for TooltipHandler
         this.reserveStacksElement.id = 'reserve-stacks-' + this.playerID;
@@ -296,17 +290,6 @@ export class PlayerHandler{
     //the score counter's value: the player's largest group (the game end row's fallback for the loser's score)
     public getScore(): number | undefined {
         return this.game.bga.playerPanels.getScoreCounter(this.playerID)?.getValue();
-    }
-
-    //the one shared bounce (discs given back by a replacement land on this player's stacks): their avatar and stacks bounce,
-    //removed on animationend
-    public bounceBoard(): void {
-        if(!this.game.bga.gameui.bgaAnimationsActive())
-            return;
-
-        this.sideElement.classList.remove(PlayerHandler.BOUNCE_CLASS);
-        void this.sideElement.offsetWidth; //restarts a bounce still playing
-        this.sideElement.classList.add(PlayerHandler.BOUNCE_CLASS);
     }
 
     //the stacks' row on screen: where a disc flies from or to when its own disc is missing from the stacks (never expected)
