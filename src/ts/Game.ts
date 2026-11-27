@@ -52,6 +52,7 @@ export class Game {
     public static readonly LOG_JUMP_HOVER_COUNT = 2;
     public static readonly LOG_JUMP_TAP_COUNT = 2;
     public static readonly LOG_CLOSE_MAX_WAIT = 800;
+    public static readonly SCORE_HIGHLIGHT_HOP_COUNT = 1; //[BGA] the scoring highlight's towers hop this many times as it starts (BoardHandler.hopScoringTowers, the log rows' hop)
     public static readonly TOWER_JUMP_SAFETY_PER_JUMP = 400; //ms per jump, well over $tower-jump-duration, before a jump's class goes anyway
     public static readonly TOWER_JUMP_SAFETY_MARGIN = 500;
     public static readonly BOARD_VIEWPORT_MARGIN = 10; //screen px from the board to the window's bottom (BoardHandler.fitToViewport); the status bar's gap is #nexo-board-container's padding (the avatars above the board are in #nexo-board-column's)

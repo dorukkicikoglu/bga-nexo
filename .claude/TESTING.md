@@ -803,11 +803,13 @@ Deploy `modules/` and `nexo.css`. No server change. Check on desktop with a mous
 Without a draft (the opponent, a spectator, or my turn with nothing drafted):
 - [ ] Desktop: moving the mouse anywhere onto the scoreboard (either score, the centre line, the space around them) dims every tower outside both players' largest areas (lower opacity, red slightly greyed), with a short fade; both areas stay as they are. Moving around inside the scoreboard changes nothing. Leaving the scoreboard brings every tower back.
 - [ ] Phone: a tap anywhere on the scoreboard shows both areas, and they stay; a second tap anywhere on it ends it.
+- [ ] Hop: as the highlight starts, every highlighted tower (both players' areas) gives one hop, the same as hovering a log row; the dimmed towers don't move. It doesn't hop again while the highlight stays on (moving inside the scoreboard on desktop); leaving and coming back, or tapping it off and on again, hops once more. Ending it mid-hop (leaving the scoreboard at once, a second tap): every tower is back on its spot at once, none left raised. Reduced motion (OS setting): no hop and no brightness pulse, just the highlight.
 - [ ] Two areas tied for largest: only the top-left one stays undimmed (the one whose topmost tower is in the higher row, or, in the same row, further left), the other dims; still the same one after a turn that grows or slides the board without changing those areas. The score and the end-game display are unchanged (the end-game glow still shows every tied area). A player with no tower yet: only the other player's area stays undimmed.
 - [ ] My turn with nothing drafted: the target rings stay as they are while the highlight shows.
 
 Drafting (several towers drafted, one of them a replacement, one raised a few discs; compare with the screenshots: the highlight on the board as it was before the draft):
 - [ ] Hovering the scoreboard (or tapping it on a phone): the drafted towers, the count badges, the undo and confirm buttons and the gold ring go; the enemy tower under my replacement shows in its own color and height at full strength; the target rings are those of my turn before I drafted anything (legal spots and replaceable towers for all my discs this turn); the status bar's disc icons are all full; the scoreboard shows the big scores without the small "would be" numbers. The dimming matches the big scores.
+- [ ] Drafting: the hop runs on the saved board's highlighted towers (an enemy tower under my replacement too, if it is in an area); no drafted tower shows or hops.
 - [ ] Ending it (leaving the scoreboard, or a second tap on it): the draft is back exactly as it was: the same towers and heights, the gold ring and buttons on the same active tower, the confirm ring's segments, the "would be" scores, the dimmed status bar icons, the replaced tower faded again, the draft's own target rings. The board doesn't move at any point.
 - [ ] Desktop, right after leaving the scoreboard: a click on the board drafts as usual (a new tower, a disc added, undo, confirm).
 - [ ] "Confirm anyway?" open, then hovering the scoreboard: the card closes; the draft is intact after, and the confirm button asks again.
@@ -817,7 +819,7 @@ Drafting (several towers drafted, one of them a replacement, one raised a few di
 - [ ] Phone: a tap never leaves a hover highlight behind (nothing flickers on, then off).
 
 Turns and the game end:
-- [ ] A confirmed turn (mine or the opponent's) while the highlight shows: it ends (my draft back first) as the towers start flying, the flying discs are at full strength, and hovering during the flights does nothing until they have landed.
+- [ ] A confirmed turn (mine or the opponent's) while the highlight shows: it ends (my draft back first) as the towers start flying, the flying discs are at full strength, and hovering during the flights does nothing until they have landed. The same right as the highlight starts (the towers mid-hop): every disc leaves from and lands on its spot, none offset upwards.
 - [ ] My turn starting while the highlight shows (hovering, or toggled on a phone, as the opponent's turn ends): it ends and my target rings show at once.
 - [ ] If you can, my turn ending while I draft with the highlight on (the turn timer running out, made a zombie): it ends, the draft back first, then the turn goes on as without the highlight.
 - [ ] After the board has grown or slid (a turn that re-centres it): the highlight still marks the right towers.

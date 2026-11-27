@@ -16,7 +16,8 @@ import { Game } from "./Game";
  * they are (one each: the top-left of areas tied for largest) and every other tower dims (BoardHandler.showScoringTowers,
  * Game.scss: .nexo-score-highlight). With towers drafted, the draft steps aside while it shows (PlaceTowers.getSavedBoardSpots,
  * html.nexo-saved-board-view: the board, the status bar's icons and the scoreboard as if nothing were drafted) and comes back
- * exactly as it was when it clears; "Confirm anyway?" closes. The whole scoreboard does the same, wherever it is pointed or tapped.
+ * exactly as it was when it clears; "Confirm anyway?" closes. The highlighted towers hop once as it starts (the log rows' hop,
+ * BoardHandler.hopScoringTowers; none with reduced motion), stopped at once if it clears mid-hop. The whole scoreboard does the same, wherever it is pointed or tapped.
  * A mouse or a pen (pointerType not 'touch') shows it as it enters the scoreboard (pointerenter) and clears it as it leaves
  * (pointerleave), so a click on the board always finds the draft back.
  * A touch never hovers: a tap (a click after a touch pointerdown, like LogHighlightHandler's) toggles it. A touch starting anywhere outside the scoreboard clears it at once: on the board's column
@@ -113,6 +114,7 @@ export class ScoreHighlightHandler {
         if(!this.game.boardHandler.showScoringTowers(playerIDs, savedSpots))
             return;
         this.shown = true;
+        this.game.boardHandler.hopScoringTowers(); //once per start: never again while it stays on
         if(savedSpots)
             this.game.confirmPopover.close(); //a question about the draft, which is hidden: the confirm button asks again
     }

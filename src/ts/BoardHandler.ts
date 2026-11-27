@@ -75,7 +75,8 @@ export class BoardHandler {
     private towerElements = new Map<string, HTMLDivElement>();
     private pendingElements = new Map<string, HTMLDivElement>();
     private draft: DraftView | null = null;
-    private towerJumpSafetyTimers = new Map<HTMLDivElement, number>(); //a jump's class goes even if its animationend never comes (jumpTowers)
+    private towerJumpEnds = new Map<HTMLDivElement, () => void>(); //each jumping tower's end (jumpTowers): on its animationend, its safety timeout, or stopTowerJump
+    private scoringHops: HTMLDivElement[] = []; //[BGA] the towers the scoring highlight's hop started (hopScoringTowers), stopped when it clears
     private draftClickHandlers: DraftClickHandlers | null = null;
     private confirmWasFull: boolean = false; //every disc of the turn was drafted at the last render: the confirm button pulses once on reaching it
     private ringWasFilled: number | null = null; //the confirm ring's filled segments at the last render, null when no confirm button showed
@@ -1031,6 +1032,8 @@ export class BoardHandler {
 
     //takes the scoreboard's highlight away (only its own classes): a draft it hid shows again exactly as it was
     public clearScoringTowers(): void {
+        this.scoringHops.forEach(towerElement => this.stopTowerJump(towerElement)); //no tower left raised, none cloned mid-hop by a turn's flights
+        this.scoringHops = [];
         if(BoardHandler.isShowingSavedBoard()){
             document.documentElement.classList.remove(BoardHandler.SAVED_BOARD_VIEW_CLASS);
             BoardHandler.renderSpotRings(this.savedSpotsLayer, null);
@@ -1048,7 +1051,8 @@ export class BoardHandler {
      * skipped. A tower already jumping (or shaking) is left alone, never restarted. The class goes on animationend (the tower's
      * own, not its ::before's), or after a safety timeout if that never comes (a tower hidden meanwhile)
      */
-    public jumpTowers(spots: NexoSpot[], jumps: number): void {
+    public jumpTowers(spots: NexoSpot[], jumps: number): HTMLDivElement[] {
+        const started: HTMLDivElement[] = [];
         for(const spot of spots){
             if(!Number.isInteger(spot?.x) || !Number.isInteger(spot?.y))
                 continue;
@@ -1058,18 +1062,45 @@ export class BoardHandler {
 
             towerElement.style.setProperty('--tower-jumps', jumps.toString());
             towerElement.classList.add('jumping-tower');
-            const endJump = () => {
-                towerElement.classList.remove('jumping-tower');
-                towerElement.removeEventListener('animationend', onEnd);
-                window.clearTimeout(this.towerJumpSafetyTimers.get(towerElement));
-                this.towerJumpSafetyTimers.delete(towerElement);
-            };
+            let safetyTimer = 0;
             const onEnd = (event: AnimationEvent) => {
                 if(event.target === towerElement && !event.pseudoElement)
                     endJump();
             };
+            const endJump = () => {
+                towerElement.classList.remove('jumping-tower');
+                towerElement.removeEventListener('animationend', onEnd);
+                window.clearTimeout(safetyTimer);
+                this.towerJumpEnds.delete(towerElement);
+            };
             towerElement.addEventListener('animationend', onEnd);
-            this.towerJumpSafetyTimers.set(towerElement, window.setTimeout(endJump, jumps * Game.TOWER_JUMP_SAFETY_PER_JUMP + Game.TOWER_JUMP_SAFETY_MARGIN));
+            safetyTimer = window.setTimeout(endJump, jumps * Game.TOWER_JUMP_SAFETY_PER_JUMP + Game.TOWER_JUMP_SAFETY_MARGIN);
+            this.towerJumpEnds.set(towerElement, endJump);
+            started.push(towerElement);
         }
+        return started;
+    }
+
+    //ends a tower's jump at once (jumpTowers), wherever it is in it: the class goes, so the tower is back on its spot in the same
+    //frame. Nothing when it isn't jumping (any more)
+    private stopTowerJump(towerElement: HTMLDivElement): void {
+        this.towerJumpEnds.get(towerElement)?.();
+    }
+
+    /**
+     * [BGA] The scoring highlight's towers (showScoringTowers' scoring-tower: both players' top-left largest groups, on the saved
+     * board) hop once as it starts: the log rows' hop (jumpTowers), Game.SCORE_HIGHLIGHT_HOP_COUNT jumps. None with animations
+     * off or reduced motion (where the log rows' hop pulses instead: here the highlight alone shows). Only the towers it starts are
+     * remembered, so clearScoringTowers stops those and never a log row's hop
+     */
+    public hopScoringTowers(): void {
+        if(!this.game.bga.gameui.bgaAnimationsActive() || window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+            return;
+        const spots: NexoSpot[] = [];
+        this.towerElements.forEach(towerElement => {
+            if(towerElement.classList.contains('scoring-tower'))
+                spots.push({ x: parseInt(towerElement.getAttribute('data-x')), y: parseInt(towerElement.getAttribute('data-y')) });
+        });
+        this.scoringHops = this.jumpTowers(spots, Game.SCORE_HIGHLIGHT_HOP_COUNT);
     }
 }
