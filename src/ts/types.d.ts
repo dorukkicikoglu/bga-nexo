@@ -27,7 +27,6 @@ interface NexoGamedatas extends Gamedatas<NexoPlayer> {
 //gamepreferences.jsonc's ids, by name (Game.php $userPrefs)
 interface GamePrefs{
     show_stack_heights: number;
-    disc_style: number;
 }
 
 //material.inc.php's constants, sent once in gamedatas
@@ -52,8 +51,7 @@ type FitRoom = { width: number; height: number; boardSize: number; extraX: numbe
 //bottom disc. Never an id: the same slot always gives the same disc, after a reload and in a replay too
 type DiscSlot = { kind: 'board' | 'reserve' | 'status'; x: number; y: number; level: number; };
 
-//[BGA] a disc's look, from its slot (BoardHandler.getDiscLook): its wooden sprite in img/wooden_discs.webp ("Disc style" Wooden:
-//column and row) and its hand-piled jitter (x and y offsets from -1 to 1, Game.scss scales them; the wooden grain's rotation in
+//[BGA] a disc's look, from its slot (BoardHandler.getDiscLook): its wooden sprite in img/wooden_discs.webp (column and row) and its hand-piled jitter (x and y offsets from -1 to 1, Game.scss scales them; the wooden grain's rotation in
 //degrees), set on the disc once, when it is made, as --col / --row / --jitter-x / --jitter-y / --jitter-rot
 type DiscLook = { col: number; row: number; jitterX: number; jitterY: number; rotation: number; };
 

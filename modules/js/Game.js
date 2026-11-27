@@ -439,9 +439,8 @@ class BoardHandler {
      * [BGA] A disc's look (its wooden sprite and its hand-piled jitter: offsets and the grain's rotation), from a hash of its color
      * and its slot alone, never Math.random(): discs have no ids, so the same slot always gives the same disc, after a reload, in a
      * replay, in the log's tower icons and while the drafted towers are rebuilt on every click. Set once, inline, when the disc's
-     * element is made (getDiscLookStyle), whatever the disc style, so switching style redraws nothing; nothing ever writes it
-     * again. Each disc's offsets are its own, not added to the ones below, so a stack never leans, and a disc added on top never
-     * changes the ones under it. A disc flying between a reserve stack and the board is a copy of the tower it lands in, so it
+     * element is made (getDiscLookStyle); nothing ever writes it again. Each disc's offsets are its own, not added to the ones
+     * below, so a stack never leans, and a disc added on top never changes the ones under it. A disc flying between a reserve stack and the board is a copy of the tower it lands in, so it
      * lands with its own look (Game.animateTowerSlide); it shows its new look from the moment it leaves the stack, at the
      * stack's size
      */
@@ -1095,9 +1094,8 @@ class BoardHandler {
     }
 }
 //the undo button's icon: a curved arrow turning back counter-clockwise, drawn with currentColor
-//[BGA] "Disc style" Wooden (PrefHandler.applyDiscStyle, Game.scss html.nexo-discs-wooden): img/wooden_discs.webp, a grid of
-//single discs, WOODEN_SPRITE_COLUMNS across and WOODEN_SPRITE_ROWS_PER_COLOR rows per color, from WOODEN_SPRITE_FIRST_ROW
-//(red rows 0 to 5, black rows 6 to 11). Game.scss holds the sheet's size ($wooden-disc-sprite-columns / -rows): keep in sync
+//[BGA] the disc sprite (Game.scss .tower-disc): img/wooden_discs.webp, a grid of single discs, WOODEN_SPRITE_COLUMNS across
+//and WOODEN_SPRITE_ROWS_PER_COLOR rows per color, from WOODEN_SPRITE_FIRST_ROW (red rows 0 to 5, black rows 6 to 11). Game.scss holds the sheet's size ($wooden-disc-sprite-columns / -rows): keep in sync
 BoardHandler.WOODEN_SPRITE_COLUMNS = 10;
 BoardHandler.WOODEN_SPRITE_ROWS_PER_COLOR = 6;
 BoardHandler.WOODEN_SPRITE_FIRST_ROW = { red: 0, black: 6 };
@@ -2215,34 +2213,21 @@ class PrefHandler {
             case this.prefNameToIndex.show_stack_heights:
                 this.applyStackHeights(prefValue);
                 break;
-            case this.prefNameToIndex.disc_style:
-                this.applyDiscStyle(prefValue);
-                break;
         }
     }
     //game specific functions
     //one class on <html>, so it reaches every tower: the board, the flying copies (in <body>) and the log rows. Any value other
-    //than Disabled is Enabled (the default; also a missing value, as for a spectator with no saved preference)
+    //than Disabled is Enabled (also a missing value, as for a spectator with no saved preference); the default is Disabled
     applyStackHeights(prefValue) {
         document.documentElement.classList.toggle('hide-stack-heights', prefValue == PrefHandler.STACK_HEIGHTS_DISABLED);
-    }
-    //one class on <html> like applyStackHeights, so every disc switches at once, wherever it is (the board, the flying copies, the
-    //reserve stacks, the status bar, the log rows). Every disc always carries its wooden sprite (BoardHandler.getDiscLook), so
-    //nothing is redrawn. Any value other than Marble is Wooden (the default; also a missing value, as for a spectator with no
-    //saved preference)
-    applyDiscStyle(prefValue) {
-        document.documentElement.classList.toggle('nexo-discs-wooden', prefValue != PrefHandler.DISC_STYLE_MARBLE);
     }
 }
 //"Always show stack heights" (gamepreferences.jsonc, pref 100): the height number on top of every tower, 1 Enabled, 2 Disabled
 PrefHandler.STACK_HEIGHTS_DISABLED = 2;
-//"Disc style" (pref 101): 1 Wooden (img/wooden_discs.webp), 2 Marble (the CSS discs)
-PrefHandler.DISC_STYLE_MARBLE = 2;
 //Game.php $userPrefs, for gamedatas without pref_names: a replay starts from the gamedatas saved when its game began, so a
 //game begun before a preference existed has no pref_names (or lacks the newer ones). Keep in sync with Game.php
 PrefHandler.DEFAULT_PREF_NAMES = {
     show_stack_heights: 100,
-    disc_style: 101,
 };
 
 /**

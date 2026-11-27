@@ -83,9 +83,8 @@ export class BoardHandler {
     private applyingPlacements: boolean = false; //a confirmed turn is playing (applyPlacements): no scoring highlight until it has landed
 
     //the undo button's icon: a curved arrow turning back counter-clockwise, drawn with currentColor
-    //[BGA] "Disc style" Wooden (PrefHandler.applyDiscStyle, Game.scss html.nexo-discs-wooden): img/wooden_discs.webp, a grid of
-    //single discs, WOODEN_SPRITE_COLUMNS across and WOODEN_SPRITE_ROWS_PER_COLOR rows per color, from WOODEN_SPRITE_FIRST_ROW
-    //(red rows 0 to 5, black rows 6 to 11). Game.scss holds the sheet's size ($wooden-disc-sprite-columns / -rows): keep in sync
+    //[BGA] the disc sprite (Game.scss .tower-disc): img/wooden_discs.webp, a grid of single discs, WOODEN_SPRITE_COLUMNS across
+    //and WOODEN_SPRITE_ROWS_PER_COLOR rows per color, from WOODEN_SPRITE_FIRST_ROW (red rows 0 to 5, black rows 6 to 11). Game.scss holds the sheet's size ($wooden-disc-sprite-columns / -rows): keep in sync
     private static readonly WOODEN_SPRITE_COLUMNS = 10;
     private static readonly WOODEN_SPRITE_ROWS_PER_COLOR = 6;
     private static readonly WOODEN_SPRITE_FIRST_ROW: Record<DiscColor, number> = { red: 0, black: 6 };
@@ -379,9 +378,8 @@ export class BoardHandler {
      * [BGA] A disc's look (its wooden sprite and its hand-piled jitter: offsets and the grain's rotation), from a hash of its color
      * and its slot alone, never Math.random(): discs have no ids, so the same slot always gives the same disc, after a reload, in a
      * replay, in the log's tower icons and while the drafted towers are rebuilt on every click. Set once, inline, when the disc's
-     * element is made (getDiscLookStyle), whatever the disc style, so switching style redraws nothing; nothing ever writes it
-     * again. Each disc's offsets are its own, not added to the ones below, so a stack never leans, and a disc added on top never
-     * changes the ones under it. A disc flying between a reserve stack and the board is a copy of the tower it lands in, so it
+     * element is made (getDiscLookStyle); nothing ever writes it again. Each disc's offsets are its own, not added to the ones
+     * below, so a stack never leans, and a disc added on top never changes the ones under it. A disc flying between a reserve stack and the board is a copy of the tower it lands in, so it
      * lands with its own look (Game.animateTowerSlide); it shows its new look from the moment it leaves the stack, at the
      * stack's size
      */

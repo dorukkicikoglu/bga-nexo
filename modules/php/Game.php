@@ -28,7 +28,6 @@ class Game extends \Bga\GameFramework\Table
     //gamepreferences.jsonc's ids by name, sent as gamedatas.pref_names; PrefHandler.DEFAULT_PREF_NAMES repeats them for replays of older games
     public array $userPrefs = array(
         'show_stack_heights' => 100,
-        'disc_style' => 101,
     );
 
     /**

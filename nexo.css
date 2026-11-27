@@ -210,28 +210,32 @@ body .sliding-clone {
   bottom: calc(var(--tower-base) + var(--disc-thickness) * var(--disc-index));
   width: var(--disc-width);
   height: calc(var(--disc-face-height) + var(--disc-thickness));
-  background: radial-gradient(ellipse closest-side at 50% 50%, var(--disc-face-light) 0%, var(--disc-face) 62%, var(--disc-face) 93%, var(--disc-side) 98%, transparent 100%) top center/100% var(--disc-face-height) no-repeat;
+  background: url(img/wooden_discs.webp) calc(var(--col, 0) * 100% / 9) calc(var(--row, 0) * 100% / 11)/1000% 1200% no-repeat;
+  --wooden-face-squash: calc(var(--disc-box-ratio) * 0.7313642757);
 }
 .nexo-tower .tower-disc::before {
   content: "";
   position: absolute;
-  z-index: -1;
+  z-index: 0;
   left: 0px;
   right: 0px;
-  top: calc(var(--disc-face-height) / 2);
-  bottom: calc(var(--disc-face-height) / 2);
-  background: linear-gradient(90deg, var(--disc-side-dark), var(--disc-side) 35%, var(--disc-side) 65%, var(--disc-side-dark));
+  top: 0px;
+  bottom: 0px;
+  background: url(img/wooden_discs.webp) calc(var(--col, 0) * 100% / 9) calc(var(--row, 0) * 100% / 11)/1000% 1200% no-repeat;
+  transform-origin: 50% 37.2222222222%;
+  transform: scaleY(var(--wooden-face-squash)) rotate(var(--jitter-rot, 0deg)) scaleY(calc(1 / var(--wooden-face-squash)));
+  -webkit-mask-image: radial-gradient(49.375% 36.1111111111% at 50% 37.2222222222%, #000000 70%, transparent 86%);
+  mask-image: radial-gradient(49.375% 36.1111111111% at 50% 37.2222222222%, #000000 70%, transparent 86%);
 }
 .nexo-tower .tower-disc::after {
   content: "";
   position: absolute;
-  z-index: -1;
-  left: 0px;
-  right: 0px;
-  bottom: 0px;
-  height: var(--disc-face-height);
+  z-index: 1;
+  left: 0.625%;
+  right: 0.625%;
+  bottom: 1.1111111111%;
+  height: 72.2222222222%;
   border-radius: 50%;
-  background: linear-gradient(90deg, var(--disc-side-dark), var(--disc-side) 35%, var(--disc-side) 65%, var(--disc-side-dark));
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
 }
 .nexo-tower .tower-disc + .tower-disc::after {
@@ -253,24 +257,16 @@ body .sliding-clone {
   font-weight: bold;
   line-height: 1;
   color: var(--disc-number);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7), 0 0 3px rgba(0, 0, 0, 0.55);
 }
 
 .nexo-tower[data-disc-color=red] {
-  --disc-face: #d42a20;
-  --disc-face-light: #ff6a5c;
-  --disc-side: #a8150e;
-  --disc-side-dark: #6a0905;
   --disc-number: #ffffff;
   --disc-seam-above: rgba(255, 150, 135, 0.75);
   --disc-seam-below: #240100;
 }
 
 .nexo-tower[data-disc-color=black] {
-  --disc-face: #2b2c31;
-  --disc-face-light: #63656e;
-  --disc-side: #17181b;
-  --disc-side-dark: #050506;
   --disc-number: #ffffff;
   --disc-seam-above: #000000;
   --disc-seam-below: rgba(178, 181, 192, 0.8);
@@ -300,32 +296,6 @@ body .sliding-clone {
 
 html.hide-stack-heights .tower-height-number {
   display: none;
-}
-
-html.nexo-discs-wooden .nexo-tower .tower-disc {
-  background: url(img/wooden_discs.webp) calc(var(--col, 0) * 100% / 9) calc(var(--row, 0) * 100% / 11)/1000% 1200% no-repeat;
-  --wooden-face-squash: calc(var(--disc-box-ratio) * 0.7313642757);
-}
-html.nexo-discs-wooden .nexo-tower .tower-disc::before {
-  z-index: 0;
-  top: 0px;
-  bottom: 0px;
-  background: url(img/wooden_discs.webp) calc(var(--col, 0) * 100% / 9) calc(var(--row, 0) * 100% / 11)/1000% 1200% no-repeat;
-  transform-origin: 50% 37.2222222222%;
-  transform: scaleY(var(--wooden-face-squash)) rotate(var(--jitter-rot, 0deg)) scaleY(calc(1 / var(--wooden-face-squash)));
-  -webkit-mask-image: radial-gradient(49.375% 36.1111111111% at 50% 37.2222222222%, #000000 70%, transparent 86%);
-  mask-image: radial-gradient(49.375% 36.1111111111% at 50% 37.2222222222%, #000000 70%, transparent 86%);
-}
-html.nexo-discs-wooden .nexo-tower .tower-disc::after {
-  z-index: 1;
-  left: 0.625%;
-  right: 0.625%;
-  bottom: 1.1111111111%;
-  height: 72.2222222222%;
-  background: none;
-}
-html.nexo-discs-wooden .nexo-tower .tower-height-number {
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7), 0 0 3px rgba(0, 0, 0, 0.55);
 }
 
 #nexo-board-container {

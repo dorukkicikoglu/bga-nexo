@@ -34,19 +34,6 @@
         "name": "Disabled"
       }
     },
-    "default": 1
-  },
-
-  "101": {
-    "name": "Disc style",
-    "values": {
-      "1": {
-        "name": "Wooden"
-      },
-      "2": {
-        "name": "Marble"
-      }
-    },
-    "default": 1
+    "default": 2
   }
 }

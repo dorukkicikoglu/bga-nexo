@@ -827,3 +827,12 @@ Turns and the game end:
 - [ ] Game end, live: the end-game display (largest groups glowing, the rest dimmed) shows; hovering or tapping the scoreboard changes nothing, and leaving it or tapping elsewhere doesn't change the end-game display.
 - [ ] Game end, after F5 (and in a replay reaching the end): the same, the scoreboard does nothing.
 - [ ] The highlight shown when the last turn is confirmed: it ends, and the end-game display comes up unchanged.
+
+## After M1: wooden discs only
+
+Deploy `gamepreferences.jsonc`, `modules/` and `nexo.css`, then Studio's game page > "Reload game options configuration". No schema change; open a new table, or F5 an ongoing one.
+
+- [ ] BGA's preferences menu (the cog) no longer lists "Disc style"; "Always show stack heights" is still there, Disabled by default.
+- [ ] Every disc is wooden, as before with Wooden on: the board's towers, the drafted and flying towers, both reserve stacks, the status bar's disc icons, the bubble's icon and the log rows. Seams between stacked discs and the bottom disc's shadow still show; each disc's grain turns on its own.
+- [ ] A new player (and a spectator) sees no height numbers on the towers; switching "Always show stack heights" to Enabled shows them at once (board, flying towers, log rows), back to Disabled hides them. A player who had already saved Enabled keeps it.
+- [ ] Replay (`replayFrom`) of a game begun before this change (its gamedatas still list `disc_style`): it loads with no console error, every disc wooden.
