@@ -203,6 +203,14 @@ $bg-red-disc-footprint-bottom-share: 1;
 //page at its top (see #nexo-board-container)
 $below-board-gap-share: 40;
 $below-board-gap-mobile-share: 50;
+//mobile only (body.mobile_version): the room between BGA's status bar (#page-title) and our game area (the avatars and reserves on
+//the board's top edge), in screen px (divided by BGA's zoom, like the gap under the board). Desktop keeps the container's 10px
+$above-board-gap-mobile: 13px;
+//mobile only: the status bar's (#page-title) height the board is placed for, in screen px: the board always sits as low as it
+//does with a bar this tall, whatever the bar shows (#nexo-board-container). The title with the red "Get back to tables list" /
+//"X tables are waiting for you" button (73px, measured; the title alone 43px), so the board never moves between turns. A bar
+//taller still (the "This player is not playing" link under the button) pushes the board down by the difference
+$status-bar-mobile-reserved-height: 73px;
 
 //the material set: the board, the player boards and the log rows in the page background's palette, a white marble a little
 //lighter than the surface, charcoal for lines and dots (the black discs' tone) and the game's red
@@ -732,17 +740,24 @@ html.nexo-discs-wooden .nexo-tower{
 //board (BoardHandler): --board-size spots across and down (GRID_SIZE + 2). .board-layer holds the spots and towers at their
 //own board coordinates (--x, --y, spots of --cell-size) and its translate (set inline, transitioned only while recentering)
 //centres them on the board. Overflow is hidden, so nothing ever shows outside the board
-//#nexo-board-container: 10px from the status bar. Under the board, the gap ($below-board-gap-*) before BGA's content after
-//the game area, never less than what puts that content under the window's bottom with the page at its top: on a phone the
-//board is only as tall as the screen is wide, so it ends well above the screen's bottom (--board-page-bottom: the board's
-//bottom on the page, screen px, BoardHandler.fitToViewport). Both are screen lengths, divided by BGA's zoom (it scales the
+//#nexo-board-container: 10px from the status bar ($above-board-gap-mobile on screen on mobile). Under the board, the gap
+//($below-board-gap-*) before BGA's content after the game area, never less than what puts that content under the window's
+//bottom with the page at its top: on a phone the board is only as tall as the screen is wide, so it ends well above the
+//screen's bottom (--board-page-bottom: the board's bottom on the page, screen px, BoardHandler.fitToViewport). Both are screen lengths, divided by BGA's zoom (it scales the
 //game area down on a phone, and these lengths with it). Padding: nothing in the gap catches a click or a tap
 #nexo-board-container{ display: flex; flex-direction: column; align-items: center; padding: 10px 0px;
     --below-board-gap-share: #{$below-board-gap-share};
     padding-bottom: calc(max(var(--below-board-gap-share) * 1vh, 100vh - var(--board-page-bottom, 0px)) / var(--bga-game-zoom, 1));
     padding-bottom: calc(max(var(--below-board-gap-share) * 1dvh, 100dvh - var(--board-page-bottom, 0px)) / var(--bga-game-zoom, 1));
 }
-.mobile_version #nexo-board-container{ --below-board-gap-share: #{$below-board-gap-mobile-share}; }
+//[BGA] mobile: the board never moves when the status bar changes height (BGA's button and link coming and going, the title
+//wrapping). The container's top padding takes up what the bar is short of its tallest state ($status-bar-mobile-reserved-height),
+//so the bar plus the padding stay the same height. --status-bar-height is the bar's height on screen (BoardHandler.observeStatusBar);
+//without it the padding is just the gap. Our own element, not #page-title: BGA's bar keeps its own height, pinned at the window's
+//top too. Screen px, divided by BGA's zoom like the gap under the board
+.mobile_version #nexo-board-container{ --below-board-gap-share: #{$below-board-gap-mobile-share};
+    padding-top: calc((#{$above-board-gap-mobile} + max(0px, #{$status-bar-mobile-reserved-height} - var(--status-bar-height, #{$status-bar-mobile-reserved-height}))) / var(--bga-game-zoom, 1));
+}
 //[BGA] the board's top band ($board-top-band-ratio spots, its padding-top) holds the players' avatars and reserves (#nexo-top-bar):
 //the grid (.board-layer) starts under it, so no spot is ever under them. The draft controls' edges are measured from the layer's
 //own top, so they still keep inside the grid's square

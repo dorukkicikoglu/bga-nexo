@@ -209,6 +209,7 @@ class BoardHandler {
         const container = this.getContainerElement();
         if (container)
             widthObserver.observe(container);
+        this.observeStatusBar();
         this.observeLayoutAboveBoard(new ResizeObserver(() => this.requestFit()));
         this.layerElement.addEventListener('click', (event) => this.onBoardClick(event));
     }
@@ -221,6 +222,23 @@ class BoardHandler {
             this.fitFrame = 0;
             this.fitToViewport();
         });
+    }
+    //[BGA] mobile: the status bar's (#page-title) height on screen, as --status-bar-height on the container, whose top padding takes
+    //up what the bar is short of its tallest state (Game.scss: $status-bar-mobile-reserved-height), so the board never moves when
+    //the bar changes height. A ResizeObserver runs after layout and before paint, so the padding changes in the same frame as the
+    //bar, and the fit (requestFit, the next frame) finds the board's top where it was. Written on desktop too, where nothing reads it
+    observeStatusBar() {
+        const statusBar = document.getElementById('page-title');
+        const container = this.getContainerElement();
+        if (!statusBar || !container)
+            return;
+        const update = () => {
+            const height = `${Math.round(statusBar.getBoundingClientRect().height * 100) / 100}px`; //screen px, BGA's zoom included
+            if (container.style.getPropertyValue('--status-bar-height') !== height)
+                container.style.setProperty('--status-bar-height', height);
+        };
+        update();
+        new ResizeObserver(update).observe(statusBar);
     }
     //observes every element laid out before the board: the earlier siblings of the board's column and of each of its ancestors
     //up to body (BGA's top bar, the status bar, anything above the game area), never the board's own siblings (the avatars'
