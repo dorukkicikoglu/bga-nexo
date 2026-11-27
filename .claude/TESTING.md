@@ -836,3 +836,14 @@ Deploy `gamepreferences.jsonc`, `modules/` and `nexo.css`, then Studio's game pa
 - [ ] Every disc is wooden, as before with Wooden on: the board's towers, the drafted and flying towers, both reserve stacks, the status bar's disc icons, the bubble's icon and the log rows. Seams between stacked discs and the bottom disc's shadow still show; each disc's grain turns on its own.
 - [ ] A new player (and a spectator) sees no height numbers on the towers; switching "Always show stack heights" to Enabled shows them at once (board, flying towers, log rows), back to Disabled hides them. A player who had already saved Enabled keeps it.
 - [ ] Replay (`replayFrom`) of a game begun before this change (its gamedatas still list `disc_style`): it loads with no console error, every disc wooden.
+
+## After M1: bigger reserve stacks
+
+Deploy `nexo.css`. No server or TS change. Check on desktop and on a phone, as red and as black.
+
+- [ ] Both players' reserve stacks are 5% larger (taller and wider) than before. Their bottom edge is exactly where it was: your stacks grow up and to the right from their bottom-left corner, the opponent's up and to the left from their bottom-right corner. The gap between each avatar and its first stack is unchanged.
+- [ ] The stacks stay inside the board's top band: they don't stick out above the board's top edge, don't overlap the avatar, and don't cover any spot, ring or tower of the top row (draft along the top row, and use `debug_fillBoard`).
+- [ ] The score numbers are the same size and in the same place as before. With two-digit scores and two-digit "would be" previews (`debug_fillBoard`), nothing touches the stacks, on desktop or on a phone.
+- [ ] PASSED: the stamp is centred over the bigger stacks (`gameui.debug_passAnim(2)`), and the banner flies onto it.
+- [ ] Flights: discs leave the top of the stacks and land back on them exactly, for your turn, the opponent's turn, and a replacement that sends discs back.
+- [ ] Narrow window: the stacks stay on one line and still shrink rather than meet in the middle.
