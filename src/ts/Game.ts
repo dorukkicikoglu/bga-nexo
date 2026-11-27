@@ -35,7 +35,9 @@ export class Game {
     public static readonly CONFIRM_RING_STAGGER = 50; //ms between two segments of the confirm button's ring filling when it first shows (BoardHandler.createConfirmRing)
     public static readonly TOWER_DISC_STAGGER = 50; //ms between two discs of the same tower leaving (bottom disc first onto the board, top disc first off it); a spot takes TOWER_SLIDE_DURATION plus this much per disc above the first
     public static readonly TOWER_SLIDE_EASING = 'ease-in-out';
-    public static readonly BOARD_RECENTER_DURATION = 280; //ms of the board's contents sliding to stay centred (BoardHandler.centerContents; Yaxha's was 400ms)
+    //ms of the board's contents sliding to stay centred (BoardHandler.centerContents; Yaxha's was 400ms). A confirmed turn's
+    //slide runs during its flights (BoardHandler.applyPlacements): keep it under TOWER_SLIDE_DURATION, so the board is in place before a disc lands
+    public static readonly BOARD_RECENTER_DURATION = 280;
     public static readonly BOARD_RECENTER_EASING = 'ease-out';
     //[BGA] the bubble over a tower a click can't draft on (BoardHandler.showTowerWarning); its shake is CSS only (Game.scss: $tower-shake-*)
     public static readonly TOWER_MESSAGE_FADE_IN = 150;
@@ -213,10 +215,11 @@ export class Game {
     //number with the top one. Everything is measured on screen (getBoundingClientRect), and the copies (in <body>, outside
     //BGA's mobile scaling of the game area) convert screen px with their measured zoom, so they match on desktop and mobile
     //alike. A placeholder (the drafted tower on the same spot, in front of it) hides its disc i, and with the top one its height
-    //number, as disc i lands, so the solid disc takes its place in the same frame. Resolves once the top disc has landed.
-    //Everything before the first await runs synchronously
-    public async animateTowerSlide(towerElement: HTMLDivElement, fromDiscRects: DOMRect[], fallbackFromRect: DOMRect, durationMs: number, staggerMs: number = Game.TOWER_DISC_STAGGER, options: SlideOptions = {}, placeholder: HTMLDivElement | null = null): Promise<void> {
-        const toRect = towerElement.getBoundingClientRect();
+    //number, as disc i lands, so the solid disc takes its place in the same frame. toRectOverride: where the tower will be on
+    //screen when its discs land, if not where it is now (the board sliding meanwhile, BoardHandler.applyPlacements). Resolves
+    //once the top disc has landed. Everything before the first await runs synchronously
+    public async animateTowerSlide(towerElement: HTMLDivElement, fromDiscRects: DOMRect[], fallbackFromRect: DOMRect, durationMs: number, staggerMs: number = Game.TOWER_DISC_STAGGER, options: SlideOptions = {}, placeholder: HTMLDivElement | null = null, toRectOverride: DOMRect | null = null): Promise<void> {
+        const toRect = toRectOverride ?? towerElement.getBoundingClientRect();
         const discParts = Game.getTowerDiscParts(towerElement);
         const placeholderParts = placeholder ? Game.getTowerDiscParts(placeholder) : [];
         const slidingClones = discParts.map((_, discIndex) => this.createDiscSlidingClone(towerElement, discIndex)); //before the tower's own discs are hidden
@@ -400,8 +403,9 @@ export class Game {
     // Add the notification handlers
 
     //a confirmed turn: spot by spot, the replaced tower flies back onto its owner's reserve stacks while the new tower's discs
-    //leave the player's stacks for its spot (BoardHandler.applyPlacements); then the reserves are checked against the server's
-    //count (rebuilt if they differ), the scores update and the board re-centres
+    //leave the player's stacks for its spot, while the board slides to its new centre (BoardHandler.applyPlacements); then the
+    //reserves are checked against the server's count (rebuilt if they differ), the scores update and recenter makes sure the
+    //board is centred (normally already so; with animations off, the layout applies here)
     public async notif_towersPlaced(args: TowersPlacedArgs) {
         this.players[args.player_id]?.setPassed(false);
 

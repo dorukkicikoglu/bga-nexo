@@ -39,7 +39,8 @@ export type DraftClickHandlers = {
  * their own board coordinates (--x, --y times --cell-size), in a frame anchored to the first tower (0 0) for the whole game, so
  * a tower's grid position never changes. Only the layer moves: like Yaxha's centerCubesContainer(), its translate centres the
  * bounding box of the towers plus the legal spots in the board (centerContents), sliding over BOARD_RECENTER_DURATION when
- * that box changes, at once on load. The legal spots count in the box for everyone but only the player drafting sees them.
+ * that box changes, at once on load; a confirmed turn slides to its final box as its discs fly, each disc aimed at where its
+ * spot will be once the slide ends (applyPlacements). The legal spots count in the box for everyone but only the player drafting sees them.
  * Nothing else is drawn: no empty spots, no grid outline. The board is (gridSize + 1 + 2 * --board-edge-padding) spots across
  * and down (readBoardSize): the largest box is gridSize + 1 (4 columns of towers with a legal spot on each side; with 5, no spot
  * beyond them is legal), plus Game.scss's $board-edge-padding on each side (smaller on BGA's mobile layout). Its spot size
@@ -65,7 +66,8 @@ export class BoardHandler {
     private contentsCenterX: number | null = null; //the middle of the towers' and legal spots' bounding box, in spots, once centred
     private contentsCenterY: number | null = null;
     //[BGA] while my draft has towers, the centre is frozen where it was when the first one was drafted (centerContents), until
-    //the turn's towers have landed (recenter) or the draft is emptied (setDraft)
+    //the turn is confirmed and its towers start flying (applyPlacements, which slides to the final centre meanwhile), or the
+    //draft is emptied (setDraft)
     private frozenCenter: { x: number; y: number; } | null = null;
     private boxLegalSpots: NexoSpot[] = []; //the legal spots the box is centred on, shown or not (getBoxLegalSpots)
     private towers = new Map<string, NexoTower>();
@@ -442,14 +444,18 @@ export class BoardHandler {
      * (BOARD_RECENTER_DURATION) and animations are on, else applies at once (on load). Resolves once it has slid.
      * [BGA] While my draft has towers (frozenCenter), the contents keep the centre they had when it began, even off-centre: they
      * only move when the draft would leave the board (a line of new towers from the edge of the box, whose own new legal spots
-     * may be built on this turn), by the least that keeps the whole box on it; the box is never wider than the board
+     * may be built on this turn), by the least that keeps the whole box on it; the box is never wider than the board.
+     * contents: the spots to centre on instead of the board's own (towers, draft, boxLegalSpots); a confirmed turn passes its
+     * final board's (applyPlacements, getLandingContents) before its towers are on it
      */
-    private async centerContents(animate: boolean): Promise<void> {
-        const contents = new Map<string, NexoSpot>(this.towers);
-        for(const pendingTower of this.draft?.pending ?? [])
-            contents.set(BoardRules.key(pendingTower.x, pendingTower.y), pendingTower);
-        for(const spot of this.boxLegalSpots)
-            contents.set(BoardRules.key(spot.x, spot.y), spot);
+    private async centerContents(animate: boolean, contents: Map<string, NexoSpot> | null = null): Promise<void> {
+        if(!contents){
+            contents = new Map<string, NexoSpot>(this.towers);
+            for(const pendingTower of this.draft?.pending ?? [])
+                contents.set(BoardRules.key(pendingTower.x, pendingTower.y), pendingTower);
+            for(const spot of this.boxLegalSpots)
+                contents.set(BoardRules.key(spot.x, spot.y), spot);
+        }
 
         const bounds = BoardRules.getBounds(contents);
         let centerX = bounds ? (bounds.minX + bounds.maxX + 1) / 2 : 0.5; //spot x covers x to x + 1
@@ -480,12 +486,46 @@ export class BoardHandler {
             await this.game.bga.gameui.wait(Game.BOARD_RECENTER_DURATION);
     }
 
-    //after a turn (notif_towersPlaced, once the towers have landed, so my own confirmed towers land on the frozen layout): the
-    //centre is free again, the spots for the new board, then the layer slides to centre the new bounding box
+    //after a turn (notif_towersPlaced, once the towers have landed): the centre is free again, the spots for the new board,
+    //then the layer slides to centre the new bounding box. A safety net: applyPlacements already slid to that centre while the
+    //discs flew (with animations off, this is where the layout applies), so normally nothing moves here
     public async recenter(): Promise<void> {
         this.frozenCenter = null;
         this.renderSpots();
         await this.centerContents(true);
+    }
+
+    //a confirmed turn's final board, before its towers are on it (applyPlacements): the towers with every placement applied
+    //(a new tower, or a replacement taking the enemy tower's spot) plus that board's legal spots, as getBoxLegalSpots gives
+    //them with no draft (none once the game is over), so the centre is the one recenter finds once the towers have landed
+    private getLandingContents(playerID: number, placements: NexoPlacement[]): Map<string, NexoSpot> {
+        const finalTowers = new Map<string, NexoTower>(this.towers);
+        for(const placement of placements)
+            finalTowers.set(BoardRules.key(placement.x, placement.y), { x: placement.x, y: placement.y, player_id: playerID, height: placement.height });
+        const contents = new Map<string, NexoSpot>(finalTowers);
+        if(!this.game.isGameOver()){
+            for(const spot of this.game.boardRules.getLegalNewSpots(finalTowers))
+                contents.set(BoardRules.key(spot.x, spot.y), spot);
+        }
+        return contents;
+    }
+
+    //where an element in the layer will be on screen once the layer's slide (centerContents) ends: its rect now, moved by what
+    //the slide has left to go, the layer's target translate (--layer-offset-x / -y spots) minus its live one (mid-transition,
+    //getComputedStyle gives the current value), converted to screen px with the board's zoom (BGA's mobile scaling). The
+    //same rect when nothing slides. Read live, so it also holds if the page scrolls between two spots' flights
+    private getRectAfterLayerSlide(element: HTMLElement): DOMRect {
+        const rect = element.getBoundingClientRect();
+        const cellSize = parseFloat(this.boardElement.style.getPropertyValue('--cell-size'));
+        const zoom = parseFloat(this.boardElement.style.getPropertyValue('--board-zoom')) || 1;
+        const targetX = parseFloat(this.layerElement.style.getPropertyValue('--layer-offset-x')) * cellSize;
+        const targetY = parseFloat(this.layerElement.style.getPropertyValue('--layer-offset-y')) * cellSize;
+        const live = getComputedStyle(this.layerElement).translate; //"none", "Xpx" or "Xpx Ypx"
+        const [liveX = 0, liveY = 0] = (live && live !== 'none') ? live.split(' ').map(value => parseFloat(value)) : [];
+        const dx = (targetX - liveX) * zoom, dy = (targetY - liveY) * zoom;
+        if(!isFinite(dx) || !isFinite(dy))
+            return rect;
+        return new DOMRect(rect.left + dx, rect.top + dy, rect.width, rect.height);
     }
 
     //the legal spots the box is centred on (centerContents), for every viewer: the draft's while I draft, otherwise the empty
@@ -821,8 +861,11 @@ export class BoardHandler {
      * the new tower's discs fly from the top of the player's stacks onto it, bottom disc first (discs TOWER_DISC_STAGGER
      * apart); the next spot starts TOWER_SPOT_DELAY_SHARE (0.3) of the way through this one's flight. Every viewer sees the same flights, the player who drafted
      * the turn included: their drafted towers only stay as placeholders until their spot's turn, then fly in from their
-     * stacks like anyone's. With animations off nothing flies and nothing is awaited: every spot applies at once, stacks
-     * included. Resolves once every tower has landed.
+     * stacks like anyone's. Meanwhile the board slides to the turn's final centre (getLandingContents), starting with the
+     * first flight, and every disc flies straight to where its spot will be once that slide has ended (getRectAfterLayerSlide):
+     * the drafted placeholders and the replaced towers slide with the layer, and the replaced towers' discs leave from where
+     * they are. With animations off nothing flies and nothing is awaited: every spot applies at once, stacks included, and
+     * recenter applies the new centre. Resolves once every tower has landed.
      */
     public async applyPlacements(playerID: number, placements: NexoPlacement[]): Promise<void> {
         //the turn is over: no more clicks while it animates (the next PlaceTowers sets its handlers again), no more badges or
@@ -838,9 +881,17 @@ export class BoardHandler {
             this.towerElements.get(key)?.classList.add('being-replaced'); //the enemy tower it replaces stays faded until then
         });
 
+        //the board slides to the final centre now, not after the flights (not awaited). It takes BOARD_RECENTER_DURATION
+        //(280ms), under a disc's TOWER_SLIDE_DURATION (520ms), so it has ended before any disc lands; were it longer, a disc
+        //would still land in the right place, only before the board is there
+        const animate = this.game.bga.gameui.bgaAnimationsActive();
+        if(animate){
+            this.frozenCenter = null;
+            this.centerContents(true, this.getLandingContents(playerID, placements));
+        }
+
         //each spot's flights start TOWER_SPOT_DELAY_SHARE of the previous spot's flight time after it (or once it has landed,
         //if that comes first); the turn ends once every disc has landed
-        const animate = this.game.bga.gameui.bgaAnimationsActive();
         const allFlights: Promise<void>[] = [];
         for(const placement of placements){
             const flights = this.applyPlacement(playerID, placement, draftedElements, animate);
@@ -891,11 +942,12 @@ export class BoardHandler {
             this.towersLayer.appendChild(placeholder); //in front of the new tower: its upper discs still sit over the discs landed under them
 
         //the new tower's discs leave the player's stacks, bottom disc first: the first disc taken is the bottom one's. The same
-        //flight for every viewer, the player who drafted it included
+        //flight for every viewer, the player who drafted it included. Aimed at where the tower will be once the board's slide
+        //(applyPlacements) has ended, not where it is now
         const mover = this.game.players[playerID];
         const takenDiscRects = mover?.takeDiscs(placement.height) ?? [];
         if(animate && mover)
-            flights.push(this.game.animateTowerSlide(towerElement, takenDiscRects, mover.getReserveRect(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }, placeholder).finally(() => placeholder?.remove()));
+            flights.push(this.game.animateTowerSlide(towerElement, takenDiscRects, mover.getReserveRect(), Game.TOWER_SLIDE_DURATION, Game.TOWER_DISC_STAGGER, { easing: Game.TOWER_SLIDE_EASING }, placeholder, this.getRectAfterLayerSlide(towerElement)).finally(() => placeholder?.remove()));
         else placeholder?.remove(); //nothing flies: the tower is already whole
         return flights;
     }

@@ -782,3 +782,16 @@ Deploy `modules/` and `nexo.css`. No server change. Check on a phone (BGA's mobi
 - [ ] When "This player is not playing: what can I do?" shows under the button, the board moves down by about the link's height, and back up when it goes. Measure the bar then (`document.getElementById('page-title').getBoundingClientRect().height`) and note the value in CLAUDE.md > Layout > Status bar room.
 - [ ] Scroll down until BGA pins the status bar at the window's top: it keeps its own height (no empty strip under it), and the board doesn't jump when the button comes or goes while pinned.
 - [ ] Desktop: the board's place under the status bar is unchanged.
+
+## After M1: board slides during the flights
+
+Deploy `modules/` only. No server change. Check on desktop and a phone, as the player confirming and as the opponent (or a spectator).
+
+- [ ] A turn that grows the box at its edge (a new tower on the outermost legal spot, or a line of 2 or 3 new towers outwards): the board starts sliding as soon as the first disc leaves the stacks, the slide is over before the first disc lands, and every disc lands exactly on its spot (no sideways hop at the end, no gap between the discs of one tower). After the last disc, nothing moves any more.
+- [ ] The same turn from the confirming player's side: the placeholders slide with the board, and each solid disc lands exactly on its placeholder disc.
+- [ ] A turn of several towers whose later spots start mid-slide (3 or more towers): the later ones land in place too.
+- [ ] A replacement turn: the enemy tower's discs leave from where the tower is on screen (sliding or not) and land on their owner's stacks; the new tower's discs land exactly on the spot. A replacement-only turn (the box usually doesn't change): no slide, as before.
+- [ ] A turn that doesn't change the box (a tower inside it): no slide at all.
+- [ ] A turn whose draft had shifted the frozen centre (a line of new towers reaching the board's edge while drafting): on confirm it slides to the final centre during the flights, the discs still land in place.
+- [ ] Animations off (BGA's game settings, or a fast replay): every tower applies at once and the board takes its new centre at once, with no slide.
+- [ ] Pass and the game end after a turn: nothing slides after the turn's flights.
