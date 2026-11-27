@@ -16,6 +16,7 @@ import { BoardHandler } from "./BoardHandler";
 import { BoardRules } from "./BoardRules";
 import { LogMutationObserver } from "./LogMutationObserver";
 import { LogHighlightHandler } from "./LogHighlightHandler";
+import { ScoreHighlightHandler } from "./ScoreHighlightHandler";
 import { TooltipHandler } from "./TooltipHandler";
 import { EndGameScoringHandler } from "./EndGameScoringHandler";
 import { PrefHandler } from "./PrefHandler";
@@ -75,6 +76,7 @@ export class Game {
     public boardHandler: BoardHandler;
     public logMutationObserver: LogMutationObserver;
     public logHighlightHandler: LogHighlightHandler;
+    public scoreHighlightHandler: ScoreHighlightHandler;
     public tooltipHandler: TooltipHandler;
     public prefHandler: PrefHandler;
     public backgroundHandler: BackgroundHandler;
@@ -140,6 +142,7 @@ export class Game {
         this.confirmPopover = new ConfirmPopover(this);
         this.logMutationObserver = new LogMutationObserver(this);
         this.logHighlightHandler = new LogHighlightHandler(this);
+        this.scoreHighlightHandler = new ScoreHighlightHandler(this); //before the end-game display below, which turns it off after a reload
         this.tooltipHandler = new TooltipHandler(this);
         this.prefHandler = new PrefHandler(this, gamedatas.pref_names);
         this.bga.gameui.onScreenWidthChange = () => this.onScreenWidthChange();

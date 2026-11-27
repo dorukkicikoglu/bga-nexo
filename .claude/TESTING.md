@@ -795,3 +795,33 @@ Deploy `modules/` only. No server change. Check on desktop and a phone, as the p
 - [ ] A turn whose draft had shifted the frozen centre (a line of new towers reaching the board's edge while drafting): on confirm it slides to the final centre during the flights, the discs still land in place.
 - [ ] Animations off (BGA's game settings, or a fast replay): every tower applies at once and the board takes its new centre at once, with no slide.
 - [ ] Pass and the game end after a turn: nothing slides after the turn's flights.
+
+## After M1: scoring highlight
+
+Deploy `modules/` and `nexo.css`. No server change. Check on desktop with a mouse and on a phone (touch), as the player drafting, as the opponent and as a spectator.
+
+Without a draft (the opponent, a spectator, or my turn with nothing drafted):
+- [ ] Desktop: moving the mouse anywhere onto the scoreboard (either score, the centre line, the space around them) dims every tower outside both players' largest areas (lower opacity, red slightly greyed), with a short fade; both areas stay as they are. Moving around inside the scoreboard changes nothing. Leaving the scoreboard brings every tower back.
+- [ ] Phone: a tap anywhere on the scoreboard shows both areas, and they stay; a second tap anywhere on it ends it.
+- [ ] Two areas tied for largest: only the top-left one stays undimmed (the one whose topmost tower is in the higher row, or, in the same row, further left), the other dims; still the same one after a turn that grows or slides the board without changing those areas. The score and the end-game display are unchanged (the end-game glow still shows every tied area). A player with no tower yet: only the other player's area stays undimmed.
+- [ ] My turn with nothing drafted: the target rings stay as they are while the highlight shows.
+
+Drafting (several towers drafted, one of them a replacement, one raised a few discs; compare with the screenshots: the highlight on the board as it was before the draft):
+- [ ] Hovering the scoreboard (or tapping it on a phone): the drafted towers, the count badges, the undo and confirm buttons and the gold ring go; the enemy tower under my replacement shows in its own color and height at full strength; the target rings are those of my turn before I drafted anything (legal spots and replaceable towers for all my discs this turn); the status bar's disc icons are all full; the scoreboard shows the big scores without the small "would be" numbers. The dimming matches the big scores.
+- [ ] Ending it (leaving the scoreboard, or a second tap on it): the draft is back exactly as it was: the same towers and heights, the gold ring and buttons on the same active tower, the confirm ring's segments, the "would be" scores, the dimmed status bar icons, the replaced tower faded again, the draft's own target rings. The board doesn't move at any point.
+- [ ] Desktop, right after leaving the scoreboard: a click on the board drafts as usual (a new tower, a disc added, undo, confirm).
+- [ ] "Confirm anyway?" open, then hovering the scoreboard: the card closes; the draft is intact after, and the confirm button asks again.
+- [ ] A bubble over a tower ("Not enough..." or "You cannot add...") showing when the highlight starts: it hides.
+- [ ] Phone, the highlight on: a tap anywhere on the board (a target ring, an empty part of the board, where a drafted tower or the undo button was, an avatar or a reserve) only ends it: the draft comes back unchanged, nothing is drafted, undone or confirmed; a second tap works as usual.
+- [ ] Phone, the highlight on: a tap on the log (a turn row) ends it and still does what it does (the towers hop).
+- [ ] Phone: a tap never leaves a hover highlight behind (nothing flickers on, then off).
+
+Turns and the game end:
+- [ ] A confirmed turn (mine or the opponent's) while the highlight shows: it ends (my draft back first) as the towers start flying, the flying discs are at full strength, and hovering during the flights does nothing until they have landed.
+- [ ] My turn starting while the highlight shows (hovering, or toggled on a phone, as the opponent's turn ends): it ends and my target rings show at once.
+- [ ] If you can, my turn ending while I draft with the highlight on (the turn timer running out, made a zombie): it ends, the draft back first, then the turn goes on as without the highlight.
+- [ ] After the board has grown or slid (a turn that re-centres it): the highlight still marks the right towers.
+- [ ] Reduced motion (OS setting): the highlight shows and ends at once, no fade.
+- [ ] Game end, live: the end-game display (largest groups glowing, the rest dimmed) shows; hovering or tapping the scoreboard changes nothing, and leaving it or tapping elsewhere doesn't change the end-game display.
+- [ ] Game end, after F5 (and in a replay reaching the end): the same, the scoreboard does nothing.
+- [ ] The highlight shown when the last turn is confirmed: it ends, and the end-game display comes up unchanged.

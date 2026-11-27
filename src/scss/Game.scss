@@ -408,6 +408,11 @@ $top-bar-score-pulse-scale: 1.3;
 $top-bar-score-preview-scale: 0.58; //of the number's font size
 $top-bar-score-preview-opacity: 0.45;
 $top-bar-score-preview-gap: 0.4em; //between the number and its preview, in the preview's own em (0.15em until 2026-11-26)
+//[BGA] the scoreboard's highlight (ScoreHighlightHandler, BoardHandler.showScoringTowers): every board tower outside the scoring
+//area(s) dims, by a filter only (never opacity, which drafted, replaced and end-game towers use, nor a transform: towers are cloned to fly)
+$score-highlight-dim-opacity: 0.35;
+$score-highlight-dim-saturation: 0.4; //greys the red discs a little (black has nothing to lose)
+$score-highlight-transition: 0.2s;
 $log-text-color: #1f1f21; //near-black
 $log-background-default: linear-gradient(135deg, $marble-white, $marble-white-shade);
 $log-background-towers-placed: linear-gradient(90deg, rgba($marble-white, 0.97), rgba($marble-white-shade, 0.95));
@@ -771,7 +776,8 @@ html.nexo-discs-wooden .nexo-tower{
 #nexo-board{ --board-edge-padding: #{$board-edge-padding}; }
 .mobile_version #nexo-board{ --board-edge-padding: #{$board-edge-mobile-padding}; }
 .board-layer{ position: absolute; left: 0px; top: calc(var(--cell-size) * #{$board-top-band-ratio}); width: 0px; height: 0px; }
-.spots-layer, .towers-layer, .draft-controls-layer, .board-message-layer{ position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
+.spots-layer, .saved-spots-layer, .towers-layer, .draft-controls-layer, .board-message-layer{ position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
+.saved-spots-layer{ pointer-events: none; } //[BGA] the saved board's rings (the scoreboard's highlight): only seen, never clicked
 
 //one spot's box, from its board coordinates
 @mixin board-place(){ position: absolute; left: calc(var(--x) * var(--cell-size)); top: calc(var(--y) * var(--cell-size)); width: var(--cell-size); height: var(--cell-size); }
@@ -1055,6 +1061,24 @@ body .confirm-popover{ position: fixed; left: 0px; top: 0px; z-index: $confirm-p
 @each $name, $glow in $largest-group-glow {
     .board-tower.largest-group-tower[data-disc-color="#{$name}"]{ --group-glow: #{$glow}; }
 }
+//[BGA] the scoreboard's highlight (BoardHandler.showScoringTowers): every board tower outside the scoring area(s) dims, by a filter
+//only, so its clicks, its opacity (drafted, replaced) and its flights are untouched; drafted towers never dim. Never with the
+//end-game display (showing-largest-groups: ScoreHighlightHandler is off by then; this selector makes sure)
+#nexo-board.nexo-score-highlight:not(.showing-largest-groups) .towers-layer .board-tower:not(.scoring-tower):not(.pending-tower){
+    filter: opacity($score-highlight-dim-opacity) saturate($score-highlight-dim-saturation); }
+.towers-layer .board-tower:not(.pending-tower){ transition: filter $score-highlight-transition ease; }
+@media (prefers-reduced-motion: reduce){ .towers-layer .board-tower:not(.pending-tower){ transition: none; } }
+//[BGA] the saved board view (BoardHandler.showScoringTowers, a class on <html> so it reaches the status bar and the scoreboard):
+//while the scoreboard's highlight shows over a draft, everything the draft shows is hidden, never removed (visibility, so
+//nothing moves), a replaced tower shows at its full strength again, the saved board's rings show instead of the draft's, the
+//status bar's icons show full and the scoreboard's "would be" scores hide. The class gone, the draft shows exactly as it was
+html:not(.nexo-saved-board-view) #nexo-board .saved-spots-layer{ display: none; }
+html.nexo-saved-board-view{
+    #nexo-board .spots-layer, #nexo-board .draft-controls-layer, #nexo-board .board-message-layer, #nexo-board .towers-layer .pending-tower{ visibility: hidden; }
+    #nexo-board .towers-layer .board-tower.being-replaced{ opacity: 1; }
+    .nexo-tower.status-disc.used-status-disc{ opacity: 1; }
+    #nexo-top-bar .top-bar-score-preview{ visibility: hidden; }
+}
 //an occupied ring's box ($spot-ring-occupied-*, like .board-spot's), from the tower's own disc size
 .board-tower.largest-group-tower::before{ content: ""; position: absolute;
     --group-glow-width: min(calc(var(--disc-width) * #{$spot-ring-occupied-width-scale}), calc(var(--cell-size) * #{$spot-ring-max-share}));
@@ -1095,6 +1119,7 @@ body .confirm-popover{ position: fixed; left: 0px; top: 0px; z-index: $confirm-p
 .top-bar-scoreboard{ position: absolute; top: var(--top-bar-row-top); height: var(--top-bar-avatar);
     left: calc(var(--top-bar-reserve-end) + var(--top-bar-cell) * #{$top-bar-score-margin-ratio}); right: calc(var(--top-bar-reserve-end) + var(--top-bar-cell) * #{$top-bar-score-margin-ratio});
     container-type: inline-size; display: flex; align-items: center; transform: translateY(#{$top-bar-score-shift-y}); @include non-selectable();
+    pointer-events: auto; //[BGA] hovered or tapped, it shows the scoring areas (ScoreHighlightHandler); the board's top band under it has no spot
     --score-divider-gap: calc(var(--top-bar-cell) * #{$top-bar-score-divider-gap-ratio});
     --score-divider-width: max(1px, calc(var(--top-bar-cell) * #{$top-bar-score-divider-width-ratio}));
     //the numbers' font: a full reserve stack's height in digits (from the spot: the stacks only shrink on a bar narrower than any

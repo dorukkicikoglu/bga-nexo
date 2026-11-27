@@ -88,27 +88,41 @@ export class BoardRules {
     }
 
     /**
-     * [BGA] A player's score on a board: the size of their largest area of orthogonally connected towers (height doesn't matter), 0
-     * with no tower. The same rule as NEXOTableManager::getLargestGroupSize() (its getLargestGroups(): the player's own towers only,
-     * grouped by getComponent()); used for the scoreboard's preview of a draft (PlaceTowers.getPreviewScores). Change both together
+     * [BGA] A player's largest areas of orthogonally connected towers (height doesn't matter): every area of the largest size, each
+     * as a list of spots; empty with no tower. NEXOTableManager::getLargestGroups() mirrored (the player's own towers only,
+     * grouped by getComponent()); used for the scoreboard's scoring highlight (BoardHandler.showScoringTowers) and, through
+     * getLargestGroupSize, its previews. Change both together
      */
-    public static getLargestGroupSize(board: Map<string, NexoTower>, playerID: number): number {
+    public static getLargestGroups(board: Map<string, NexoTower>, playerID: number): NexoSpot[][] {
         const ownBoard = new Map<string, NexoSpot>();
         board.forEach((tower, key) => {
             if(Number(tower.player_id) === Number(playerID))
                 ownBoard.set(key, tower);
         });
 
-        let largestSize = 0;
+        const groups: NexoSpot[][] = [];
         const grouped = new Set<string>();
         for(const key of ownBoard.keys()){
             if(grouped.has(key))
                 continue;
             const component = BoardRules.getComponent(ownBoard, key);
             component.forEach(componentKey => grouped.add(componentKey));
-            largestSize = Math.max(largestSize, component.size);
+            groups.push(Array.from(component, componentKey => ({ x: ownBoard.get(componentKey).x, y: ownBoard.get(componentKey).y })));
         }
-        return largestSize;
+
+        if(groups.length === 0)
+            return [];
+        const largestSize = Math.max(...groups.map(group => group.length));
+        return groups.filter(group => group.length === largestSize);
+    }
+
+    /**
+     * [BGA] A player's score on a board: the size of their largest area (getLargestGroups), 0 with no tower. The same rule as
+     * NEXOTableManager::getLargestGroupSize(); used for the scoreboard's preview of a draft (PlaceTowers.getPreviewScores)
+     */
+    public static getLargestGroupSize(board: Map<string, NexoTower>, playerID: number): number {
+        const groups = BoardRules.getLargestGroups(board, playerID);
+        return (groups.length === 0) ? 0 : groups[0].length;
     }
 
     /**

@@ -26,6 +26,7 @@ export class GameEnd {
         this.game.boardHandler.setDraft(null);
         this.game.updatePassedStamps(); //the game is over: no PASSED stamp
         this.game.setActivePlayer(null); //nobody's turn: no avatar glows
+        this.game.scoreHighlightHandler?.disable(); //the end-game display shows the largest groups (EndGameScoringHandler disables it first, normally)
     }
 
     /**

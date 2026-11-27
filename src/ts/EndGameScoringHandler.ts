@@ -20,6 +20,7 @@ export class EndGameScoringHandler{
 
     public displayEndGameScore(endGameScoring: EndGameScoreData): void {
         this.displayed = true;
+        this.game.scoreHighlightHandler?.disable(); //[BGA] the scoreboard's highlight is off for good: this display shows every largest group
         this.game.boardHandler.highlightLargestGroups(endGameScoring.groups);
 
         for(const player_id in endGameScoring.scores)

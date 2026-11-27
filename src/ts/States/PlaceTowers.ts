@@ -44,6 +44,7 @@ export class PlaceTowers {
      * This method is called each time we are entering the game state. You can use this method to perform some user interface changes at this moment.
      */
     onEnteringState(args: PlaceTowersArgs, isCurrentPlayerActive: boolean) {
+        this.game.scoreHighlightHandler.clear(); //[BGA] a new turn: the scoreboard's highlight goes, so its target rings show at once
         this.game.setActivePlayer(this.bga.players.getActivePlayerId()); //every viewer: the glow on the active player's avatar
         this.stateArgs = args;
         this.pending = [];
@@ -70,6 +71,7 @@ export class PlaceTowers {
      * This method is called each time we are leaving the game state. You can use this method to perform some user interface changes at this moment.
      */
     onLeavingState(args: PlaceTowersArgs, isCurrentPlayerActive: boolean) {
+        this.game.scoreHighlightHandler.clear(); //[BGA] the draft back on screen first (its timer, a zombie), then dropped as usual
         this.drafting = false;
         this.confirming = false;
         this.pending = [];
@@ -81,28 +83,40 @@ export class PlaceTowers {
     }
 
     private canDraft(): boolean { return this.drafting && !this.confirming && !this.game.isInterfaceLocked(); }
-    private getDiscsUsed(): number { return this.pending.reduce((sum, tower) => sum + tower.height, 0); }
-    private getDiscsLeft(): number { return Math.max(0, (this.stateArgs?.discsThisTurn ?? 0) - this.getDiscsUsed()); }
+    //the rule helpers below read the draft's towers, or any other list (getSavedBoardSpots: none), never changing the draft
+    private getDiscsUsed(pending: PendingTower[] = this.pending): number { return pending.reduce((sum, tower) => sum + tower.height, 0); }
+    private getDiscsLeft(pending: PendingTower[] = this.pending): number { return Math.max(0, (this.stateArgs?.discsThisTurn ?? 0) - this.getDiscsUsed(pending)); }
 
     //the towers on the board plus the draft's new towers: what adjacency and the grid's bounds are checked against
-    private getDraftOccupied(): Map<string, NexoSpot> {
+    private getDraftOccupied(pending: PendingTower[] = this.pending): Map<string, NexoSpot> {
         const occupied = new Map<string, NexoSpot>(this.game.boardHandler.getTowerMap());
-        for(const tower of this.pending){
+        for(const tower of pending){
             if(tower.kind === 'new')
                 occupied.set(BoardRules.key(tower.x, tower.y), tower);
         }
         return occupied;
     }
 
-    private getLegalNewSpots(): NexoSpot[] {
-        if(this.getDiscsLeft() < this.game.getRules().minTowerHeight)
+    private getLegalNewSpots(pending: PendingTower[] = this.pending): NexoSpot[] {
+        if(this.getDiscsLeft(pending) < this.game.getRules().minTowerHeight)
             return [];
-        return this.game.boardRules.getLegalNewSpots(this.getDraftOccupied());
+        return this.game.boardRules.getLegalNewSpots(this.getDraftOccupied(pending));
     }
 
     //enemy towers on the board, not already replaced in this draft, that the discs left can out-height
-    private getReplaceableTowers(): NexoTower[] {
-        return this.game.boardHandler.getTowers().filter(tower => this.getCaptureCheck(tower)?.canCapture);
+    private getReplaceableTowers(pending: PendingTower[] = this.pending): NexoTower[] {
+        return this.game.boardHandler.getTowers().filter(tower => this.getCaptureCheck(tower, pending)?.canCapture);
+    }
+
+    /**
+     * [BGA] The target rings of the saved board, as if nothing were drafted (the same helpers with no drafted tower), for the
+     * scoreboard's highlight (ScoreHighlightHandler, BoardHandler.showScoringTowers), or null when there is no draft to step
+     * aside from (not my turn, nothing drafted yet, the turn on its way): then the board already is the saved board. Reads only
+     */
+    public getSavedBoardSpots(): SavedBoardSpots | null {
+        if(!this.drafting || this.confirming || this.pending.length === 0)
+            return null;
+        return { legalNewSpots: this.getLegalNewSpots([]), replaceableTowers: this.getReplaceableTowers([]) };
     }
 
     //[BGA] the board towers a click answers with a warning (warningTowerClicked): those with a sentence in getTowerWarningHTML
@@ -130,18 +144,18 @@ export class PlaceTowers {
     //the one rule for replacing a tower: an enemy tower, not already replaced in this draft, takes its height + 1 discs, never
     //more than a tower's highest height, out of the discs left this turn. null when no number of discs could replace it (my own
     //tower, one already replaced in this draft, or one already as high as a tower goes)
-    private getCaptureCheck(tower: NexoTower): CaptureCheck | null {
-        if(tower.player_id === this.game.getMyPlayerID() || this.getPendingAt(tower))
+    private getCaptureCheck(tower: NexoTower, pending: PendingTower[] = this.pending): CaptureCheck | null {
+        if(tower.player_id === this.game.getMyPlayerID() || this.getPendingAt(tower, pending))
             return null;
         const needed = tower.height + 1;
         if(needed > this.game.getRules().maxTowerHeight)
             return null;
-        const available = this.getDiscsLeft();
+        const available = this.getDiscsLeft(pending);
         return { canCapture: needed <= available, needed: needed, available: available };
     }
 
-    private getPendingAt(spot: NexoSpot): PendingTower | undefined {
-        return this.pending.find(tower => tower.x === spot.x && tower.y === spot.y);
+    private getPendingAt(spot: NexoSpot, pending: PendingTower[] = this.pending): PendingTower | undefined {
+        return pending.find(tower => tower.x === spot.x && tower.y === spot.y);
     }
 
     //a click on a spot makes its tower the active one: on top of the history, wherever it was

@@ -79,6 +79,12 @@ interface NexoPlacement extends NexoSpot {
 }
 
 //a tower of the turn being drafted (PlaceTowers), not sent yet. replaced: the enemy tower under it, for a replacement
+//[BGA] the target rings of the saved board, as if nothing were drafted (PlaceTowers.getSavedBoardSpots), for the scoreboard's highlight
+interface SavedBoardSpots {
+    legalNewSpots: NexoSpot[];
+    replaceableTowers: NexoTower[];
+}
+
 interface PendingTower extends NexoSpot {
     height: number;
     kind: PlacementKind;

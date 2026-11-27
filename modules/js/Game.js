@@ -76,26 +76,38 @@ class BoardRules {
         return visited;
     }
     /**
-     * [BGA] A player's score on a board: the size of their largest area of orthogonally connected towers (height doesn't matter), 0
-     * with no tower. The same rule as NEXOTableManager::getLargestGroupSize() (its getLargestGroups(): the player's own towers only,
-     * grouped by getComponent()); used for the scoreboard's preview of a draft (PlaceTowers.getPreviewScores). Change both together
+     * [BGA] A player's largest areas of orthogonally connected towers (height doesn't matter): every area of the largest size, each
+     * as a list of spots; empty with no tower. NEXOTableManager::getLargestGroups() mirrored (the player's own towers only,
+     * grouped by getComponent()); used for the scoreboard's scoring highlight (BoardHandler.showScoringTowers) and, through
+     * getLargestGroupSize, its previews. Change both together
      */
-    static getLargestGroupSize(board, playerID) {
+    static getLargestGroups(board, playerID) {
         const ownBoard = new Map();
         board.forEach((tower, key) => {
             if (Number(tower.player_id) === Number(playerID))
                 ownBoard.set(key, tower);
         });
-        let largestSize = 0;
+        const groups = [];
         const grouped = new Set();
         for (const key of ownBoard.keys()) {
             if (grouped.has(key))
                 continue;
             const component = BoardRules.getComponent(ownBoard, key);
             component.forEach(componentKey => grouped.add(componentKey));
-            largestSize = Math.max(largestSize, component.size);
+            groups.push(Array.from(component, componentKey => ({ x: ownBoard.get(componentKey).x, y: ownBoard.get(componentKey).y })));
         }
-        return largestSize;
+        if (groups.length === 0)
+            return [];
+        const largestSize = Math.max(...groups.map(group => group.length));
+        return groups.filter(group => group.length === largestSize);
+    }
+    /**
+     * [BGA] A player's score on a board: the size of their largest area (getLargestGroups), 0 with no tower. The same rule as
+     * NEXOTableManager::getLargestGroupSize(); used for the scoreboard's preview of a draft (PlaceTowers.getPreviewScores)
+     */
+    static getLargestGroupSize(board, playerID) {
+        const groups = BoardRules.getLargestGroups(board, playerID);
+        return (groups.length === 0) ? 0 : groups[0].length;
     }
     /**
      * The draft after a tower of the turn is taken back: replacements stay, and a new tower stays only if it still reaches the
@@ -143,6 +155,7 @@ class BoardRules {
  * (--cell-size) comes from the window, never from the box.
  */
 class BoardHandler {
+    static isShowingSavedBoard() { return document.documentElement.classList.contains(BoardHandler.SAVED_BOARD_VIEW_CLASS); }
     constructor(game, towers) {
         this.game = game;
         this.towerMessage = null; //the bubble over a warning tower (showTowerWarning), one at a time
@@ -168,6 +181,7 @@ class BoardHandler {
         this.draftClickHandlers = null;
         this.confirmWasFull = false; //every disc of the turn was drafted at the last render: the confirm button pulses once on reaching it
         this.ringWasFilled = null; //the confirm ring's filled segments at the last render, null when no confirm button showed
+        this.applyingPlacements = false; //a confirmed turn is playing (applyPlacements): no scoring highlight until it has landed
         this.boardElement = document.getElementById('nexo-board');
         this.columnElement = document.getElementById('nexo-board-column');
         this.boardSize = this.readBoardSize();
@@ -175,6 +189,7 @@ class BoardHandler {
         this.boardElement.innerHTML = `
             <div class="board-layer">
                 <div class="spots-layer"></div>
+                <div class="saved-spots-layer"></div>
                 <div class="towers-layer"></div>
                 <div class="draft-controls-layer"></div>
                 <div class="board-message-layer"></div>
@@ -182,6 +197,7 @@ class BoardHandler {
         `;
         this.layerElement = this.boardElement.querySelector('.board-layer');
         this.spotsLayer = this.boardElement.querySelector('.spots-layer');
+        this.savedSpotsLayer = this.boardElement.querySelector('.saved-spots-layer');
         this.towersLayer = this.boardElement.querySelector('.towers-layer');
         this.controlsLayer = this.boardElement.querySelector('.draft-controls-layer');
         this.messageLayer = this.boardElement.querySelector('.board-message-layer');
@@ -577,37 +593,42 @@ class BoardHandler {
     //clickable to them): the legal spots (an ellipse ring where the tower's bottom disc would go, in their own disc color),
     //the replaceable enemy towers and the gold ring under the drafted tower clicked last. Empty spots and the grid's outline are never drawn
     renderSpots() {
-        this.spotsLayer.innerHTML = '';
-        //every ring's dashes march on one clock (Game.scss: spot-ring-march): rebuilt spots carry on instead of starting over
-        this.spotsLayer.style.setProperty('--spot-ring-march-delay', `-${Math.round(performance.now())}ms`);
         this.boxLegalSpots = this.getBoxLegalSpots();
-        if (this.draft && !this.game.isReplay()) {
-            const legalKeys = new Set(this.draft.legalNewSpots.map(spot => BoardRules.key(spot.x, spot.y)));
-            const replaceableKeys = new Set(this.draft.replaceableTowers.map(tower => BoardRules.key(tower.x, tower.y)));
-            const selectedSpot = this.draft.selectedSpot;
-            const selectedKey = selectedSpot ? BoardRules.key(selectedSpot.x, selectedSpot.y) : null;
-            const shownSpots = new Map();
-            for (const spot of [...this.draft.legalNewSpots, ...this.draft.replaceableTowers, ...(selectedSpot ? [selectedSpot] : [])])
-                shownSpots.set(BoardRules.key(spot.x, spot.y), { x: spot.x, y: spot.y });
-            shownSpots.forEach((shownSpot, key) => {
-                const spot = document.createElement('div');
-                spot.className = 'board-spot';
-                BoardHandler.placeOnBoard(spot, shownSpot);
-                if (legalKeys.has(key))
-                    spot.classList.add('legal-spot', 'clickable-spot');
-                if (replaceableKeys.has(key))
-                    spot.classList.add('replaceable-spot', 'clickable-spot');
-                if (key === selectedKey)
-                    spot.classList.add('selected-spot');
-                if (legalKeys.has(key) || replaceableKeys.has(key))
-                    spot.innerHTML = BoardHandler.SPOT_RING_SVG; //the dashed outline (the fill is the spot's ::before)
-                this.spotsLayer.appendChild(spot);
-            });
-        }
+        BoardHandler.renderSpotRings(this.spotsLayer, (this.draft && !this.game.isReplay()) ? this.draft : null);
         if (this.draft)
             this.boardElement.setAttribute('data-legal-spot-color', this.draft.discColor); //the drafting player's own disc color
         else
             this.boardElement.removeAttribute('data-legal-spot-color');
+    }
+    //a layer's rings, rebuilt: the legal spots, the replaceable towers and the gold ring under selectedSpot (none with no rings).
+    //The draft's (renderSpots) and the saved board's (showScoringTowers) alike
+    static renderSpotRings(layer, rings) {
+        layer.innerHTML = '';
+        //every ring's dashes march on one clock (Game.scss: spot-ring-march): rebuilt spots carry on instead of starting over
+        layer.style.setProperty('--spot-ring-march-delay', `-${Math.round(performance.now())}ms`);
+        if (!rings)
+            return;
+        const legalKeys = new Set(rings.legalNewSpots.map(spot => BoardRules.key(spot.x, spot.y)));
+        const replaceableKeys = new Set(rings.replaceableTowers.map(tower => BoardRules.key(tower.x, tower.y)));
+        const selectedSpot = rings.selectedSpot ?? null;
+        const selectedKey = selectedSpot ? BoardRules.key(selectedSpot.x, selectedSpot.y) : null;
+        const shownSpots = new Map();
+        for (const spot of [...rings.legalNewSpots, ...rings.replaceableTowers, ...(selectedSpot ? [selectedSpot] : [])])
+            shownSpots.set(BoardRules.key(spot.x, spot.y), { x: spot.x, y: spot.y });
+        shownSpots.forEach((shownSpot, key) => {
+            const spot = document.createElement('div');
+            spot.className = 'board-spot';
+            BoardHandler.placeOnBoard(spot, shownSpot);
+            if (legalKeys.has(key))
+                spot.classList.add('legal-spot', 'clickable-spot');
+            if (replaceableKeys.has(key))
+                spot.classList.add('replaceable-spot', 'clickable-spot');
+            if (key === selectedKey)
+                spot.classList.add('selected-spot');
+            if (legalKeys.has(key) || replaceableKeys.has(key))
+                spot.innerHTML = BoardHandler.SPOT_RING_SVG; //the dashed outline (the fill is the spot's ::before)
+            layer.appendChild(spot);
+        });
     }
     //the turn being drafted (PlaceTowers), or null once it is over: its towers shown semi-transparent on their spots (a replaced
     //enemy tower fades under its replacement) with their count badges and undo buttons, legal spots and replaceable towers highlighted
@@ -839,8 +860,8 @@ class BoardHandler {
     }
     //a click on a highlighted spot (empty or an enemy tower) or on a tower of the draft: PlaceTowers drafts or cycles its height
     onBoardClick(event) {
-        if (!this.draftClickHandlers)
-            return;
+        if (!this.draftClickHandlers || BoardHandler.isShowingSavedBoard())
+            return; //[BGA] the board on screen is the saved board, not the draft (the scoreboard's highlight): never a draft click
         const target = event.target;
         if (target.closest('.pending-actions'))
             return; //a disabled button's click, which no listener of its own receives: never a click on the tower under it
@@ -867,6 +888,18 @@ class BoardHandler {
      * recenter applies the new centre. Resolves once every tower has landed.
      */
     async applyPlacements(playerID, placements) {
+        //[BGA] the board changes: the scoreboard's highlight goes, and none shows until every tower has landed (ScoreHighlightHandler)
+        this.applyingPlacements = true;
+        this.game.scoreHighlightHandler?.clear();
+        try {
+            await this.playPlacements(playerID, placements);
+        }
+        finally {
+            this.applyingPlacements = false;
+        }
+    }
+    isApplyingPlacements() { return this.applyingPlacements; }
+    async playPlacements(playerID, placements) {
         //the turn is over: no more clicks while it animates (the next PlaceTowers sets its handlers again), no more badges or
         //undo buttons
         this.setDraftClickHandlers(null);
@@ -953,6 +986,53 @@ class BoardHandler {
         }
     }
     /**
+     * [BGA] The scoreboard's highlight (ScoreHighlightHandler), always on the saved board: every tower of each of these players'
+     * largest area on the confirmed board (BoardRules.getLargestGroups, the server's rule; of areas tied for largest, the top-left
+     * one, getTopLeftGroup) stays as it is, every other board tower dims (Game.scss: #nexo-board.nexo-score-highlight, a filter only). Found by board coordinates,
+     * so they follow however the grid grew or slid. With a draft (savedSpots, PlaceTowers.getSavedBoardSpots), the board shows
+     * itself as if nothing were drafted: html.nexo-saved-board-view hides the draft's towers, rings, controls and bubble in CSS,
+     * undoes a replaced tower's fade, shows the status bar's icons full and hides the scoreboard's previews, and the saved board's
+     * own rings are drawn in savedSpotsLayer. Nothing of the draft is removed or rebuilt (neither this.draft nor PlaceTowers'),
+     * so clearScoringTowers shows it exactly as it was. Refused (false) once the end-game display is on: its classes
+     * (showing-largest-groups, largest-group-tower) are never touched here
+     */
+    showScoringTowers(playerIDs, savedSpots) {
+        if (this.boardElement.classList.contains('showing-largest-groups'))
+            return false;
+        if (savedSpots && !BoardHandler.isShowingSavedBoard()) {
+            BoardHandler.renderSpotRings(this.savedSpotsLayer, savedSpots);
+            document.documentElement.classList.add(BoardHandler.SAVED_BOARD_VIEW_CLASS);
+        }
+        const scoringKeys = new Set();
+        for (const playerID of playerIDs) {
+            for (const spot of BoardHandler.getTopLeftGroup(BoardRules.getLargestGroups(this.towers, playerID)))
+                scoringKeys.add(BoardRules.key(spot.x, spot.y));
+        }
+        this.towerElements.forEach((towerElement, key) => towerElement.classList.toggle('scoring-tower', scoringKeys.has(key)));
+        this.boardElement.classList.add('nexo-score-highlight');
+        return true;
+    }
+    //[BGA] the scoring highlight shows one area per player: of the areas tied for largest, the one whose first tower in reading
+    //order (topmost row, then leftmost) comes first, in board coordinates, so the same however the board grew or slid. Only here:
+    //BoardRules.getLargestGroups (the server's rule), the scores and the end-game display keep every tied area
+    static getTopLeftGroup(groups) {
+        const readingOrder = (a, b) => (a.y - b.y) || (a.x - b.x);
+        const firstTower = (group) => group.reduce((first, spot) => readingOrder(spot, first) < 0 ? spot : first);
+        const nonEmpty = groups.filter(group => group.length > 0);
+        if (nonEmpty.length === 0)
+            return [];
+        return nonEmpty.reduce((best, group) => readingOrder(firstTower(group), firstTower(best)) < 0 ? group : best);
+    }
+    //takes the scoreboard's highlight away (only its own classes): a draft it hid shows again exactly as it was
+    clearScoringTowers() {
+        if (BoardHandler.isShowingSavedBoard()) {
+            document.documentElement.classList.remove(BoardHandler.SAVED_BOARD_VIEW_CLASS);
+            BoardHandler.renderSpotRings(this.savedSpotsLayer, null);
+        }
+        this.boardElement.classList.remove('nexo-score-highlight');
+        this.towersLayer.querySelectorAll('.scoring-tower').forEach(towerElement => towerElement.classList.remove('scoring-tower'));
+    }
+    /**
      * [BGA] The towers a log row touched jump (LogHighlightHandler: hovering the row, or tapping it): `jumps` quick jumps in a row
      * (Game.scss: tower-jump, one CSS animation, its iteration count --tower-jumps), or with reduced motion one brightness pulse
      * instead. Only the tower moves (its translate and scale properties, never a transform: towers are cloned to fly): the
@@ -997,6 +1077,7 @@ BoardHandler.UNDO_ICON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusa
 //a target ring's dashed outline (legal spots and replaceable towers): Game.scss sizes the SVG to the ring and marches its
 //dashes. pathLength 100 makes the dash pattern a whole number around the ring; the attributes are a fallback for a browser
 //without CSS ellipse geometry (the stroke then centred on the box's edge)
+BoardHandler.SAVED_BOARD_VIEW_CLASS = 'nexo-saved-board-view'; //[BGA] on <html> while the scoreboard's highlight hides a draft (showScoringTowers)
 BoardHandler.SPOT_RING_SVG = '<svg class="spot-ring" aria-hidden="true" focusable="false"><ellipse cx="50%" cy="50%" rx="50%" ry="50%" pathLength="100"/></svg>';
 //the confirm button's icon: a tick
 BoardHandler.CONFIRM_ICON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
@@ -1015,6 +1096,7 @@ class PlaceTowers {
      * This method is called each time we are entering the game state. You can use this method to perform some user interface changes at this moment.
      */
     onEnteringState(args, isCurrentPlayerActive) {
+        this.game.scoreHighlightHandler.clear(); //[BGA] a new turn: the scoreboard's highlight goes, so its target rings show at once
         this.game.setActivePlayer(this.bga.players.getActivePlayerId()); //every viewer: the glow on the active player's avatar
         this.stateArgs = args;
         this.pending = [];
@@ -1038,6 +1120,7 @@ class PlaceTowers {
      * This method is called each time we are leaving the game state. You can use this method to perform some user interface changes at this moment.
      */
     onLeavingState(args, isCurrentPlayerActive) {
+        this.game.scoreHighlightHandler.clear(); //[BGA] the draft back on screen first (its timer, a zombie), then dropped as usual
         this.drafting = false;
         this.confirming = false;
         this.pending = [];
@@ -1048,25 +1131,36 @@ class PlaceTowers {
         this.game.setScorePreviews(null);
     }
     canDraft() { return this.drafting && !this.confirming && !this.game.isInterfaceLocked(); }
-    getDiscsUsed() { return this.pending.reduce((sum, tower) => sum + tower.height, 0); }
-    getDiscsLeft() { return Math.max(0, (this.stateArgs?.discsThisTurn ?? 0) - this.getDiscsUsed()); }
+    //the rule helpers below read the draft's towers, or any other list (getSavedBoardSpots: none), never changing the draft
+    getDiscsUsed(pending = this.pending) { return pending.reduce((sum, tower) => sum + tower.height, 0); }
+    getDiscsLeft(pending = this.pending) { return Math.max(0, (this.stateArgs?.discsThisTurn ?? 0) - this.getDiscsUsed(pending)); }
     //the towers on the board plus the draft's new towers: what adjacency and the grid's bounds are checked against
-    getDraftOccupied() {
+    getDraftOccupied(pending = this.pending) {
         const occupied = new Map(this.game.boardHandler.getTowerMap());
-        for (const tower of this.pending) {
+        for (const tower of pending) {
             if (tower.kind === 'new')
                 occupied.set(BoardRules.key(tower.x, tower.y), tower);
         }
         return occupied;
     }
-    getLegalNewSpots() {
-        if (this.getDiscsLeft() < this.game.getRules().minTowerHeight)
+    getLegalNewSpots(pending = this.pending) {
+        if (this.getDiscsLeft(pending) < this.game.getRules().minTowerHeight)
             return [];
-        return this.game.boardRules.getLegalNewSpots(this.getDraftOccupied());
+        return this.game.boardRules.getLegalNewSpots(this.getDraftOccupied(pending));
     }
     //enemy towers on the board, not already replaced in this draft, that the discs left can out-height
-    getReplaceableTowers() {
-        return this.game.boardHandler.getTowers().filter(tower => this.getCaptureCheck(tower)?.canCapture);
+    getReplaceableTowers(pending = this.pending) {
+        return this.game.boardHandler.getTowers().filter(tower => this.getCaptureCheck(tower, pending)?.canCapture);
+    }
+    /**
+     * [BGA] The target rings of the saved board, as if nothing were drafted (the same helpers with no drafted tower), for the
+     * scoreboard's highlight (ScoreHighlightHandler, BoardHandler.showScoringTowers), or null when there is no draft to step
+     * aside from (not my turn, nothing drafted yet, the turn on its way): then the board already is the saved board. Reads only
+     */
+    getSavedBoardSpots() {
+        if (!this.drafting || this.confirming || this.pending.length === 0)
+            return null;
+        return { legalNewSpots: this.getLegalNewSpots([]), replaceableTowers: this.getReplaceableTowers([]) };
     }
     //[BGA] the board towers a click answers with a warning (warningTowerClicked): those with a sentence in getTowerWarningHTML
     getWarningTowers() {
@@ -1090,17 +1184,17 @@ class PlaceTowers {
     //the one rule for replacing a tower: an enemy tower, not already replaced in this draft, takes its height + 1 discs, never
     //more than a tower's highest height, out of the discs left this turn. null when no number of discs could replace it (my own
     //tower, one already replaced in this draft, or one already as high as a tower goes)
-    getCaptureCheck(tower) {
-        if (tower.player_id === this.game.getMyPlayerID() || this.getPendingAt(tower))
+    getCaptureCheck(tower, pending = this.pending) {
+        if (tower.player_id === this.game.getMyPlayerID() || this.getPendingAt(tower, pending))
             return null;
         const needed = tower.height + 1;
         if (needed > this.game.getRules().maxTowerHeight)
             return null;
-        const available = this.getDiscsLeft();
+        const available = this.getDiscsLeft(pending);
         return { canCapture: needed <= available, needed: needed, available: available };
     }
-    getPendingAt(spot) {
-        return this.pending.find(tower => tower.x === spot.x && tower.y === spot.y);
+    getPendingAt(spot, pending = this.pending) {
+        return pending.find(tower => tower.x === spot.x && tower.y === spot.y);
     }
     //a click on a spot makes its tower the active one: on top of the history, wherever it was
     activate(spot) {
@@ -1284,6 +1378,7 @@ class GameEnd {
         this.game.boardHandler.setDraft(null);
         this.game.updatePassedStamps(); //the game is over: no PASSED stamp
         this.game.setActivePlayer(null); //nobody's turn: no avatar glows
+        this.game.scoreHighlightHandler?.disable(); //the end-game display shows the largest groups (EndGameScoringHandler disables it first, normally)
     }
     /**
      * This method is called each time we are leaving the game state. You can use this method to perform some user interface changes at this moment.
@@ -1933,6 +2028,103 @@ class LogHighlightHandler {
 LogHighlightHandler.TAP_HINT_STORAGE_KEY = 'nexo.logTapHintSeen';
 LogHighlightHandler.LOG_CLOSE_STABLE_FRAMES = 3;
 
+/**
+ * [BGA] The scoreboard at the board's top centre shows what it counts, on the saved board: both players' largest areas stay as
+ * they are (one each: the top-left of areas tied for largest) and every other tower dims (BoardHandler.showScoringTowers,
+ * Game.scss: .nexo-score-highlight). With towers drafted, the draft steps aside while it shows (PlaceTowers.getSavedBoardSpots,
+ * html.nexo-saved-board-view: the board, the status bar's icons and the scoreboard as if nothing were drafted) and comes back
+ * exactly as it was when it clears; "Confirm anyway?" closes. The whole scoreboard does the same, wherever it is pointed or tapped.
+ * A mouse or a pen (pointerType not 'touch') shows it as it enters the scoreboard (pointerenter) and clears it as it leaves
+ * (pointerleave), so a click on the board always finds the draft back.
+ * A touch never hovers: a tap (a click after a touch pointerdown, like LogHighlightHandler's) toggles it. A touch starting anywhere outside the scoreboard clears it at once: on the board's column
+ * (#nexo-board-column: the board, the avatars and reserves on its edge) its click is swallowed, since the board on screen was
+ * not the draft; anywhere else (the log) the tap goes through.
+ * A confirmed turn clears it as its towers start to fly (BoardHandler.applyPlacements) and nothing shows until they have landed;
+ * entering or leaving PlaceTowers clears it too (a new turn, a turn ended by its timer or a zombie), the draft back first.
+ * Off for good once the game is over (disable: from EndGameScoringHandler, live or after a reload, and GameEnd): the end-game
+ * display already shows every largest group, and nothing here touches its classes
+ */
+class ScoreHighlightHandler {
+    constructor(game) {
+        this.game = game;
+        this.listeners = null; //every listener of this handler, all removed at once by disable
+        this.shown = false;
+        this.lastPointerType = 'mouse'; //the last pointerdown's: a click after a touch is a tap
+        this.swallowBoardClick = false; //a touch on the board's column cleared the highlight: its click does nothing else
+        this.scoreboardElement = document.querySelector('#nexo-top-bar .top-bar-scoreboard');
+        if (!this.scoreboardElement)
+            return;
+        this.listeners = new AbortController();
+        const signal = this.listeners.signal;
+        this.scoreboardElement.addEventListener('pointerenter', (event) => this.onPointerEnter(event), { signal, passive: true });
+        this.scoreboardElement.addEventListener('pointerleave', (event) => this.onPointerLeave(event), { signal, passive: true });
+        this.scoreboardElement.addEventListener('click', (event) => this.onClick(event), { signal });
+        document.addEventListener('pointerdown', (event) => this.onDocumentPointerDown(event), { signal, capture: true, passive: true });
+        document.addEventListener('click', (event) => this.onDocumentClick(event), { signal, capture: true }); //capture: before any listener on the board
+    }
+    //the game is over: the end-game display takes over, so the scoreboard shows nothing more, for good (live, or from setup after a reload)
+    disable() {
+        this.clear();
+        this.listeners?.abort();
+        this.listeners = null;
+    }
+    clear() {
+        this.shown = false;
+        this.game.boardHandler?.clearScoringTowers();
+    }
+    onPointerEnter(event) {
+        if (event.pointerType === 'touch')
+            return;
+        this.show();
+    }
+    onPointerLeave(event) {
+        if (event.pointerType === 'touch')
+            return;
+        this.clear();
+    }
+    onClick(event) {
+        if (this.lastPointerType !== 'touch')
+            return;
+        if (this.shown)
+            this.clear();
+        else
+            this.show();
+    }
+    onDocumentPointerDown(event) {
+        this.lastPointerType = event.pointerType || 'mouse';
+        this.swallowBoardClick = false;
+        if (event.pointerType !== 'touch' || !this.shown || this.scoreboardElement.contains(event.target))
+            return;
+        this.swallowBoardClick = !!event.target?.closest?.('#nexo-board-column');
+        this.clear();
+    }
+    //the click of a touch that ended the highlight on the board's column: it only ended the highlight (no draft, no undo, no confirm)
+    onDocumentClick(event) {
+        if (!this.swallowBoardClick)
+            return;
+        this.swallowBoardClick = false;
+        if (event.target?.closest?.('#nexo-board-column')) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+        }
+    }
+    show() {
+        if (this.game.isGameOver()) { //never expected: disable came first
+            this.disable();
+            return;
+        }
+        if (this.shown || this.game.boardHandler.isApplyingPlacements())
+            return;
+        const playerIDs = Object.keys(this.game.players).map(Number); //both players' areas, always together
+        const savedSpots = this.game.placeTowers?.getSavedBoardSpots() ?? null; //null: no draft to step aside from
+        if (!this.game.boardHandler.showScoringTowers(playerIDs, savedSpots))
+            return;
+        this.shown = true;
+        if (savedSpots)
+            this.game.confirmPopover.close(); //a question about the draft, which is hidden: the confirm button asks again
+    }
+}
+
 //BGA's default tooltips (addTooltip) on the player boards. Tooltips only reach elements already on the page, with an id
 class TooltipHandler {
     constructor(game) {
@@ -1967,6 +2159,7 @@ class EndGameScoringHandler {
     }
     displayEndGameScore(endGameScoring) {
         this.displayed = true;
+        this.game.scoreHighlightHandler?.disable(); //[BGA] the scoreboard's highlight is off for good: this display shows every largest group
         this.game.boardHandler.highlightLargestGroups(endGameScoring.groups);
         for (const player_id in endGameScoring.scores)
             this.game.players[player_id]?.setScore(endGameScoring.scores[player_id]);
@@ -2534,6 +2727,7 @@ class Game {
         this.confirmPopover = new ConfirmPopover(this);
         this.logMutationObserver = new LogMutationObserver(this);
         this.logHighlightHandler = new LogHighlightHandler(this);
+        this.scoreHighlightHandler = new ScoreHighlightHandler(this); //before the end-game display below, which turns it off after a reload
         this.tooltipHandler = new TooltipHandler(this);
         this.prefHandler = new PrefHandler(this, gamedatas.pref_names);
         this.bga.gameui.onScreenWidthChange = () => this.onScreenWidthChange();

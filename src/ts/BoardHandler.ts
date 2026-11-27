@@ -50,6 +50,7 @@ export class BoardHandler {
     private boardElement: HTMLDivElement;
     private layerElement: HTMLDivElement;
     private spotsLayer: HTMLDivElement;
+    private savedSpotsLayer: HTMLDivElement; //[BGA] the saved board's target rings, only while the scoreboard's highlight hides a draft (showScoringTowers)
     private towersLayer: HTMLDivElement;
     private controlsLayer: HTMLDivElement;
     private messageLayer: HTMLDivElement;
@@ -78,6 +79,7 @@ export class BoardHandler {
     private draftClickHandlers: DraftClickHandlers | null = null;
     private confirmWasFull: boolean = false; //every disc of the turn was drafted at the last render: the confirm button pulses once on reaching it
     private ringWasFilled: number | null = null; //the confirm ring's filled segments at the last render, null when no confirm button showed
+    private applyingPlacements: boolean = false; //a confirmed turn is playing (applyPlacements): no scoring highlight until it has landed
 
     //the undo button's icon: a curved arrow turning back counter-clockwise, drawn with currentColor
     //[BGA] "Disc style" Wooden (PrefHandler.applyDiscStyle, Game.scss html.nexo-discs-wooden): img/wooden_discs.webp, a grid of
@@ -91,6 +93,8 @@ export class BoardHandler {
     //a target ring's dashed outline (legal spots and replaceable towers): Game.scss sizes the SVG to the ring and marches its
     //dashes. pathLength 100 makes the dash pattern a whole number around the ring; the attributes are a fallback for a browser
     //without CSS ellipse geometry (the stroke then centred on the box's edge)
+    private static readonly SAVED_BOARD_VIEW_CLASS = 'nexo-saved-board-view'; //[BGA] on <html> while the scoreboard's highlight hides a draft (showScoringTowers)
+    public static isShowingSavedBoard(): boolean { return document.documentElement.classList.contains(BoardHandler.SAVED_BOARD_VIEW_CLASS); }
     private static readonly SPOT_RING_SVG = '<svg class="spot-ring" aria-hidden="true" focusable="false"><ellipse cx="50%" cy="50%" rx="50%" ry="50%" pathLength="100"/></svg>';
     //the confirm button's icon: a tick
     private static readonly CONFIRM_ICON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
@@ -103,6 +107,7 @@ export class BoardHandler {
         this.boardElement.innerHTML = `
             <div class="board-layer">
                 <div class="spots-layer"></div>
+                <div class="saved-spots-layer"></div>
                 <div class="towers-layer"></div>
                 <div class="draft-controls-layer"></div>
                 <div class="board-message-layer"></div>
@@ -110,6 +115,7 @@ export class BoardHandler {
         `;
         this.layerElement = this.boardElement.querySelector('.board-layer');
         this.spotsLayer = this.boardElement.querySelector('.spots-layer');
+        this.savedSpotsLayer = this.boardElement.querySelector('.saved-spots-layer');
         this.towersLayer = this.boardElement.querySelector('.towers-layer');
         this.controlsLayer = this.boardElement.querySelector('.draft-controls-layer');
         this.messageLayer = this.boardElement.querySelector('.board-message-layer');
@@ -544,42 +550,48 @@ export class BoardHandler {
     //clickable to them): the legal spots (an ellipse ring where the tower's bottom disc would go, in their own disc color),
     //the replaceable enemy towers and the gold ring under the drafted tower clicked last. Empty spots and the grid's outline are never drawn
     private renderSpots(): void {
-        this.spotsLayer.innerHTML = '';
-        //every ring's dashes march on one clock (Game.scss: spot-ring-march): rebuilt spots carry on instead of starting over
-        this.spotsLayer.style.setProperty('--spot-ring-march-delay', `-${Math.round(performance.now())}ms`);
         this.boxLegalSpots = this.getBoxLegalSpots();
-
-        if(this.draft && !this.game.isReplay()){
-            const legalKeys = new Set(this.draft.legalNewSpots.map(spot => BoardRules.key(spot.x, spot.y)));
-            const replaceableKeys = new Set(this.draft.replaceableTowers.map(tower => BoardRules.key(tower.x, tower.y)));
-            const selectedSpot = this.draft.selectedSpot;
-            const selectedKey = selectedSpot ? BoardRules.key(selectedSpot.x, selectedSpot.y) : null;
-
-            const shownSpots = new Map<string, NexoSpot>();
-            for(const spot of [...this.draft.legalNewSpots, ...this.draft.replaceableTowers, ...(selectedSpot ? [selectedSpot] : [])])
-                shownSpots.set(BoardRules.key(spot.x, spot.y), { x: spot.x, y: spot.y });
-
-            shownSpots.forEach((shownSpot, key) => {
-                const spot = document.createElement('div');
-                spot.className = 'board-spot';
-                BoardHandler.placeOnBoard(spot, shownSpot);
-
-                if(legalKeys.has(key))
-                    spot.classList.add('legal-spot', 'clickable-spot');
-                if(replaceableKeys.has(key))
-                    spot.classList.add('replaceable-spot', 'clickable-spot');
-                if(key === selectedKey)
-                    spot.classList.add('selected-spot');
-                if(legalKeys.has(key) || replaceableKeys.has(key))
-                    spot.innerHTML = BoardHandler.SPOT_RING_SVG; //the dashed outline (the fill is the spot's ::before)
-
-                this.spotsLayer.appendChild(spot);
-            });
-        }
+        BoardHandler.renderSpotRings(this.spotsLayer, (this.draft && !this.game.isReplay()) ? this.draft : null);
 
         if(this.draft)
             this.boardElement.setAttribute('data-legal-spot-color', this.draft.discColor); //the drafting player's own disc color
         else this.boardElement.removeAttribute('data-legal-spot-color');
+    }
+
+    //a layer's rings, rebuilt: the legal spots, the replaceable towers and the gold ring under selectedSpot (none with no rings).
+    //The draft's (renderSpots) and the saved board's (showScoringTowers) alike
+    private static renderSpotRings(layer: HTMLDivElement, rings: { legalNewSpots: NexoSpot[]; replaceableTowers: NexoTower[]; selectedSpot?: NexoSpot | null; } | null): void {
+        layer.innerHTML = '';
+        //every ring's dashes march on one clock (Game.scss: spot-ring-march): rebuilt spots carry on instead of starting over
+        layer.style.setProperty('--spot-ring-march-delay', `-${Math.round(performance.now())}ms`);
+        if(!rings)
+            return;
+
+        const legalKeys = new Set(rings.legalNewSpots.map(spot => BoardRules.key(spot.x, spot.y)));
+        const replaceableKeys = new Set(rings.replaceableTowers.map(tower => BoardRules.key(tower.x, tower.y)));
+        const selectedSpot = rings.selectedSpot ?? null;
+        const selectedKey = selectedSpot ? BoardRules.key(selectedSpot.x, selectedSpot.y) : null;
+
+        const shownSpots = new Map<string, NexoSpot>();
+        for(const spot of [...rings.legalNewSpots, ...rings.replaceableTowers, ...(selectedSpot ? [selectedSpot] : [])])
+            shownSpots.set(BoardRules.key(spot.x, spot.y), { x: spot.x, y: spot.y });
+
+        shownSpots.forEach((shownSpot, key) => {
+            const spot = document.createElement('div');
+            spot.className = 'board-spot';
+            BoardHandler.placeOnBoard(spot, shownSpot);
+
+            if(legalKeys.has(key))
+                spot.classList.add('legal-spot', 'clickable-spot');
+            if(replaceableKeys.has(key))
+                spot.classList.add('replaceable-spot', 'clickable-spot');
+            if(key === selectedKey)
+                spot.classList.add('selected-spot');
+            if(legalKeys.has(key) || replaceableKeys.has(key))
+                spot.innerHTML = BoardHandler.SPOT_RING_SVG; //the dashed outline (the fill is the spot's ::before)
+
+            layer.appendChild(spot);
+        });
     }
 
     //the turn being drafted (PlaceTowers), or null once it is over: its towers shown semi-transparent on their spots (a replaced
@@ -837,8 +849,8 @@ export class BoardHandler {
 
     //a click on a highlighted spot (empty or an enemy tower) or on a tower of the draft: PlaceTowers drafts or cycles its height
     private onBoardClick(event: MouseEvent): void {
-        if(!this.draftClickHandlers)
-            return;
+        if(!this.draftClickHandlers || BoardHandler.isShowingSavedBoard())
+            return; //[BGA] the board on screen is the saved board, not the draft (the scoreboard's highlight): never a draft click
 
         const target = event.target as HTMLElement;
         if(target.closest('.pending-actions'))
@@ -868,6 +880,18 @@ export class BoardHandler {
      * recenter applies the new centre. Resolves once every tower has landed.
      */
     public async applyPlacements(playerID: number, placements: NexoPlacement[]): Promise<void> {
+        //[BGA] the board changes: the scoreboard's highlight goes, and none shows until every tower has landed (ScoreHighlightHandler)
+        this.applyingPlacements = true;
+        this.game.scoreHighlightHandler?.clear();
+        try {
+            await this.playPlacements(playerID, placements);
+        } finally {
+            this.applyingPlacements = false;
+        }
+    }
+    public isApplyingPlacements(): boolean { return this.applyingPlacements; }
+
+    private async playPlacements(playerID: number, placements: NexoPlacement[]): Promise<void> {
         //the turn is over: no more clicks while it animates (the next PlaceTowers sets its handlers again), no more badges or
         //undo buttons
         this.setDraftClickHandlers(null);
@@ -961,6 +985,58 @@ export class BoardHandler {
                     this.towerElements.get(BoardRules.key(spot.x, spot.y))?.classList.add('largest-group-tower');
             }
         }
+    }
+
+    /**
+     * [BGA] The scoreboard's highlight (ScoreHighlightHandler), always on the saved board: every tower of each of these players'
+     * largest area on the confirmed board (BoardRules.getLargestGroups, the server's rule; of areas tied for largest, the top-left
+     * one, getTopLeftGroup) stays as it is, every other board tower dims (Game.scss: #nexo-board.nexo-score-highlight, a filter only). Found by board coordinates,
+     * so they follow however the grid grew or slid. With a draft (savedSpots, PlaceTowers.getSavedBoardSpots), the board shows
+     * itself as if nothing were drafted: html.nexo-saved-board-view hides the draft's towers, rings, controls and bubble in CSS,
+     * undoes a replaced tower's fade, shows the status bar's icons full and hides the scoreboard's previews, and the saved board's
+     * own rings are drawn in savedSpotsLayer. Nothing of the draft is removed or rebuilt (neither this.draft nor PlaceTowers'),
+     * so clearScoringTowers shows it exactly as it was. Refused (false) once the end-game display is on: its classes
+     * (showing-largest-groups, largest-group-tower) are never touched here
+     */
+    public showScoringTowers(playerIDs: number[], savedSpots: SavedBoardSpots | null): boolean {
+        if(this.boardElement.classList.contains('showing-largest-groups'))
+            return false;
+
+        if(savedSpots && !BoardHandler.isShowingSavedBoard()){
+            BoardHandler.renderSpotRings(this.savedSpotsLayer, savedSpots);
+            document.documentElement.classList.add(BoardHandler.SAVED_BOARD_VIEW_CLASS);
+        }
+
+        const scoringKeys = new Set<string>();
+        for(const playerID of playerIDs){
+            for(const spot of BoardHandler.getTopLeftGroup(BoardRules.getLargestGroups(this.towers, playerID)))
+                scoringKeys.add(BoardRules.key(spot.x, spot.y));
+        }
+        this.towerElements.forEach((towerElement, key) => towerElement.classList.toggle('scoring-tower', scoringKeys.has(key)));
+        this.boardElement.classList.add('nexo-score-highlight');
+        return true;
+    }
+
+    //[BGA] the scoring highlight shows one area per player: of the areas tied for largest, the one whose first tower in reading
+    //order (topmost row, then leftmost) comes first, in board coordinates, so the same however the board grew or slid. Only here:
+    //BoardRules.getLargestGroups (the server's rule), the scores and the end-game display keep every tied area
+    private static getTopLeftGroup(groups: NexoSpot[][]): NexoSpot[] {
+        const readingOrder = (a: NexoSpot, b: NexoSpot) => (a.y - b.y) || (a.x - b.x);
+        const firstTower = (group: NexoSpot[]) => group.reduce((first, spot) => readingOrder(spot, first) < 0 ? spot : first);
+        const nonEmpty = groups.filter(group => group.length > 0);
+        if(nonEmpty.length === 0)
+            return [];
+        return nonEmpty.reduce((best, group) => readingOrder(firstTower(group), firstTower(best)) < 0 ? group : best);
+    }
+
+    //takes the scoreboard's highlight away (only its own classes): a draft it hid shows again exactly as it was
+    public clearScoringTowers(): void {
+        if(BoardHandler.isShowingSavedBoard()){
+            document.documentElement.classList.remove(BoardHandler.SAVED_BOARD_VIEW_CLASS);
+            BoardHandler.renderSpotRings(this.savedSpotsLayer, null);
+        }
+        this.boardElement.classList.remove('nexo-score-highlight');
+        this.towersLayer.querySelectorAll('.scoring-tower').forEach(towerElement => towerElement.classList.remove('scoring-tower'));
     }
 
     /**
