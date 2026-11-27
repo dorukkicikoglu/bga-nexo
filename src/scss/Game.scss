@@ -763,6 +763,17 @@ html.nexo-discs-wooden .nexo-tower{
 .mobile_version #nexo-board-container{ --below-board-gap-share: #{$below-board-gap-mobile-share};
     padding-top: calc((#{$above-board-gap-mobile} + max(0px, #{$status-bar-mobile-reserved-height} - var(--status-bar-height, #{$status-bar-mobile-reserved-height}))) / var(--bga-game-zoom, 1));
 }
+//[BGA] nothing on the board area is selectable: the board, its towers and controls, and the avatars, reserves and scoreboard on
+//its top edge (#nexo-top-bar is inside the container, named anyway so moving it out keeps it covered). No text selection, no
+//iOS long-press callout, no tap flash, no dragging the avatar image or an icon, and a transparent ::selection as a last resort
+#nexo-board-container, #nexo-top-bar{
+    &, *{ -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+    img, svg{ -webkit-user-drag: none; }
+    &::selection, *::selection{ background: transparent; }
+}
+//the draft's undo and confirm buttons are the only focusable elements there (towers are plain divs): no focus ring left by a
+//mouse click or a tap, the keyboard's :focus-visible look unchanged
+#nexo-board-container button:focus:not(:focus-visible){ outline: none; }
 //[BGA] the board's top band ($board-top-band-ratio spots, its padding-top) holds the players' avatars and reserves (#nexo-top-bar):
 //the grid (.board-layer) starts under it, so no spot is ever under them. The draft controls' edges are measured from the layer's
 //own top, so they still keep inside the grid's square

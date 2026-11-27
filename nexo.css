@@ -343,6 +343,23 @@ html.nexo-discs-wooden .nexo-tower .tower-height-number {
   padding-top: calc((13px + max(0px, 73px - var(--status-bar-height, 73px))) / var(--bga-game-zoom, 1));
 }
 
+#nexo-board-container, #nexo-board-container *, #nexo-top-bar, #nexo-top-bar * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+#nexo-board-container img, #nexo-board-container svg, #nexo-top-bar img, #nexo-top-bar svg {
+  -webkit-user-drag: none;
+}
+#nexo-board-container::selection, #nexo-board-container *::selection, #nexo-top-bar::selection, #nexo-top-bar *::selection {
+  background: transparent;
+}
+
+#nexo-board-container button:focus:not(:focus-visible) {
+  outline: none;
+}
+
 #nexo-board {
   position: relative;
   box-sizing: content-box;
