@@ -340,6 +340,7 @@ html.nexo-discs-wooden .nexo-tower .tower-height-number {
 
 .mobile_version #nexo-board-container {
   --below-board-gap-share: 50;
+  padding-top: calc((13px + max(0px, 73px - var(--status-bar-height, 73px))) / var(--bga-game-zoom, 1));
 }
 
 #nexo-board {

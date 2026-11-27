@@ -771,3 +771,14 @@ Deploy `modules/` and `nexo.css`. No server change. Check on a phone first (wher
 - [ ] Phone held sideways, a portrait desktop window and a wide desktop window: the black disc in the same place as before in each.
 - [ ] With the OS's reduce-motion setting on: nothing drifts; the red disc sits at its end, full size, as before.
 - [ ] Optional, Chrome DevTools on desktop (Performance, CPU throttled 4x, scroll): each frame's "Recalculate Style" touches a handful of elements, not the whole page. `document.querySelector('.background-arc').style.getPropertyValue('--nexo-parallax')` follows the scroll; `document.documentElement.style.getPropertyValue('--nexo-parallax')` is empty.
+
+## After M1: steady board under the status bar
+
+Deploy `modules/` and `nexo.css`. No server change. Check on a phone (BGA's mobile layout).
+
+- [ ] On your turn (one-line title) and on the opponent's (title plus the red "Get back to tables list" / "X tables are waiting for you" button): the board's top is at exactly the same place on screen; it never moves when the turn passes or the button appears or goes.
+- [ ] With the button showing, about 13px between the status bar's bottom and the avatars' top.
+- [ ] The title wrapping to two lines (a long name or a narrow phone): the board stays put as long as the bar is no taller than with the button.
+- [ ] When "This player is not playing: what can I do?" shows under the button, the board moves down by about the link's height, and back up when it goes. Measure the bar then (`document.getElementById('page-title').getBoundingClientRect().height`) and note the value in CLAUDE.md > Layout > Status bar room.
+- [ ] Scroll down until BGA pins the status bar at the window's top: it keeps its own height (no empty strip under it), and the board doesn't jump when the button comes or goes while pinned.
+- [ ] Desktop: the board's place under the status bar is unchanged.
