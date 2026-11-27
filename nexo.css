@@ -33,11 +33,6 @@
   --bg-parallax-still: 0;
   --bg-parallax-near-overscan: calc(var(--bg-parallax-near-cap) * 1px + 2px);
   --bg-parallax-far-overscan: calc(var(--bg-parallax-far-cap) * 1px + 2px);
-  --bg-parallax-near-shift: calc(-1px * min(var(--nexo-parallax, 0) * var(--bg-parallax-near-ratio), var(--bg-parallax-near-cap)));
-  --bg-parallax-far-shift: calc(-1px * min(var(--nexo-parallax, 0) * var(--bg-parallax-far-ratio), var(--bg-parallax-far-cap)));
-  --bg-parallax-red-disc-shift: calc(-1px * min(var(--nexo-parallax, 0) * var(--bg-parallax-red-disc-ratio), var(--bg-parallax-red-disc-cap)));
-  --bg-parallax-red-disc-progress: max(var(--bg-parallax-still), min(1, var(--nexo-parallax, 0) / var(--bg-parallax-red-disc-progress-scroll)));
-  --bg-parallax-red-disc-scale: calc(var(--bg-parallax-red-disc-min-scale) + (1 - var(--bg-parallax-red-disc-min-scale)) * var(--bg-parallax-red-disc-progress));
 }
 
 @media (max-width: 767.98px) {
@@ -112,8 +107,8 @@ body {
     --bg-viewport-height: 100svh;
   }
 }
-body::before, body::after {
-  content: "";
+
+body .background-surface, body .background-arc {
   position: fixed;
   left: 0px;
   top: 0px;
@@ -122,30 +117,12 @@ body::before, body::after {
   pointer-events: none;
   will-change: transform;
 }
-body::before {
+
+body .background-surface {
+  --bg-parallax-far-shift: calc(-1px * min(var(--nexo-parallax, 0) * var(--bg-parallax-far-ratio), var(--bg-parallax-far-cap)));
   right: calc(-1 * var(--bg-parallax-far-overscan));
   transform: translate3d(var(--bg-parallax-far-shift), 0, 0);
   background: linear-gradient(113deg, transparent calc(62% - var(--bg-parallax-far-overscan) * 0.5707130091), rgba(110, 104, 94, 0.06) calc(62.35% - var(--bg-parallax-far-overscan) * 0.5739347761), transparent calc(62.8% - var(--bg-parallax-far-overscan) * 0.578077048)), linear-gradient(109deg, transparent calc(63.2% - var(--bg-parallax-far-overscan) * 0.5975677398), rgba(110, 104, 94, 0.03) calc(63.9% - var(--bg-parallax-far-overscan) * 0.6041863698), transparent calc(64.8% - var(--bg-parallax-far-overscan) * 0.612696037)), linear-gradient(104deg, transparent calc(75.2% - var(--bg-parallax-far-overscan) * 0.7296623862), rgba(110, 104, 94, 0.035) calc(75.5% - var(--bg-parallax-far-overscan) * 0.7325732733), transparent calc(75.9% - var(--bg-parallax-far-overscan) * 0.7364544562)), linear-gradient(121deg, transparent calc(85% - var(--bg-parallax-far-overscan) * 0.7285922056), rgba(110, 104, 94, 0.06) calc(85.25% - var(--bg-parallax-far-overscan) * 0.7307351238), transparent calc(85.6% - var(--bg-parallax-far-overscan) * 0.7337352094)), radial-gradient(ellipse 45vw 30vh at calc((100% - var(--bg-parallax-far-overscan)) * 0.78) 70%, rgba(120, 112, 100, 0.035), transparent 70%), radial-gradient(ellipse 35vw 25vh at calc((100% - var(--bg-parallax-far-overscan)) * 0.92) 18%, rgba(120, 112, 100, 0.035), transparent 70%), radial-gradient(ellipse 70vw 60vh at calc((100% - var(--bg-parallax-far-overscan)) * 0.85) 0%, #fdfbf8, transparent 75%), #f6f3ed;
-}
-body::after {
-  right: calc(-1 * var(--bg-parallax-near-overscan));
-  transform: translate3d(var(--bg-parallax-near-shift), 0, 0);
-  background: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), transparent calc(var(--bg-arc-radius) - 9vw), rgba(255, 255, 255, 0.045) calc(var(--bg-arc-radius) - 1.8vw), transparent var(--bg-arc-radius)), radial-gradient(ellipse 55vw 40vh at calc((100% - var(--bg-parallax-near-overscan)) * 0.22) 72%, rgba(255, 255, 255, 0.055), transparent 70%), linear-gradient(64deg, transparent calc(18% - var(--bg-parallax-near-overscan) * 0.1617829283), rgba(255, 255, 255, 0.03) calc(19.5% - var(--bg-parallax-near-overscan) * 0.175264839), transparent calc(21% - var(--bg-parallax-near-overscan) * 0.1887467497)), linear-gradient(58deg, transparent calc(34% - var(--bg-parallax-near-overscan) * 0.2883363527), rgba(255, 255, 255, 0.02) calc(35% - var(--bg-parallax-near-overscan) * 0.2968168337), transparent calc(36.5% - var(--bg-parallax-near-overscan) * 0.3095375551)), linear-gradient(72deg, transparent calc(46% - var(--bg-parallax-near-overscan) * 0.4374859975), rgba(255, 255, 255, 0.03) calc(46.8% - var(--bg-parallax-near-overscan) * 0.4450944496), transparent calc(47.8% - var(--bg-parallax-near-overscan) * 0.4546050148)), linear-gradient(155deg, rgb(30.75, 30.75, 30.75) 0%, #121212 calc(55% - var(--bg-parallax-near-overscan) * 0.232440044), rgb(23.1, 23.1, 23.1) calc(100% - var(--bg-parallax-near-overscan) * 0.4226182617));
-  -webkit-mask-image: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), #000000 calc(var(--bg-arc-radius) - 0.75px), transparent calc(var(--bg-arc-radius) + 0.75px));
-  mask-image: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), #000000 calc(var(--bg-arc-radius) - 0.75px), transparent calc(var(--bg-arc-radius) + 0.75px));
-}
-
-body .background-arc-shadow {
-  position: fixed;
-  left: 0px;
-  top: 0px;
-  right: calc(-1 * var(--bg-parallax-near-overscan));
-  bottom: 0px;
-  z-index: -1;
-  pointer-events: none;
-  will-change: transform;
-  transform: translate3d(var(--bg-parallax-near-shift), 0, 0);
-  background: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), transparent calc(var(--bg-arc-radius) - 2px), rgba(40, 30, 18, 0.16) var(--bg-arc-radius), rgba(40, 30, 18, 0.05) calc(var(--bg-arc-radius) + 1.6vw * 0.55), transparent calc(var(--bg-arc-radius) + 1.6vw));
 }
 
 body .background-red-disc {
@@ -153,6 +130,9 @@ body .background-red-disc {
   z-index: -1;
   pointer-events: none;
   will-change: transform;
+  --bg-parallax-red-disc-shift: calc(-1px * min(var(--nexo-parallax, 0) * var(--bg-parallax-red-disc-ratio), var(--bg-parallax-red-disc-cap)));
+  --bg-parallax-red-disc-progress: max(var(--bg-parallax-still), min(1, var(--nexo-parallax, 0) / var(--bg-parallax-red-disc-progress-scroll)));
+  --bg-parallax-red-disc-scale: calc(var(--bg-parallax-red-disc-min-scale) + (1 - var(--bg-parallax-red-disc-min-scale)) * var(--bg-parallax-red-disc-progress));
   right: calc(var(--bg-red-disc-start-right) - var(--bg-red-disc-width) * 0.7235294118);
   bottom: calc(var(--bg-red-disc-start-bottom) - var(--bg-red-disc-height) * 0.4606741573);
   width: var(--bg-red-disc-width);
@@ -160,6 +140,25 @@ body .background-red-disc {
   background: url(img/bg_red_disc.png) 0px 0px/100% 100% no-repeat;
   transform-origin: 27.6470588235% 53.9325842697%;
   transform: translate3d(var(--bg-parallax-red-disc-shift), calc(-1 * var(--bg-red-disc-travel-up) * var(--bg-parallax-red-disc-progress)), 0) scale(var(--bg-parallax-red-disc-scale));
+}
+
+body .background-arc {
+  --bg-parallax-near-shift: calc(-1px * min(var(--nexo-parallax, 0) * var(--bg-parallax-near-ratio), var(--bg-parallax-near-cap)));
+  right: calc(-1 * var(--bg-parallax-near-overscan));
+  transform: translate3d(var(--bg-parallax-near-shift), 0, 0);
+}
+body .background-arc::before, body .background-arc::after {
+  content: "";
+  position: absolute;
+  inset: 0px;
+}
+body .background-arc::before {
+  background: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), transparent calc(var(--bg-arc-radius) - 2px), rgba(40, 30, 18, 0.16) var(--bg-arc-radius), rgba(40, 30, 18, 0.05) calc(var(--bg-arc-radius) + 1.6vw * 0.55), transparent calc(var(--bg-arc-radius) + 1.6vw));
+}
+body .background-arc::after {
+  background: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), transparent calc(var(--bg-arc-radius) - 9vw), rgba(255, 255, 255, 0.045) calc(var(--bg-arc-radius) - 1.8vw), transparent var(--bg-arc-radius)), radial-gradient(ellipse 55vw 40vh at calc((100% - var(--bg-parallax-near-overscan)) * 0.22) 72%, rgba(255, 255, 255, 0.055), transparent 70%), linear-gradient(64deg, transparent calc(18% - var(--bg-parallax-near-overscan) * 0.1617829283), rgba(255, 255, 255, 0.03) calc(19.5% - var(--bg-parallax-near-overscan) * 0.175264839), transparent calc(21% - var(--bg-parallax-near-overscan) * 0.1887467497)), linear-gradient(58deg, transparent calc(34% - var(--bg-parallax-near-overscan) * 0.2883363527), rgba(255, 255, 255, 0.02) calc(35% - var(--bg-parallax-near-overscan) * 0.2968168337), transparent calc(36.5% - var(--bg-parallax-near-overscan) * 0.3095375551)), linear-gradient(72deg, transparent calc(46% - var(--bg-parallax-near-overscan) * 0.4374859975), rgba(255, 255, 255, 0.03) calc(46.8% - var(--bg-parallax-near-overscan) * 0.4450944496), transparent calc(47.8% - var(--bg-parallax-near-overscan) * 0.4546050148)), linear-gradient(155deg, rgb(30.75, 30.75, 30.75) 0%, #121212 calc(55% - var(--bg-parallax-near-overscan) * 0.232440044), rgb(23.1, 23.1, 23.1) calc(100% - var(--bg-parallax-near-overscan) * 0.4226182617));
+  -webkit-mask-image: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), #000000 calc(var(--bg-arc-radius) - 0.75px), transparent calc(var(--bg-arc-radius) + 0.75px));
+  mask-image: radial-gradient(circle var(--bg-arc-radius) at var(--bg-arc-center), #000000 calc(var(--bg-arc-radius) - 0.75px), transparent calc(var(--bg-arc-radius) + 0.75px));
 }
 
 @media (orientation: portrait) {

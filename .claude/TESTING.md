@@ -761,3 +761,13 @@ Deploy `modules/` and `nexo.css`. No server change. Check on desktop and on a ph
 - [ ] They follow every click (adding a disc never changes them: height doesn't count), every new tower and every undo; undo back to an empty draft hides both.
 - [ ] Confirm: they go at once, the turn plays, the real scores land on the values the previews showed. A turn the server refuses: they come back with the draft.
 - [ ] The opponent and spectators never see previews, nor does a replay. Two-digit scores and previews on a phone: nothing overlaps the stacks.
+
+## After M1: smoother background parallax
+
+Deploy `modules/` and `nexo.css`. No server change. Check on a phone first (where it was slow), then desktop.
+
+- [ ] Phone: scroll the page down and up slowly, then with a fast flick: the black disc drifts left, the red disc drifts left, rises and grows, the marble drifts a little; all of it smooth, at the same frame rate as the page itself (it stuttered before).
+- [ ] The look at the page's top is exactly as before: marble, the black disc's edge and its soft shadow, the red disc hidden behind the board's bottom-right corner (phone) or in the bottom-right corner (desktop). No gap or edge at the window's right side at any scroll.
+- [ ] Phone held sideways, a portrait desktop window and a wide desktop window: the black disc in the same place as before in each.
+- [ ] With the OS's reduce-motion setting on: nothing drifts; the red disc sits at its end, full size, as before.
+- [ ] Optional, Chrome DevTools on desktop (Performance, CPU throttled 4x, scroll): each frame's "Recalculate Style" touches a handful of elements, not the whole page. `document.querySelector('.background-arc').style.getPropertyValue('--nexo-parallax')` follows the scroll; `document.documentElement.style.getPropertyValue('--nexo-parallax')` is empty.

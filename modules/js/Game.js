@@ -1972,6 +1972,7 @@ class BackgroundHandler {
     constructor() {
         this.maxScroll = 0; //px of scroll past which every layer is at its cap
         this.frame = 0;
+        this.appliedOffset = -1; //the --nexo-parallax last written on the layers (-1: none yet), so a frame that changes nothing writes nothing
         this.stableWidth = 0; //the window's size at the last real resize (onResize)
         this.stableHeight = 0;
         this.redDiscMeasurements = { buttons: 0, header: 0, start: null }; //the latest measured
@@ -1980,12 +1981,13 @@ class BackgroundHandler {
         this.layoutFrame = 0;
         this.observedBoard = null;
         this.layoutObserver = new ResizeObserver(() => this.scheduleRedDiscStart());
-        const arcShadow = document.createElement('div');
-        arcShadow.classList.add('background-arc-shadow');
-        document.body.insertAdjacentElement('afterbegin', arcShadow); //first in <body>: over body::before, under body::after
-        this.redDiscElement = document.createElement('div');
-        this.redDiscElement.classList.add('background-red-disc');
-        arcShadow.insertAdjacentElement('afterend', this.redDiscElement); //over the shadow, under body::after
+        this.layers = BackgroundHandler.LAYER_CLASSES.map(className => {
+            const layer = document.createElement('div');
+            layer.classList.add(className);
+            return layer;
+        });
+        document.body.prepend(...this.layers); //first in <body>, in this order: under the whole page
+        this.redDiscElement = this.layers[BackgroundHandler.LAYER_CLASSES.indexOf('background-red-disc')];
         this.stableWidth = document.documentElement.clientWidth;
         this.stableHeight = document.documentElement.clientHeight;
         this.readParallaxSettings();
@@ -2188,7 +2190,8 @@ class BackgroundHandler {
         }
         return Math.round(Math.max(0, height - top));
     }
-    //one update per frame, whatever the number of scroll events; the scroll offset is read in the frame, not in the handler
+    //one update per frame, whatever the number of scroll events (the listener is passive and only asks for a frame); the scroll
+    //offset is read in the frame, not in the handler
     scheduleUpdate() {
         if (this.frame)
             return;
@@ -2197,18 +2200,23 @@ class BackgroundHandler {
             this.update();
         });
     }
+    //one read (scrollY, first, before any write, so it never forces a layout of ours) then only writes: no style or size is read here
     update() {
         const scrollY = window.scrollY;
-        const offset = Math.round(Math.min(Math.max(scrollY, 0), this.maxScroll)).toString(); //never negative (iOS's bounce at the top)
-        const root = document.documentElement;
-        if (root.style.getPropertyValue(BackgroundHandler.PARALLAX_PROPERTY) !== offset)
-            root.style.setProperty(BackgroundHandler.PARALLAX_PROPERTY, offset);
+        const offset = Math.round(Math.min(Math.max(scrollY, 0), this.maxScroll)); //never negative (iOS's bounce at the top)
+        if (offset !== this.appliedOffset) {
+            this.appliedOffset = offset;
+            for (const layer of this.layers)
+                layer.style.setProperty(BackgroundHandler.PARALLAX_PROPERTY, offset.toString());
+        }
         if (this.redDiscPending && scrollY <= 0) //back at the top: the red disc's path is at its start here
             this.applyRedDiscMeasurements();
     }
 }
-//custom properties on <html>: the scroll offset (set here) and the parallax's settings (set in Game.scss, :root)
+//the scroll offset, set here on each layer (LAYER_CLASSES); the parallax's settings are on <html> (Game.scss, :root)
 BackgroundHandler.PARALLAX_PROPERTY = '--nexo-parallax';
+//the layers, in paint order (each over the one before, all under the page), each one composited layer in Game.scss
+BackgroundHandler.LAYER_CLASSES = ['background-surface', 'background-red-disc', 'background-arc'];
 BackgroundHandler.PARALLAX_LAYERS = ['near', 'far', 'red-disc']; //each with its ratio and cap; the red disc's growth has its own end
 //on body: from the window's bottom to the top of BGA's floating buttons, px (measureFloatingButtons)
 BackgroundHandler.FLOATING_BUTTONS_PROPERTY = '--floating-buttons-height';

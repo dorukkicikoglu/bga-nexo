@@ -10,18 +10,21 @@
  * BackgroundHandler.ts
  */
 
-//the page background's parallax (Game.scss, $bg-parallax-*): its layers drift left as the page scrolls down. Game.scss holds the
-//settings and does the moving; this only hands it the scroll offset, as --nexo-parallax on <html> (a plain number of px), clamped
-//where every layer has reached its cap so scrolling further writes nothing. Also puts in <body> the two layers a pseudo-element
-//can't hold (body's two are the surface and the black disc): the black disc's shadow, then the red disc, which moves on its own.
+//the page background's parallax (Game.scss, $bg-parallax-*): its layers drift left as the page scrolls down. Puts the three layers
+//first in <body> (the surface, the red disc, the black disc with its shadow); Game.scss holds the settings and does the moving,
+//by transform only. This only hands each layer the scroll offset, as --nexo-parallax inline on the layer itself (a plain number
+//of px), never on <html> or <body>: a custom property changed there restyles every element of the page, every frame. Clamped
+//where every layer has reached its cap, so scrolling further writes nothing.
 //On mobile the red disc travels from behind the board (measureRedDiscStart) to a spot above BGA's floating buttons, so this also
 //measures those (--floating-buttons-height, --fixed-header-height, --red-disc-start-right / -bottom), and keeps the window's stable
 //height, which ignores a mobile browser's address bar showing or hiding (getStableViewportHeight)
 type RedDiscMeasurements = { buttons: number, header: number, start: { right: number, bottom: number } | null };
 
 export class BackgroundHandler{
-    //custom properties on <html>: the scroll offset (set here) and the parallax's settings (set in Game.scss, :root)
+    //the scroll offset, set here on each layer (LAYER_CLASSES); the parallax's settings are on <html> (Game.scss, :root)
     private static readonly PARALLAX_PROPERTY = '--nexo-parallax';
+    //the layers, in paint order (each over the one before, all under the page), each one composited layer in Game.scss
+    private static readonly LAYER_CLASSES = ['background-surface', 'background-red-disc', 'background-arc'];
     private static readonly PARALLAX_LAYERS = ['near', 'far', 'red-disc']; //each with its ratio and cap; the red disc's growth has its own end
     //on body: from the window's bottom to the top of BGA's floating buttons, px (measureFloatingButtons)
     private static readonly FLOATING_BUTTONS_PROPERTY = '--floating-buttons-height';
@@ -48,6 +51,8 @@ export class BackgroundHandler{
 
     private maxScroll = 0; //px of scroll past which every layer is at its cap
     private frame = 0;
+    private layers: HTMLDivElement[];
+    private appliedOffset = -1; //the --nexo-parallax last written on the layers (-1: none yet), so a frame that changes nothing writes nothing
     private stableWidth = 0; //the window's size at the last real resize (onResize)
     private stableHeight = 0;
     private redDiscElement: HTMLDivElement;
@@ -63,12 +68,13 @@ export class BackgroundHandler{
     }
 
     private constructor() {
-        const arcShadow = document.createElement('div');
-        arcShadow.classList.add('background-arc-shadow');
-        document.body.insertAdjacentElement('afterbegin', arcShadow); //first in <body>: over body::before, under body::after
-        this.redDiscElement = document.createElement('div');
-        this.redDiscElement.classList.add('background-red-disc');
-        arcShadow.insertAdjacentElement('afterend', this.redDiscElement); //over the shadow, under body::after
+        this.layers = BackgroundHandler.LAYER_CLASSES.map(className => {
+            const layer = document.createElement('div');
+            layer.classList.add(className);
+            return layer;
+        });
+        document.body.prepend(...this.layers); //first in <body>, in this order: under the whole page
+        this.redDiscElement = this.layers[BackgroundHandler.LAYER_CLASSES.indexOf('background-red-disc')];
 
         this.stableWidth = document.documentElement.clientWidth;
         this.stableHeight = document.documentElement.clientHeight;
@@ -291,7 +297,8 @@ export class BackgroundHandler{
         return Math.round(Math.max(0, height - top));
     }
 
-    //one update per frame, whatever the number of scroll events; the scroll offset is read in the frame, not in the handler
+    //one update per frame, whatever the number of scroll events (the listener is passive and only asks for a frame); the scroll
+    //offset is read in the frame, not in the handler
     private scheduleUpdate(): void {
         if(this.frame)
             return;
@@ -301,12 +308,15 @@ export class BackgroundHandler{
         });
     }
 
+    //one read (scrollY, first, before any write, so it never forces a layout of ours) then only writes: no style or size is read here
     private update(): void {
         const scrollY = window.scrollY;
-        const offset = Math.round(Math.min(Math.max(scrollY, 0), this.maxScroll)).toString(); //never negative (iOS's bounce at the top)
-        const root = document.documentElement;
-        if(root.style.getPropertyValue(BackgroundHandler.PARALLAX_PROPERTY) !== offset)
-            root.style.setProperty(BackgroundHandler.PARALLAX_PROPERTY, offset);
+        const offset = Math.round(Math.min(Math.max(scrollY, 0), this.maxScroll)); //never negative (iOS's bounce at the top)
+        if(offset !== this.appliedOffset){
+            this.appliedOffset = offset;
+            for(const layer of this.layers)
+                layer.style.setProperty(BackgroundHandler.PARALLAX_PROPERTY, offset.toString());
+        }
 
         if(this.redDiscPending && scrollY <= 0) //back at the top: the red disc's path is at its start here
             this.applyRedDiscMeasurements();
